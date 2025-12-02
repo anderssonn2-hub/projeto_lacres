@@ -1,0 +1,957 @@
+<?php
+/**
+ * consulta_producao.php - Versao 6
+ * Sistema de busca avancada de producao de cedulas
+ * 
+ * Funcionalidades:
+ * - Busca por etiqueta dos correios
+ * - Busca por data (dia, mes, ano, intervalo)
+ * - Busca por lote, posto, usuario (com dropdown)
+ * - Integracao com conferencia_pacotes
+ * - Estatisticas de producao por dia, mes, usuario
+ * - Filtros avancados
+ * - Link para PDF na rede
+ * 
+ * Compativel com PHP 5.3.3 e IE8/9
+ */
+
+error_reporting(E_ALL & ~E_NOTICE);
+header('Content-Type: text/html; charset=utf-8');
+
+if (!isset($_SESSION)) {
+    session_start();
+}
+
+function e($s) {
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+}
+
+// Conexao com banco de dados
+$pdo_controle = null;
+try {
+    $pdo_controle = new PDO(
+        "mysql:host=10.15.61.169;dbname=controle;charset=utf8",
+        "controle_mat",
+        "375256"
+    );
+    $pdo_controle->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo_controle->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+} catch (PDOException $ex) {
+    die("Erro ao conectar ao banco de dados: " . e($ex->getMessage()));
+}
+
+// Filtros (Versao 5: adicionar filtro por usuario e tipo de periodo)
+$f_grupo      = isset($_GET['grupo']) ? trim($_GET['grupo']) : '';
+$f_data_ini   = isset($_GET['data_ini']) ? trim($_GET['data_ini']) : '';
+$f_data_fim   = isset($_GET['data_fim']) ? trim($_GET['data_fim']) : '';
+$f_etiqueta   = isset($_GET['etiqueta']) ? trim($_GET['etiqueta']) : '';
+$f_lote       = isset($_GET['lote']) ? trim($_GET['lote']) : '';
+$f_posto      = isset($_GET['posto']) ? trim($_GET['posto']) : '';
+$f_usuario    = isset($_GET['usuario']) ? trim($_GET['usuario']) : '';
+$f_periodo    = isset($_GET['periodo']) ? trim($_GET['periodo']) : '';
+$id_despacho  = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+// Aplicar filtro de periodo predefinido (Versao 5)
+if ($f_periodo !== '' && empty($f_data_ini)) {
+    $hoje = date('Y-m-d');
+    switch ($f_periodo) {
+        case 'hoje':
+            $f_data_ini = $hoje;
+            $f_data_fim = $hoje;
+            break;
+        case 'semana':
+            $f_data_ini = date('Y-m-d', strtotime('monday this week'));
+            $f_data_fim = $hoje;
+            break;
+        case 'mes':
+            $f_data_ini = date('Y-m-01');
+            $f_data_fim = $hoje;
+            break;
+        case 'ano':
+            $f_data_ini = date('Y-01-01');
+            $f_data_fim = $hoje;
+            break;
+    }
+}
+
+// Converter datas para formato SQL
+function converterDataSQL($data) {
+    if (empty($data)) return '';
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+        return $data;
+    }
+    if (preg_match('/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/', $data, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    return $data;
+}
+
+$data_ini_sql = converterDataSQL($f_data_ini);
+$data_fim_sql = converterDataSQL($f_data_fim);
+if (empty($data_fim_sql) && !empty($data_ini_sql)) {
+    $data_fim_sql = $data_ini_sql;
+}
+
+// Busca principal - Versao 6: usar subqueries em ciDespachoLotes para contagens
+// Isso funciona tanto para Poupa Tempo quanto para Correios
+$params = array();
+$sqlLista = "
+    SELECT 
+        d.id,
+        d.grupo,
+        d.datas_str,
+        d.usuario,
+        d.ativo,
+        (SELECT COUNT(DISTINCT l2.posto) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) AS num_postos,
+        (SELECT COALESCE(SUM(l2.quantidade),0) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) AS total_carteiras
+    FROM ciDespachos d
+";
+
+// Join com lotes apenas se buscar por lote ou etiqueta
+if ($f_lote !== '' || $f_etiqueta !== '') {
+    $sqlLista .= " LEFT JOIN ciDespachoLotes l ON l.id_despacho = d.id ";
+}
+
+$sqlLista .= " WHERE 1=1 ";
+
+// Filtro por grupo (apenas Poupa Tempo ou Correios)
+if ($f_grupo !== '' && $f_grupo !== 'TODOS') {
+    if ($f_grupo === 'CORREIOS') {
+        $sqlLista .= " AND d.grupo = 'CORREIOS' ";
+    } else {
+        $sqlLista .= " AND d.grupo = 'POUPA TEMPO' ";
+    }
+}
+
+// Filtro por intervalo de datas
+if (!empty($data_ini_sql)) {
+    $sqlLista .= " AND (
+        d.datas_str LIKE ? 
+        OR d.datas_str LIKE ?
+        OR EXISTS (
+            SELECT 1 FROM ciDespachoLotes l2 
+            WHERE l2.id_despacho = d.id 
+            AND l2.data_carga >= ? 
+            AND l2.data_carga <= ?
+        )
+    ) ";
+    // Formato brasileiro para busca em datas_str
+    $data_ini_br = '';
+    $data_fim_br = '';
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $data_ini_sql, $m)) {
+        $data_ini_br = $m[3] . '/' . $m[2] . '/' . $m[1];
+    }
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $data_fim_sql, $m)) {
+        $data_fim_br = $m[3] . '/' . $m[2] . '/' . $m[1];
+    }
+    $params[] = '%' . $data_ini_br . '%';
+    $params[] = '%' . $data_fim_br . '%';
+    $params[] = $data_ini_sql;
+    $params[] = $data_fim_sql;
+}
+
+// Filtro por etiqueta correios - Versao 6: busca em ciDespachoLotes
+if ($f_etiqueta !== '') {
+    $sqlLista .= " AND EXISTS (
+        SELECT 1 FROM ciDespachoLotes le 
+        WHERE le.id_despacho = d.id AND le.etiqueta_correios LIKE ?
+    ) ";
+    $params[] = '%' . $f_etiqueta . '%';
+}
+
+// Filtro por lote
+if ($f_lote !== '') {
+    $sqlLista .= " AND l.lote LIKE ? ";
+    $params[] = '%' . $f_lote . '%';
+}
+
+// Filtro por posto - Versao 6: busca em ciDespachoLotes
+if ($f_posto !== '') {
+    $sqlLista .= " AND EXISTS (
+        SELECT 1 FROM ciDespachoLotes lp 
+        WHERE lp.id_despacho = d.id AND lp.posto LIKE ?
+    ) ";
+    $params[] = '%' . $f_posto . '%';
+}
+
+// Filtro por usuario (Versao 5) - usando EXISTS para evitar duplicacao de contagem
+if ($f_usuario !== '') {
+    $sqlLista .= " AND (d.usuario LIKE ? OR EXISTS (
+        SELECT 1 FROM ciDespachoLotes lu 
+        WHERE lu.id_despacho = d.id AND lu.responsaveis LIKE ?
+    )) ";
+    $params[] = '%' . $f_usuario . '%';
+    $params[] = '%' . $f_usuario . '%';
+}
+
+// Versao 6: Manter GROUP BY para evitar duplicatas quando filtros de lote/etiqueta estao ativos
+$sqlLista .= "
+    GROUP BY d.id, d.grupo, d.datas_str, d.usuario, d.ativo
+    ORDER BY d.id DESC
+    LIMIT 200
+";
+
+$stmtLista = $pdo_controle->prepare($sqlLista);
+$stmtLista->execute($params);
+$despachos = $stmtLista->fetchAll();
+
+// Buscar conferencia de pacotes
+$conferidos = array();
+try {
+    $stmtConf = $pdo_controle->query("
+        SELECT DISTINCT lote FROM conferencia_pacotes WHERE status = 'conferido'
+    ");
+    while ($row = $stmtConf->fetch()) {
+        $conferidos[$row['lote']] = true;
+    }
+} catch (Exception $ex) {
+    // Tabela pode nao existir
+}
+
+// Detalhes de despacho especifico
+$itens = array();
+$lotes = array();
+$lote_encontrado = false;
+$despacho_tipo = '';
+
+if ($id_despacho > 0) {
+    // Versao 6: Primeiro verificar o tipo do despacho
+    $stTipo = $pdo_controle->prepare("SELECT grupo FROM ciDespachos WHERE id = ?");
+    $stTipo->execute(array($id_despacho));
+    $rowTipo = $stTipo->fetch();
+    $despacho_tipo = $rowTipo ? $rowTipo['grupo'] : '';
+    
+    // Buscar itens (ciDespachoItens - usado principalmente para Poupa Tempo)
+    $stItens = $pdo_controle->prepare("
+        SELECT id, id_despacho, regional, posto, nome_posto, endereco,
+               lote, quantidade, lacre_iipr, lacre_correios, etiqueta_correios
+        FROM ciDespachoItens
+        WHERE id_despacho = ?
+        ORDER BY LPAD(posto,3,'0')
+    ");
+    $stItens->execute(array($id_despacho));
+    $itens = $stItens->fetchAll();
+
+    // Versao 6: Cruzamento com conferencia_pacotes para status e responsavel
+    // NOTA: Apenas considera conferido se cp.conf = 'S' (status conferido)
+    $stLotes = $pdo_controle->prepare("
+        SELECT 
+            l.id, 
+            l.id_despacho, 
+            l.posto, 
+            l.lote, 
+            l.quantidade, 
+            l.data_carga, 
+            l.responsaveis, 
+            l.etiqueta_correios,
+            cp.usuario AS conferido_por,
+            cp.lido_em AS conferido_em,
+            CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
+        FROM ciDespachoLotes l
+        LEFT JOIN conferencia_pacotes cp ON cp.nlote = CAST(l.lote AS UNSIGNED) AND cp.conf = 'S'
+        WHERE l.id_despacho = ?
+        ORDER BY LPAD(l.posto,3,'0'), l.lote
+    ");
+    $stLotes->execute(array($id_despacho));
+    $lotes = $stLotes->fetchAll();
+}
+
+// Versao 6: Buscar lista de usuarios para dropdown
+$usuarios = array();
+try {
+    $stUsuarios = $pdo_controle->query("
+        SELECT DISTINCT usuario FROM (
+            SELECT DISTINCT usuario FROM ciDespachos WHERE usuario IS NOT NULL AND usuario != ''
+            UNION
+            SELECT DISTINCT responsaveis AS usuario FROM ciDespachoLotes WHERE responsaveis IS NOT NULL AND responsaveis != ''
+        ) AS u
+        ORDER BY usuario
+    ");
+    $usuarios = $stUsuarios->fetchAll();
+} catch (Exception $ex) {
+    // Ignorar erro
+}
+
+// Estatisticas de producao por dia (ultimos 30 dias)
+$estatisticas = array();
+try {
+    $stEstat = $pdo_controle->query("
+        SELECT 
+            DATE(l.data_carga) AS data_producao,
+            SUM(l.quantidade) AS total_carteiras,
+            COUNT(DISTINCT l.lote) AS total_lotes,
+            COUNT(DISTINCT l.posto) AS total_postos
+        FROM ciDespachoLotes l
+        WHERE l.data_carga >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        GROUP BY DATE(l.data_carga)
+        ORDER BY data_producao DESC
+        LIMIT 30
+    ");
+    $estatisticas = $stEstat->fetchAll();
+} catch (Exception $ex) {
+    // Ignorar erro
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Consulta de Producao - Versao 6</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f0f2f5;
+        margin: 0;
+        padding: 0;
+    }
+    .container {
+        max-width: 1400px;
+        margin: 20px auto;
+        padding: 0 15px;
+    }
+    h1 {
+        margin: 0 0 20px 0;
+        font-size: 24px;
+        color: #1a1a2e;
+        text-align: center;
+    }
+    .painel {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    .painel-titulo {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 15px;
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 8px;
+    }
+    
+    /* Filtros */
+    .filtros {
+        display: table;
+        width: 100%;
+    }
+    .filtro-grupo {
+        display: table-cell;
+        vertical-align: top;
+        padding-right: 15px;
+    }
+    .filtro-grupo:last-child {
+        padding-right: 0;
+    }
+    .filtro-grupo label {
+        display: block;
+        font-size: 12px;
+        font-weight: bold;
+        color: #555;
+        margin-bottom: 5px;
+    }
+    .filtro-grupo input[type="text"],
+    .filtro-grupo input[type="date"],
+    .filtro-grupo select {
+        width: 100%;
+        padding: 8px 10px;
+        font-size: 13px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .filtro-grupo input:focus,
+    .filtro-grupo select:focus {
+        border-color: #007bff;
+        outline: none;
+    }
+    .btn {
+        padding: 10px 20px;
+        font-size: 13px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 8px;
+    }
+    .btn-primary {
+        background: #007bff;
+        color: #fff;
+    }
+    .btn-primary:hover {
+        background: #0056b3;
+    }
+    .btn-secondary {
+        background: #6c757d;
+        color: #fff;
+    }
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+    .btn-success {
+        background: #28a745;
+        color: #fff;
+    }
+    
+    /* Tabelas */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        border: 1px solid #ddd;
+        padding: 8px 10px;
+        font-size: 12px;
+        text-align: left;
+    }
+    th {
+        background: #f8f9fa;
+        font-weight: bold;
+        color: #333;
+    }
+    tr:nth-child(even) {
+        background: #fafafa;
+    }
+    tr:hover {
+        background: #f0f7ff;
+    }
+    
+    /* Destaque verde para lotes encontrados/conferidos */
+    tr.lote-encontrado {
+        background: #d4edda !important;
+    }
+    tr.lote-conferido {
+        background: #c3e6cb !important;
+    }
+    
+    /* Badges */
+    .badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: bold;
+        color: #fff;
+    }
+    .badge-ativo { background: #28a745; }
+    .badge-inativo { background: #dc3545; }
+    .badge-conferido { background: #17a2b8; }
+    .badge-pendente { background: #ffc107; color: #333; }
+    .badge-poupa { background: #6f42c1; }
+    .badge-correios { background: #fd7e14; }
+    
+    /* Acoes */
+    .acoes a {
+        display: inline-block;
+        padding: 4px 8px;
+        margin-right: 4px;
+        font-size: 11px;
+        text-decoration: none;
+        color: #fff;
+        border-radius: 3px;
+        background: #17a2b8;
+    }
+    .acoes a:hover {
+        background: #138496;
+    }
+    
+    /* Estatisticas */
+    .stats-grid {
+        display: table;
+        width: 100%;
+    }
+    .stat-card {
+        display: table-cell;
+        padding: 15px;
+        text-align: center;
+        border-right: 1px solid #eee;
+    }
+    .stat-card:last-child {
+        border-right: none;
+    }
+    .stat-valor {
+        font-size: 28px;
+        font-weight: bold;
+        color: #007bff;
+    }
+    .stat-label {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+    
+    /* Abas */
+    .tabs {
+        margin-bottom: 20px;
+    }
+    .tab-btn {
+        display: inline-block;
+        padding: 10px 20px;
+        background: #e9ecef;
+        border: none;
+        border-radius: 4px 4px 0 0;
+        cursor: pointer;
+        font-size: 13px;
+        margin-right: 2px;
+    }
+    .tab-btn.active {
+        background: #007bff;
+        color: #fff;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+    
+    /* Totais */
+    .totais {
+        font-size: 13px;
+        margin: 10px 0;
+        padding: 10px;
+        background: #e9ecef;
+        border-radius: 4px;
+    }
+    .totais strong {
+        color: #007bff;
+    }
+    
+    /* Calendario inline para IE */
+    .calendario-grupo {
+        display: inline-block;
+        margin-right: 10px;
+    }
+    
+    @media print {
+        .filtros, .tabs, .btn, .acoes { display: none; }
+        .painel { box-shadow: none; }
+    }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Consulta de Producao de Cedulas - Versao 6</h1>
+    
+    <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
+    <div class="painel">
+        <div class="painel-titulo">Filtros de Busca</div>
+        <form method="get" action="">
+            <div class="filtros">
+                <div class="filtro-grupo" style="width:10%;">
+                    <label>Tipo:</label>
+                    <select name="grupo">
+                        <option value="">Todos</option>
+                        <option value="POUPA TEMPO"<?php if ($f_grupo=='POUPA TEMPO') echo ' selected'; ?>>Poupa Tempo</option>
+                        <option value="CORREIOS"<?php if ($f_grupo=='CORREIOS') echo ' selected'; ?>>Correios</option>
+                    </select>
+                </div>
+                <div class="filtro-grupo" style="width:10%;">
+                    <label>Periodo Rapido:</label>
+                    <select name="periodo">
+                        <option value="">Personalizado</option>
+                        <option value="hoje"<?php if ($f_periodo=='hoje') echo ' selected'; ?>>Hoje</option>
+                        <option value="semana"<?php if ($f_periodo=='semana') echo ' selected'; ?>>Esta Semana</option>
+                        <option value="mes"<?php if ($f_periodo=='mes') echo ' selected'; ?>>Este Mes</option>
+                        <option value="ano"<?php if ($f_periodo=='ano') echo ' selected'; ?>>Este Ano</option>
+                    </select>
+                </div>
+                <div class="filtro-grupo" style="width:11%;">
+                    <label>Data Inicial:</label>
+                    <input type="date" name="data_ini" value="<?php echo e($f_data_ini); ?>">
+                </div>
+                <div class="filtro-grupo" style="width:11%;">
+                    <label>Data Final:</label>
+                    <input type="date" name="data_fim" value="<?php echo e($f_data_fim); ?>">
+                </div>
+                <div class="filtro-grupo" style="width:12%;">
+                    <label>Usuario:</label>
+                    <select name="usuario">
+                        <option value="">Todos</option>
+                        <?php foreach ($usuarios as $u): ?>
+                            <option value="<?php echo e($u['usuario']); ?>"<?php if ($f_usuario==$u['usuario']) echo ' selected'; ?>><?php echo e($u['usuario']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="filtro-grupo" style="width:14%;">
+                    <label>Etiqueta Correios:</label>
+                    <input type="text" name="etiqueta" value="<?php echo e($f_etiqueta); ?>" placeholder="Ex: 1325467...">
+                </div>
+                <div class="filtro-grupo" style="width:10%;">
+                    <label>Lote:</label>
+                    <input type="text" name="lote" value="<?php echo e($f_lote); ?>" placeholder="00752835">
+                </div>
+                <div class="filtro-grupo" style="width:10%;">
+                    <label>Posto:</label>
+                    <input type="text" name="posto" value="<?php echo e($f_posto); ?>" placeholder="041">
+                </div>
+                <div class="filtro-grupo" style="width:14%;">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn btn-primary">Buscar</button>
+                    <a href="consulta_producao.php" class="btn btn-secondary" style="text-decoration:none;">Limpar</a>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Estatisticas Resumo -->
+    <?php if (!empty($estatisticas)): ?>
+    <div class="painel">
+        <div class="painel-titulo">Producao dos Ultimos 30 Dias</div>
+        <div class="stats-grid">
+            <?php
+            $total_carteiras_30d = 0;
+            $total_lotes_30d = 0;
+            foreach ($estatisticas as $est) {
+                $total_carteiras_30d += (int)$est['total_carteiras'];
+                $total_lotes_30d += (int)$est['total_lotes'];
+            }
+            ?>
+            <div class="stat-card">
+                <div class="stat-valor"><?php echo number_format($total_carteiras_30d, 0, ',', '.'); ?></div>
+                <div class="stat-label">Carteiras Produzidas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-valor"><?php echo number_format($total_lotes_30d, 0, ',', '.'); ?></div>
+                <div class="stat-label">Lotes Processados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-valor"><?php echo count($estatisticas); ?></div>
+                <div class="stat-label">Dias com Producao</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-valor"><?php echo count($estatisticas) > 0 ? number_format($total_carteiras_30d / count($estatisticas), 0, ',', '.') : 0; ?></div>
+                <div class="stat-label">Media Diaria</div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <!-- Tabs de Navegacao -->
+    <div class="tabs">
+        <button type="button" class="tab-btn active" onclick="showTab('despachos')">Despachos</button>
+        <button type="button" class="tab-btn" onclick="showTab('estatisticas')">Estatisticas por Dia</button>
+    </div>
+    
+    <!-- Tab Despachos -->
+    <div id="tab-despachos" class="tab-content active">
+        <div class="painel">
+            <div class="painel-titulo">Lista de Despachos</div>
+            <div class="totais">
+                <strong><?php echo count($despachos); ?></strong> despacho(s) encontrado(s)
+                <?php if ($f_etiqueta): ?>| Buscando etiqueta: <strong><?php echo e($f_etiqueta); ?></strong><?php endif; ?>
+                <?php if ($f_lote): ?>| Buscando lote: <strong><?php echo e($f_lote); ?></strong><?php endif; ?>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tipo</th>
+                        <th>Datas</th>
+                        <th>Usuario</th>
+                        <th>Status</th>
+                        <th>Postos</th>
+                        <th>Total Carteiras</th>
+                        <th>PDF Oficio</th>
+                        <th>Acoes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($despachos)): ?>
+                    <tr><td colspan="9" style="text-align:center;">Nenhum despacho encontrado com os filtros informados.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($despachos as $d): ?>
+                        <?php
+                        $row_class = '';
+                        if ($f_lote !== '' || $f_etiqueta !== '') {
+                            $row_class = 'lote-encontrado';
+                        }
+                        ?>
+                        <tr class="<?php echo $row_class; ?>">
+                            <td><?php echo (int)$d['id']; ?></td>
+                            <td>
+                                <?php if ($d['grupo'] === 'POUPA TEMPO'): ?>
+                                    <span class="badge badge-poupa">Poupa Tempo</span>
+                                <?php else: ?>
+                                    <span class="badge badge-correios"><?php echo e($d['grupo']); ?></span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo e($d['datas_str']); ?></td>
+                            <td><?php echo e($d['usuario']); ?></td>
+                            <td>
+                                <?php if ($d['ativo']): ?>
+                                    <span class="badge badge-ativo">Ativo</span>
+                                <?php else: ?>
+                                    <span class="badge badge-inativo">Inativo</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="text-align:center;"><?php echo (int)$d['num_postos']; ?></td>
+                            <td style="text-align:right;"><?php echo number_format((int)$d['total_carteiras'], 0, ',', '.'); ?></td>
+                            <td style="text-align:center;">
+                                <?php
+                                // Versao 6: Link para PDF na rede
+                                // Formato: Q:\cosep\IIPR\Oficios\{Mes} {Ano}\Oficio Lacres V8.2 - {DD_MM_YYYY}
+                                $pdf_link = '';
+                                if (!empty($d['datas_str'])) {
+                                    // Extrair primeira data do datas_str (ex: "27/11/2025" ou "27/11/2025,28/11/2025")
+                                    $datas_array = explode(',', $d['datas_str']);
+                                    $primeira_data = trim($datas_array[0]);
+                                    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $primeira_data, $m)) {
+                                        $dia = $m[1];
+                                        $mes_num = $m[2];
+                                        $ano = $m[3];
+                                        
+                                        // Nome do mes em portugues
+                                        $meses = array('01'=>'Janeiro','02'=>'Fevereiro','03'=>'Marco','04'=>'Abril','05'=>'Maio','06'=>'Junho','07'=>'Julho','08'=>'Agosto','09'=>'Setembro','10'=>'Outubro','11'=>'Novembro','12'=>'Dezembro');
+                                        $mes_nome = isset($meses[$mes_num]) ? $meses[$mes_num] : $mes_num;
+                                        
+                                        // Montar caminho do arquivo (com extensao .pdf)
+                                        $pasta_mes = $mes_nome . ' ' . $ano;
+                                        $nome_arquivo = 'Oficio Lacres V8.2 - ' . $dia . '_' . $mes_num . '_' . $ano . '.pdf';
+                                        $pdf_link = 'file:///Q:/cosep/IIPR/Oficios/' . $pasta_mes . '/' . $nome_arquivo;
+                                    }
+                                }
+                                ?>
+                                <?php if ($pdf_link): ?>
+                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="Abrir PDF do Oficio" style="color:#007bff; font-size:18px;">&#128196;</a>
+                                <?php else: ?>
+                                    <span style="color:#999;">-</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="acoes">
+                                <a href="?grupo=<?php echo urlencode($f_grupo); ?>&data_ini=<?php echo urlencode($f_data_ini); ?>&data_fim=<?php echo urlencode($f_data_fim); ?>&etiqueta=<?php echo urlencode($f_etiqueta); ?>&lote=<?php echo urlencode($f_lote); ?>&posto=<?php echo urlencode($f_posto); ?>&id=<?php echo (int)$d['id']; ?>">
+                                    Ver Detalhes
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Detalhes do Despacho -->
+        <?php if ($id_despacho > 0): ?>
+        <div class="painel">
+            <div class="painel-titulo">Detalhes do Despacho #<?php echo (int)$id_despacho; ?></div>
+            
+            <!-- Versao 6: Mostrar resumo baseado em ciDespachoLotes (funciona para CORREIOS e POUPA TEMPO) -->
+            <?php
+            $totalPostosLotes = 0;
+            $totalCarteirasLotes = 0;
+            $postosUnicos = array();
+            foreach ($lotes as $l) {
+                $totalCarteirasLotes += (int)$l['quantidade'];
+                if (!isset($postosUnicos[$l['posto']])) {
+                    $postosUnicos[$l['posto']] = true;
+                    $totalPostosLotes++;
+                }
+            }
+            ?>
+            <div class="totais" style="background:#d4edda; border:1px solid #28a745;">
+                <strong style="color:#155724;">Resumo do Despacho:</strong>
+                Total de postos: <strong><?php echo $totalPostosLotes; ?></strong> |
+                Total de carteiras: <strong><?php echo number_format($totalCarteirasLotes, 0, ',', '.'); ?></strong> |
+                Total de lotes: <strong><?php echo count($lotes); ?></strong>
+            </div>
+            
+            <!-- Itens por Posto (ciDespachoItens - usado para Poupa Tempo) -->
+            <?php if (!empty($itens)): ?>
+            <h3 style="font-size:14px; margin:15px 0 10px 0;">Postos (ciDespachoItens)</h3>
+            <?php
+            $totalCart = 0;
+            foreach ($itens as $i) {
+                $totalCart += (int)$i['quantidade'];
+            }
+            ?>
+            <div class="totais">
+                Total de postos: <strong><?php echo count($itens); ?></strong> |
+                Total de carteiras: <strong><?php echo number_format($totalCart, 0, ',', '.'); ?></strong>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Posto</th>
+                        <th>Nome do Posto</th>
+                        <th>Endereco</th>
+                        <th>Quantidade</th>
+                        <th>Lacre IIPR</th>
+                        <th>Lacre Correios</th>
+                        <th>Etiqueta Correios</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($itens as $i): ?>
+                        <?php
+                        $item_class = '';
+                        if ($f_etiqueta !== '' && strpos($i['etiqueta_correios'], $f_etiqueta) !== false) {
+                            $item_class = 'lote-encontrado';
+                        }
+                        if ($f_posto !== '' && (strpos($i['posto'], $f_posto) !== false || stripos($i['nome_posto'], $f_posto) !== false)) {
+                            $item_class = 'lote-encontrado';
+                        }
+                        ?>
+                        <tr class="<?php echo $item_class; ?>">
+                            <td><?php echo e($i['posto']); ?></td>
+                            <td><?php echo e($i['nome_posto']); ?></td>
+                            <td><?php echo e($i['endereco']); ?></td>
+                            <td style="text-align:right;"><?php echo (int)$i['quantidade']; ?></td>
+                            <td><?php echo e($i['lacre_iipr']); ?></td>
+                            <td><?php echo e($i['lacre_correios']); ?></td>
+                            <td><?php echo e($i['etiqueta_correios']); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php else: ?>
+            <!-- Versao 6: Mensagem para despachos sem ciDespachoItens (ex: CORREIOS) -->
+            <div class="totais" style="background:#fff3cd; border:1px solid #ffc107;">
+                <strong style="color:#856404;">Nota:</strong> Este despacho nao possui dados em ciDespachoItens.
+                <?php if ($despacho_tipo === 'CORREIOS'): ?>
+                Os dados de postos Correios sao armazenados diretamente na tabela de lotes abaixo.
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            
+            <!-- Lotes (Versao 6: conferencia e responsavel) -->
+            <h3 style="font-size:14px; margin:20px 0 10px 0;">Lotes (ciDespachoLotes)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Posto</th>
+                        <th>Lote</th>
+                        <th>Quantidade</th>
+                        <th>Data Carga</th>
+                        <th>Responsaveis</th>
+                        <th>Etiqueta Correios</th>
+                        <th>Conferido</th>
+                        <th>Conferido Por</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($lotes)): ?>
+                    <tr><td colspan="8">Nenhum lote encontrado.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($lotes as $l): ?>
+                        <?php
+                        $lote_class = '';
+                        $is_conferido = (isset($l['conferido']) && $l['conferido'] === 'S');
+                        if ($is_conferido) {
+                            $lote_class = 'lote-conferido';
+                        }
+                        if ($f_lote !== '' && strpos($l['lote'], $f_lote) !== false) {
+                            $lote_class = 'lote-encontrado';
+                        }
+                        ?>
+                        <tr class="<?php echo $lote_class; ?>">
+                            <td><?php echo e($l['posto']); ?></td>
+                            <td><strong><?php echo e($l['lote']); ?></strong></td>
+                            <td style="text-align:right;"><?php echo (int)$l['quantidade']; ?></td>
+                            <td>
+                                <?php
+                                if (!empty($l['data_carga']) && $l['data_carga'] !== '0000-00-00') {
+                                    $dt = DateTime::createFromFormat('Y-m-d', $l['data_carga']);
+                                    echo $dt ? $dt->format('d/m/Y') : e($l['data_carga']);
+                                } else {
+                                    echo '-';
+                                }
+                                ?>
+                            </td>
+                            <td><?php echo e($l['responsaveis']); ?></td>
+                            <td style="font-size:10px; max-width:100px; word-break:break-all;"><?php echo e($l['etiqueta_correios']); ?></td>
+                            <td style="text-align:center;">
+                                <?php if ($is_conferido): ?>
+                                    <span class="badge badge-conferido">Sim</span>
+                                <?php else: ?>
+                                    <span class="badge badge-pendente">Nao</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo e(isset($l['conferido_por']) ? $l['conferido_por'] : ''); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+    
+    <!-- Tab Estatisticas -->
+    <div id="tab-estatisticas" class="tab-content">
+        <div class="painel">
+            <div class="painel-titulo">Producao de Carteiras por Dia (Ultimos 30 dias)</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Total de Carteiras</th>
+                        <th>Lotes Processados</th>
+                        <th>Postos Atendidos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($estatisticas)): ?>
+                    <tr><td colspan="4">Nenhuma estatistica disponivel.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($estatisticas as $est): ?>
+                        <tr>
+                            <td>
+                                <?php
+                                if (!empty($est['data_producao'])) {
+                                    $dt = DateTime::createFromFormat('Y-m-d', $est['data_producao']);
+                                    echo $dt ? $dt->format('d/m/Y') : e($est['data_producao']);
+                                }
+                                ?>
+                            </td>
+                            <td style="text-align:right; font-weight:bold; color:#007bff;">
+                                <?php echo number_format((int)$est['total_carteiras'], 0, ',', '.'); ?>
+                            </td>
+                            <td style="text-align:center;"><?php echo (int)$est['total_lotes']; ?></td>
+                            <td style="text-align:center;"><?php echo (int)$est['total_postos']; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+</div>
+
+<script type="text/javascript">
+// Funcao para trocar abas (compativel com IE8)
+function showTab(tabName) {
+    // Esconder todas as tabs
+    var contents = document.getElementsByClassName('tab-content');
+    for (var i = 0; i < contents.length; i++) {
+        contents[i].className = contents[i].className.replace(/\s*active/g, '');
+    }
+    
+    // Remover active de todos os botoes
+    var btns = document.getElementsByClassName('tab-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].className = btns[i].className.replace(/\s*active/g, '');
+    }
+    
+    // Mostrar tab selecionada
+    var tab = document.getElementById('tab-' + tabName);
+    if (tab) {
+        tab.className = tab.className + ' active';
+    }
+    
+    // Marcar botao como ativo
+    for (var i = 0; i < btns.length; i++) {
+        if (btns[i].getAttribute('onclick') && btns[i].getAttribute('onclick').indexOf(tabName) >= 0) {
+            btns[i].className = btns[i].className + ' active';
+        }
+    }
+}
+</script>
+
+</body>
+</html>
+<?php
+$pdo_controle = null;
+?>
