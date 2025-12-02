@@ -1,29 +1,16 @@
 ﻿{
-  "name": "Ambiente PHP com IA",
-  "image": "mcr.microsoft.com/devcontainers/php:1-8.2-apache",
-  
+  "name": "PHP Development",
+  "image": "mcr.microsoft.com/devcontainers/php:1-8.2",
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/node:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  
   "customizations": {
     "vscode": {
       "extensions": [
-        "bmewburn.vscode-intelephense-client",
-        "xdebug.php-debug",
-        "ms-azuretools.vscode-docker"
-      ],
-      "settings": {
-        "php.validate.executablePath": "/usr/local/bin/php",
-        "intelephense.environment.phpVersion": "8.2"
-      }
+        "bmewburn.vscode-intelephense-client"
+      ]
     }
   },
-  
   "forwardPorts": [8080],
-  
-  "postCreateCommand": "echo '✅ Ambiente PHP configurado com sucesso!' && php -v",
-  
-  "remoteUser": "vscode"
+  "postCreateCommand": "php --version"
 }
