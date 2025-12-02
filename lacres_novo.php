@@ -1064,36 +1064,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         
-        // Propagar etiqueta apenas para o grupo/malote correspondente
-        // Se for um posto CENTRAL IIPR e houver splits configurados, aplicamos a etiqueta
-        // somente aos postos do mesmo grupo (malote). Caso não haja splits, o comportamento
-        // é manter o comportamento legado: todos os postos CENTRAL recebem a mesma etiqueta.
+        // Propagar etiqueta: se o cliente enviou explicitamente a lista de postos do grupo
+        // (parametro `group_postos[]`), aplicamos apenas a esses postos. Caso contrario,
+        // manter comportamento legado: se for posto CENTRAL e nao houver group_postos,
+        // aplicar a toda a CENTRAL; senao aplicar apenas ao indice informado.
         $_SESSION['etiquetas'][$indice] = $nova_etiqueta;
 
-        if (in_array($indice, $CENTRAL)) {
-            if (!empty($splitsCentral)) {
-                // Construir grupos a partir da lista $CENTRAL (ordem numérica esperada)
-                $group_index = 0;
-                $groups = array();
-                foreach ($CENTRAL as $posto_code) {
-                    if (in_array($posto_code, $splitsCentral)) {
-                        $group_index++;
-                    }
-                    if (!isset($groups[$group_index])) $groups[$group_index] = array();
-                    $groups[$group_index][] = $posto_code;
+        if (isset($_POST['group_postos']) && is_array($_POST['group_postos']) && count($_POST['group_postos'])>0) {
+            foreach ($_POST['group_postos'] as $posto_cod) {
+                $posto_cod = trim((string)$posto_cod);
+                if ($posto_cod !== '') {
+                    $_SESSION['etiquetas'][$posto_cod] = $nova_etiqueta;
                 }
-                // Encontrar grupo do índice e propagar apenas para esse grupo
-                $target_group = null;
-                foreach ($groups as $g => $posts) {
-                    if (in_array($indice, $posts)) { $target_group = $g; break; }
-                }
-                if ($target_group !== null) {
-                    foreach ($groups[$target_group] as $posto_cod) {
-                        $_SESSION['etiquetas'][$posto_cod] = $nova_etiqueta;
-                    }
-                }
-            } else {
-                // Sem splits: comportamento legado (todos recebem mesma etiqueta)
+            }
+        } else {
+            if (in_array($indice, $CENTRAL)) {
+                // Sem group_postos informado: comportamento legado para CENTRAL
                 foreach ($CENTRAL as $posto_cod) {
                     $_SESSION['etiquetas'][$posto_cod] = $nova_etiqueta;
                 }
@@ -1107,7 +1093,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Atualizar lacre
     if (isset($_POST['update_lacre'], $_POST['indice'], $_POST['tipo'])) {
         $indice = trim((string)$_POST['indice']);
-        $_SESSION['lacres_personalizados'][$indice][$_POST['tipo']] = $_POST['update_lacre'];
+        $novo_lacre = $_POST['update_lacre'];
+        // Se o cliente enviou group_postos[], atualizar todos os postos do grupo
+        if (isset($_POST['group_postos']) && is_array($_POST['group_postos']) && count($_POST['group_postos'])>0) {
+            foreach ($_POST['group_postos'] as $posto_cod) {
+                $posto_cod = trim((string)$posto_cod);
+                if ($posto_cod !== '') {
+                    if (!isset($_SESSION['lacres_personalizados'][$posto_cod])) $_SESSION['lacres_personalizados'][$posto_cod] = array();
+                    $_SESSION['lacres_personalizados'][$posto_cod][$_POST['tipo']] = $novo_lacre;
+                }
+            }
+        } else {
+            if (!isset($_SESSION['lacres_personalizados'][$indice])) $_SESSION['lacres_personalizados'][$indice] = array();
+            $_SESSION['lacres_personalizados'][$indice][$_POST['tipo']] = $novo_lacre;
+        }
         echo json_encode(array('status' => 'ok'));
         exit;
     }
@@ -3792,7 +3791,28 @@ document.addEventListener("DOMContentLoaded", function() {
                         var xhr = new XMLHttpRequest();
                         xhr.open("POST", "", true);
                         xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-                        xhr.send('limpar_etiqueta=1&indice=' + encodeURIComponent(campo.dataset.indice || campo.getAttribute('data-indice') || ''));
+                        // Incluir, quando possível, a lista de postos do grupo atual (quando split ativo)
+                        try {
+                            var extraClear = '';
+                            var splitVal = (document.getElementById('central_split_index') || { value: '' }).value;
+                            if (splitVal !== '') {
+                                var tblc = document.getElementById('tblCentralIIPR');
+                                if (tblc) {
+                                    var rows2 = tblc.querySelectorAll('tbody tr'); if (!rows2.length) rows2 = tblc.querySelectorAll('tr:not(:first-child)');
+                                    var tr2 = campo; while (tr2 && tr2.tagName !== 'TR') tr2 = tr2.parentNode;
+                                    var rIndex = -1; for (var s=0;s<rows2.length;s++){ if (rows2[s]===tr2){ rIndex=s; break; } }
+                                    var splitIndex2 = parseInt(splitVal,10);
+                                    if (!isNaN(splitIndex2)) {
+                                        var gStart,gEnd;
+                                        if (rIndex <= splitIndex2){ gStart = 0; gEnd = splitIndex2; } else { gStart = splitIndex2+1; gEnd = rows2.length-1; }
+                                        var parts2 = [];
+                                        for (var gi=gStart; gi<=gEnd; gi++){ var rr = rows2[gi]; if(!rr) continue; var code2 = rr.getAttribute('data-posto-codigo') || (rr.querySelector('[data-indice]')? rr.querySelector('[data-indice]').getAttribute('data-indice') : ''); if(code2) parts2.push('group_postos[]=' + encodeURIComponent(code2)); }
+                                        if (parts2.length) extraClear = '&' + parts2.join('&');
+                                    }
+                                }
+                            }
+                        } catch(e){}
+                        xhr.send('limpar_etiqueta=1&indice=' + encodeURIComponent(campo.dataset.indice || campo.getAttribute('data-indice') || '') + extraClear);
                     } catch(e) {}
                     if (alertaDiv) { alertaDiv.style.display='none'; alertaDiv.textContent=''; }
                     return;
@@ -3846,7 +3866,34 @@ document.addEventListener("DOMContentLoaded", function() {
                             } catch(e) {}
                         }
                     };
-                    xhr.send('etiqueta=' + encodeURIComponent(campo.value) + '&indice=' + (campo.dataset.indice || campo.getAttribute('data-indice') || ''));
+                    // Se houver split aplicado, coletar os postos do grupo corrente e enviar como group_postos[]
+                    var extra = '';
+                    try {
+                        var splitVal = (document.getElementById('central_split_index') || { value: '' }).value;
+                        if (splitVal !== '') {
+                            var tbl = document.getElementById('tblCentralIIPR');
+                            if (tbl) {
+                                var rows = tbl.querySelectorAll('tbody tr');
+                                if (!rows.length) rows = tbl.querySelectorAll('tr:not(:first-child)');
+                                var tr = campo; while (tr && tr.tagName !== 'TR') tr = tr.parentNode;
+                                var rowIndex = -1; for (var ri = 0; ri < rows.length; ri++) { if (rows[ri] === tr) { rowIndex = ri; break; } }
+                                var splitIndex = parseInt(splitVal, 10);
+                                if (!isNaN(splitIndex)) {
+                                    var groupStart, groupEnd;
+                                    if (rowIndex <= splitIndex) { groupStart = 0; groupEnd = splitIndex; }
+                                    else { groupStart = splitIndex + 1; groupEnd = rows.length - 1; }
+                                    var parts = [];
+                                    for (var g = groupStart; g <= groupEnd; g++) {
+                                        var r = rows[g]; if (!r) continue;
+                                        var code = r.getAttribute('data-posto-codigo') || (r.querySelector('[data-indice]') ? (r.querySelector('[data-indice]').getAttribute('data-indice')||'') : '');
+                                        if (code) parts.push('group_postos[]=' + encodeURIComponent(code));
+                                    }
+                                    if (parts.length) extra = '&' + parts.join('&');
+                                }
+                            }
+                        }
+                    } catch(e){}
+                    xhr.send('etiqueta=' + encodeURIComponent(campo.value) + '&indice=' + (campo.dataset.indice || campo.getAttribute('data-indice') || '') + extra);
                 }
             });
         })(allEtiquetaFields[i], i);
@@ -3867,7 +3914,28 @@ document.addEventListener("DOMContentLoaded", function() {
                 var xhr = new XMLHttpRequest();
                 xhr.open("POST", "", true);
                 xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-                xhr.send('update_lacre=' + encodeURIComponent(campo.value) + '&indice=' + (campo.dataset.indice || campo.getAttribute('data-indice') || '') + '&tipo=' + (campo.dataset.tipo || campo.getAttribute('data-tipo') || ''));
+                // Incluir, quando possível, a lista de postos do grupo atual (quando split ativo)
+                try {
+                    var extraL = '';
+                    var splitValL = (document.getElementById('central_split_index') || { value: '' }).value;
+                    if (splitValL !== '') {
+                        var tblL = document.getElementById('tblCentralIIPR');
+                        if (tblL) {
+                            var rowsL = tblL.querySelectorAll('tbody tr'); if (!rowsL.length) rowsL = tblL.querySelectorAll('tr:not(:first-child)');
+                            var trL = campo; while (trL && trL.tagName !== 'TR') trL = trL.parentNode;
+                            var rIdx = -1; for (var ri=0; ri<rowsL.length; ri++){ if (rowsL[ri]===trL){ rIdx=ri; break; } }
+                            var splitIndexL = parseInt(splitValL,10);
+                            if (!isNaN(splitIndexL)) {
+                                var gStartL, gEndL;
+                                if (rIdx <= splitIndexL) { gStartL = 0; gEndL = splitIndexL; } else { gStartL = splitIndexL+1; gEndL = rowsL.length-1; }
+                                var partsL = [];
+                                for (var gi=gStartL; gi<=gEndL; gi++){ var rr = rowsL[gi]; if(!rr) continue; var codeL = rr.getAttribute('data-posto-codigo') || (rr.querySelector('[data-indice]')? rr.querySelector('[data-indice]').getAttribute('data-indice') : ''); if(codeL) partsL.push('group_postos[]=' + encodeURIComponent(codeL)); }
+                                if (partsL.length) extraL = '&' + partsL.join('&');
+                            }
+                        }
+                    }
+                } catch(e){}
+                xhr.send('update_lacre=' + encodeURIComponent(campo.value) + '&indice=' + (campo.dataset.indice || campo.getAttribute('data-indice') || '') + '&tipo=' + (campo.dataset.tipo || campo.getAttribute('data-tipo') || '') + extraL);
             });
         })(allLacreFields[m]);
     }
