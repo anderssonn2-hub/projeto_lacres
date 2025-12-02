@@ -1006,6 +1006,12 @@ $CENTRAL = array("010","013","016","018","027","041","042","046","047","051","05
             "069","070","071","072","073","074","075","076","077","078","079","080","083","084",
             "085","086");
 
+// CONFIGURAÇÃO DE SPLITS PARA CENTRAL IIPR
+// Lista de códigos de posto (formato '046') que marcam o início de um novo malote
+// Exemplo: $splitsCentral = array('046'); -> a partir do posto 046 começa o próximo malote
+// Observe: os splits são aplicados sobre a ordem exibida da CENTRAL IIPR (ordenada numericamente)
+$splitsCentral = array();
+
 // Limpar a sessão completamente quando solicitado
 if ((
     $_SERVER['REQUEST_METHOD'] === 'GET' && empty($_GET)) ||
@@ -1058,12 +1064,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         
+        // Propagar etiqueta apenas para o grupo/malote correspondente
+        // Se for um posto CENTRAL IIPR e houver splits configurados, aplicamos a etiqueta
+        // somente aos postos do mesmo grupo (malote). Caso não haja splits, o comportamento
+        // é manter o comportamento legado: todos os postos CENTRAL recebem a mesma etiqueta.
         $_SESSION['etiquetas'][$indice] = $nova_etiqueta;
-        
-        // Se o posto for da Central IIPR, todos os postos da Central recebem a mesma etiqueta
+
         if (in_array($indice, $CENTRAL)) {
-            foreach ($CENTRAL as $posto_cod) {
-                $_SESSION['etiquetas'][$posto_cod] = $nova_etiqueta;
+            if (!empty($splitsCentral)) {
+                // Construir grupos a partir da lista $CENTRAL (ordem numérica esperada)
+                $group_index = 0;
+                $groups = array();
+                foreach ($CENTRAL as $posto_code) {
+                    if (in_array($posto_code, $splitsCentral)) {
+                        $group_index++;
+                    }
+                    if (!isset($groups[$group_index])) $groups[$group_index] = array();
+                    $groups[$group_index][] = $posto_code;
+                }
+                // Encontrar grupo do índice e propagar apenas para esse grupo
+                $target_group = null;
+                foreach ($groups as $g => $posts) {
+                    if (in_array($indice, $posts)) { $target_group = $g; break; }
+                }
+                if ($target_group !== null) {
+                    foreach ($groups[$target_group] as $posto_cod) {
+                        $_SESSION['etiquetas'][$posto_cod] = $nova_etiqueta;
+                    }
+                }
+            } else {
+                // Sem splits: comportamento legado (todos recebem mesma etiqueta)
+                foreach ($CENTRAL as $posto_cod) {
+                    $_SESSION['etiquetas'][$posto_cod] = $nova_etiqueta;
+                }
             }
         }
         
@@ -1774,18 +1807,66 @@ foreach ($dados['CENTRAL IIPR'] as &$linha) {
 }
 unset($linha);
 
-// CENTRAL IIPR: Atribuir lacre correios único
+// CENTRAL IIPR: Atribuir lacre correios por MALOTE (grupos definidos por $splitsCentral)
+// Comportamento:
+// - A lista de postos da CENTRAL IIPR é percorrida na ordem exibida (já ordenada acima).
+// - Cada vez que encontramos um posto cujo código está em $splitsCentral, iniciamos
+//   um novo grupo (malote). O posto que marca o split pertence ao novo grupo.
+// - Para cada malote atribuímos um lacre_correios sequencial (a partir de $ultimo_central + 1)
+// - Se houver lacre personalizado em sessão para o posto, respeitamos esse valor.
 if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
-    $lacre_correios_central = $ultimo_central + 1;
+    // Construir mapeamento de grupos para central com base em $splitsCentral
+    $central_groups = array(); // grupo => array(posicoes)
+    $central_group_by_posto = array(); // posto_codigo => grupo
+    $group_index = 0;
+    foreach ($dados['CENTRAL IIPR'] as $idx => $linha) {
+        $posto_code = $linha['posto_codigo'];
+        // Se este posto está configurado como SPLIT, inicia novo grupo *antes* de atribuir
+        if (!empty($splitsCentral) && in_array($posto_code, $splitsCentral)) {
+            $group_index++;
+        }
+        if (!isset($central_groups[$group_index])) $central_groups[$group_index] = array();
+        $central_groups[$group_index][] = $posto_code;
+        $central_group_by_posto[$posto_code] = $group_index;
+    }
+
+    // Gerar lacre para cada grupo (incrementando a partir de $ultimo_central + 1)
+    $group_lacres = array();
+    $base_lacre = $ultimo_central + 1;
+    $total_groups = count($central_groups);
+    for ($g = 0; $g < $total_groups; $g++) {
+        $group_lacres[$g] = $base_lacre + $g;
+    }
+
+    // Atribuir lacre_correios a cada linha de acordo com seu grupo
     foreach ($dados['CENTRAL IIPR'] as &$linha) {
         $indice = $linha['posto_codigo'];
         if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
             $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
         } else {
-            $linha['lacre_correios'] = $lacre_correios_central;
+            $gidx = isset($central_group_by_posto[$indice]) ? $central_group_by_posto[$indice] : 0;
+            $linha['lacre_correios'] = isset($group_lacres[$gidx]) ? $group_lacres[$gidx] : $base_lacre;
         }
     }
     unset($linha);
+
+    // Expor variáveis úteis para a renderização (template abaixo usa estas informações)
+    // - $central_group_by_posto: mapa posto => grupo
+    // - $central_groups: lista de postos por grupo
+    // - $central_group_first: mapa posto => bool indicando se é o primeiro item do grupo
+    $central_group_first = array();
+    foreach ($central_groups as $g => $posts) {
+        if (!empty($posts)) {
+            $first = $posts[0];
+            $central_group_first[$first] = true;
+            // marcar todos outros como false (para clareza)
+            foreach ($posts as $p) {
+                if ($p !== $first && !isset($central_group_first[$p])) {
+                    $central_group_first[$p] = false;
+                }
+            }
+        }
+    }
 }
 
 // REGIONAIS: Atribuir lacres
@@ -3195,12 +3276,21 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
                 <td>
     <?php if ($grupo === 'POUPA TEMPO'): ?>—
     <?php elseif ($grupo === 'CENTRAL IIPR'): ?>
-        <?php if ($key === 0): ?>
-                            <input class="etiqueta-barras etiqueta-central" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
-                            <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
-    <?php else: ?>
-        <input class="etiqueta-barras etiqueta-central-readonly" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" readonly data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
-                        <?php endif; ?>
+        <?php
+            // Se a variável de grupo não existe (sem central ou sem cálculo), assume primeiro item como chave
+            $is_first_in_group = false;
+            if (isset($central_group_first) && is_array($central_group_first)) {
+                $is_first_in_group = isset($central_group_first[$dado['posto_codigo']]) && $central_group_first[$dado['posto_codigo']] === true;
+            } else {
+                $is_first_in_group = ($key === 0);
+            }
+        ?>
+        <?php if ($is_first_in_group): ?>
+            <input class="etiqueta-barras etiqueta-central" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
+            <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
+        <?php else: ?>
+            <input class="etiqueta-barras etiqueta-central-readonly" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" readonly data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
+        <?php endif; ?>
                     <?php else: ?>
                         <input class="etiqueta-barras" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
                         <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
