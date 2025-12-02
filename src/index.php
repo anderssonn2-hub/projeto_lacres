@@ -1,0 +1,1 @@
+echo "<?php echo '<h1>Projeto Lacres funcionando!</h1>'; echo 'PHP Version: ' . phpversion(); ?>" > 
