@@ -9,6 +9,11 @@
 // - Função JS preenche esses arrays antes do submit sem alterar o comportamento existente
 // - Backend usa esses arrays para montar $mapaLacresPorPosto e gravar em ciDespachoLotes
 // - Mantém validações, SPLIT e foco automático inalterados
+// v8.9: Lacres/etiqueta por regional - aplica a TODOS os lotes da regional
+// - Estende JS para capturar regional_lacres[] alinhado com postos
+// - Backend monta $mapaLacresPorRegional além de $mapaLacresPorPosto
+// - No INSERT: prioridade 1º lacre por posto, 2º lacre por regional, 3º defaults
+// - Todos os lotes de uma regional recebem os mesmos lacres/etiqueta (a menos que o posto tenha lacre específico)
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -578,7 +583,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 c.lote,
                 SUM(COALESCE(c.quantidade,0)) AS quantidade,
                 MIN(DATE(c.dataCarga)) AS data_carga,
-                GROUP_CONCAT(DISTINCT c.usuario SEPARATOR ', ') AS responsaveis
+                GROUP_CONCAT(DISTINCT c.usuario SEPARATOR ', ') AS responsaveis,
+                r.regional AS regional
             FROM ciPostosCsv c
             INNER JOIN ciRegionais r 
                     ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
@@ -641,6 +647,46 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
         }
 
+        // v8.9: Criar MAPA DE LACRES POR REGIONAL (novo)
+        $mapaLacresPorRegional = array();
+        
+        // Se o formulário forneceu arrays alinhados, usá-los (prioridade)
+        $regionaisLacres_post = isset($_POST['regional_lacres']) && is_array($_POST['regional_lacres']) ? $_POST['regional_lacres'] : array();
+        if (!empty($postosLacres_post) && !empty($regionaisLacres_post)) {
+            // Construir mapa regional a partir dos arrays alinhados
+            foreach ($postosLacres_post as $idx => $postoRaw) {
+                $regional = isset($regionaisLacres_post[$idx]) ? trim((string)$regionaisLacres_post[$idx]) : '';
+                if ($regional === '' || $regional === '0') continue;
+                
+                $lacreI = isset($lacresIIPR_post[$idx]) ? trim((string)$lacresIIPR_post[$idx]) : '';
+                $lacreC = isset($lacresCorreios_post[$idx]) ? trim((string)$lacresCorreios_post[$idx]) : '';
+                $eti = isset($etiquetasCorreios_post[$idx]) ? trim((string)$etiquetasCorreios_post[$idx]) : '';
+                
+                // Só sobrescreve se houver valor preenchido (para não matar valor já definido com campos vazios)
+                if ($lacreI !== '' || $lacreC !== '' || $eti !== '') {
+                    if (!isset($mapaLacresPorRegional[$regional])) {
+                        $mapaLacresPorRegional[$regional] = array(
+                            'lacre_iipr'        => 0,
+                            'lacre_correios'    => 0,
+                            'etiqueta_correios' => null,
+                        );
+                    }
+                    if ($lacreI !== '') {
+                        $mapaLacresPorRegional[$regional]['lacre_iipr'] = (int)$lacreI;
+                    }
+                    if ($lacreC !== '') {
+                        $mapaLacresPorRegional[$regional]['lacre_correios'] = (int)$lacreC;
+                    }
+                    if ($eti !== '') {
+                        $mapaLacresPorRegional[$regional]['etiqueta_correios'] = $eti;
+                    }
+                }
+            }
+        }
+        
+        // v8.9: Debug do mapa por regional
+        add_debug('V8.9 - MAPA DE LACRES POR REGIONAL', $mapaLacresPorRegional);
+
         // v8.6: Atualizar SQL do INSERT para incluir campos de lacres
         $stInsLote = $pdo_controle->prepare("
             INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis, etiquetaiipr, etiquetacorreios, etiqueta_correios)
@@ -668,6 +714,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         while ($l = $stmtLotes->fetch(PDO::FETCH_ASSOC)) {
             // O posto do lote ja vem com LPAD do SQL (ex: "041")
             $posto_lote = (string)$l['posto'];
+            // v8.9: Capturar a regional do lote
+            $regional_lote = isset($l['regional']) ? trim((string)$l['regional']) : '';
             
             // VERSAO 6: Buscar etiqueta_correios correspondente ao posto
             // Tentar todas as variações de chave possíveis
@@ -696,6 +744,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $lotes_processados[$posto_lote . '_' . $l['lote']] = array(
                 'posto' => $posto_lote,
                 'lote' => $l['lote'],
+                'regional' => $regional_lote,
                 'etiqueta_encontrada' => $etiqueta_do_posto,
                 'chaves_tentadas' => array($posto_lote, ltrim($posto_lote, '0'), 'p_' . $posto_lote)
             );
@@ -704,21 +753,28 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $etiquetas_debug[$posto_lote] = $etiqueta_do_posto;
             }
             
-            // v8.6: Recuperar lacres do mapa para esse posto
+            // v8.9: Recuperar lacres usando prioridade: 1º posto, 2º regional, 3º defaults
             $lacreIIPR_lote = 0;
             $lacreCorreios_lote = 0;
             $etiquetaCorreios_lote = null;
 
             if (isset($mapaLacresPorPosto[$posto_lote])) {
+                // Prioridade 1: lacre específico do posto
                 $lacreIIPR_lote       = $mapaLacresPorPosto[$posto_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = $mapaLacresPorPosto[$posto_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaLacresPorPosto[$posto_lote]['etiqueta_correios'];
+            } elseif ($regional_lote !== '' && $regional_lote !== '0' && isset($mapaLacresPorRegional[$regional_lote])) {
+                // Prioridade 2: lacre da regional
+                $lacreIIPR_lote       = $mapaLacresPorRegional[$regional_lote]['lacre_iipr'];
+                $lacreCorreios_lote   = $mapaLacresPorRegional[$regional_lote]['lacre_correios'];
+                $etiquetaCorreios_lote = $mapaLacresPorRegional[$regional_lote]['etiqueta_correios'];
             }
+            // Se nenhum mapa tiver dados, mantém os defaults (0, 0, null)
 
             // VERSAO 6: Garantir que etiqueta seja passada como STRING pura
             $etiqueta_para_banco = (string)$etiqueta_do_posto;
             
-            // v8.6: Passar os 3 novos campos de lacres ao INSERT
+            // v8.9: Passar os 3 novos campos de lacres ao INSERT com prioridade regional
             $stInsLote->execute(array(
                 $id_desp,
                 $posto_lote,
@@ -726,9 +782,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 (int)$l['quantidade'],
                 $l['data_carga'],
                 $l['responsaveis'],
-                $lacreIIPR_lote,          // etiquetaiipr
-                $lacreCorreios_lote,      // etiquetacorreios
-                $etiquetaCorreios_lote    // etiqueta_correios (a prioridade é o mapa v8.6, não o $etiqueta_do_posto antigo)
+                $lacreIIPR_lote,          // etiquetaiipr (prioridade: posto > regional > 0)
+                $lacreCorreios_lote,      // etiquetacorreios (prioridade: posto > regional > 0)
+                $etiquetaCorreios_lote    // etiqueta_correios (prioridade: posto > regional > NULL)
             ));
             // v8.3: Registra dados do lote gravado para contar postos distintos
             if (!isset($lotes_processados_dados)) { $lotes_processados_dados = array(); }
@@ -3338,7 +3394,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
         </thead>
         <tbody>
             <?php foreach ($itens as $key => $dado): ?>
-            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
+            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td>
                     <!-- v8.6: Input oculto com código do posto para manter alinhamento de arrays -->
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
@@ -3493,11 +3549,11 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
 <script type="text/javascript">
 // Funcoes para salvar oficio Correios (compativel com navegadores antigos)
-// v8.8: Prepara arrays alinhados de lacres/etiquetas antes do submit
+// v8.9: Prepara arrays alinhados de lacres/etiquetas + regional antes do submit
 function prepararLacresCorreiosParaSubmit(form) {
     if (!form) return;
-    // Remover inputs ocultos antigos, se existirem
-    var nomes = ['posto_lacres[]','lacre_iipr[]','lacre_correios[]','etiqueta_correios[]'];
+    // Remover inputs ocultos antigos, se existirem (v8.9: inclui regional_lacres[])
+    var nomes = ['posto_lacres[]','lacre_iipr[]','lacre_correios[]','etiqueta_correios[]','regional_lacres[]'];
     for (var n=0;n<nomes.length;n++){
         var els = form.querySelectorAll('input[name="'+nomes[n]+'"]');
         for (var i=0;i<els.length;i++) { els[i].parentNode.removeChild(els[i]); }
@@ -3514,6 +3570,9 @@ function prepararLacresCorreiosParaSubmit(form) {
         var posto = tr.getAttribute('data-posto-codigo');
         if (!posto) continue;
 
+        // v8.9: Capturar regional da linha (usar data-regional-codigo ou data-regional)
+        var regional = tr.getAttribute('data-regional-codigo') || tr.getAttribute('data-regional') || '0';
+
         // Encontrar inputs na linha
         var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
         var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
@@ -3523,11 +3582,12 @@ function prepararLacresCorreiosParaSubmit(form) {
         var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
         var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
-        // Criar inputs ocultos alinhados
+        // Criar inputs ocultos alinhados (v8.9: adiciona regional_lacres[])
         var a = document.createElement('input'); a.type='hidden'; a.name='posto_lacres[]'; a.value=posto; form.appendChild(a);
         var b = document.createElement('input'); b.type='hidden'; b.name='lacre_iipr[]'; b.value=valI; form.appendChild(b);
         var c = document.createElement('input'); c.type='hidden'; c.name='lacre_correios[]'; c.value=valC; form.appendChild(c);
         var d = document.createElement('input'); d.type='hidden'; d.name='etiqueta_correios[]'; d.value=valE; form.appendChild(d);
+        var e = document.createElement('input'); e.type='hidden'; e.name='regional_lacres[]'; e.value=regional; form.appendChild(e);
     }
 }
 function gravarEImprimirCorreios() {
