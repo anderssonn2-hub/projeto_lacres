@@ -3262,37 +3262,26 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
         </thead>
         <tbody>
             <?php foreach ($itens as $key => $dado): ?>
-            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>">
+            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td>
                     <?php echo $dado['posto_nome'] ?>
+                    <?php if ($grupo === 'CENTRAL IIPR'): ?>
+                    <br><button type="button" class="btn-split-aqui" onclick="definirSplitAqui(this)" style="font-size:11px; padding:2px 6px; margin-top:4px;">Split aqui</button>
+                    <?php endif; ?>
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
                     <input type="hidden" name="nome_posto[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="grupo_posto[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>">
                     <?php endif; ?>
                 </td>
                 <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre" type="text" name="lacre_iipr[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo $dado['lacre_iipr'] ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="iipr"><?php endif; ?></td>
-                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo $dado['lacre_correios'] ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios"><?php endif; ?></td>
+                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre <?php if ($grupo === 'CENTRAL IIPR'): ?>central-correios<?php endif; ?>" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo $dado['lacre_correios'] ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios"><?php endif; ?></td>
                 <td>
     <?php if ($grupo === 'POUPA TEMPO'): ?>—
     <?php elseif ($grupo === 'CENTRAL IIPR'): ?>
-        <?php
-            // Se a variável de grupo não existe (sem central ou sem cálculo), assume primeiro item como chave
-            $is_first_in_group = false;
-            if (isset($central_group_first) && is_array($central_group_first)) {
-                $is_first_in_group = isset($central_group_first[$dado['posto_codigo']]) && $central_group_first[$dado['posto_codigo']] === true;
-            } else {
-                $is_first_in_group = ($key === 0);
-            }
-        ?>
-        <?php if ($is_first_in_group): ?>
-            <input class="etiqueta-barras etiqueta-central" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
-            <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
-        <?php else: ?>
-            <input class="etiqueta-barras etiqueta-central-readonly" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" readonly data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
-        <?php endif; ?>
-                    <?php else: ?>
-                        <input class="etiqueta-barras" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
-                        <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
+        <input class="etiqueta-barras central-etiqueta" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
+    <?php else: ?>
+        <input class="etiqueta-barras" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
+        <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
     <?php endif; ?>
 </td>
                 <td>
@@ -3778,166 +3767,114 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    // V7.6: Codigo para os campos de etiqueta com validacao de duplicatas
-    var allEtiquetaFields = document.querySelectorAll("input.etiqueta-barras");
-    for (var i = 0; i < allEtiquetaFields.length; i++) {
-        (function(campo, idx) {
-            campo.addEventListener("input", function() {
-                var alertaDiv = document.getElementById('alerta-' + (campo.dataset.indice || campo.getAttribute('data-indice') || ''));
+    // V8.0: Pure JavaScript implementation for SPLIT and field replication (no AJAX)
+    var splitIndexCentral = null;
+    
+    // Function to define split position (called by button onclick)
+    window.definirSplitAqui = function(btn) {
+        var tr = btn;
+        while (tr && tr.tagName !== 'TR') tr = tr.parentNode;
+        if (!tr) return;
+        
+        var linhasCentral = document.querySelectorAll('tr.linha-central');
+        var idx = -1;
+        for (var i = 0; i < linhasCentral.length; i++) {
+            if (linhasCentral[i] === tr) { idx = i; break; }
+        }
+        if (idx < 0) return;
+        
+        // Toggle split: if already set to this index, remove it; otherwise set it
+        if (splitIndexCentral === idx) {
+            splitIndexCentral = null;
+            btn.style.background = '';
+            btn.textContent = 'Split aqui';
+        } else {
+            // Clear any previous split button styling
+            var allSplitBtns = document.querySelectorAll('button[onclick*="definirSplitAqui"]');
+            for (var j = 0; j < allSplitBtns.length; j++) {
+                allSplitBtns[j].style.background = '';
+                allSplitBtns[j].textContent = 'Split aqui';
+            }
+            // Set new split
+            splitIndexCentral = idx;
+            btn.style.background = '#ff9800';
+            btn.textContent = '← Split AQUI';
+        }
+    };
+    
+    // Function to replicate value within appropriate group (called by input listeners)
+    window.replicarValor = function(campo, tipo) {
+        var linhasCentral = document.querySelectorAll('tr.linha-central');
+        var tr = campo;
+        while (tr && tr.tagName !== 'TR') tr = tr.parentNode;
+        if (!tr) return;
+        
+        var rowIndex = -1;
+        for (var i = 0; i < linhasCentral.length; i++) {
+            if (linhasCentral[i] === tr) { rowIndex = i; break; }
+        }
+        if (rowIndex < 0) return;
+        
+        var valor = campo.value;
+        var selector = (tipo === 'correios') ? 'input.central-correios' : 'input.central-etiqueta';
+        
+        if (splitIndexCentral === null) {
+            // No split: replicate to all CENTRAL fields of this type
+            var campos = document.querySelectorAll(selector);
+            for (var j = 0; j < campos.length; j++) {
+                campos[j].value = valor;
+            }
+        } else {
+            // Split active: replicate only within the group
+            var groupStart, groupEnd;
+            if (rowIndex <= splitIndexCentral) {
+                // Editing in group 1 (before/at split): replicate to group 1 only
+                groupStart = 0;
+                groupEnd = splitIndexCentral;
+            } else {
+                // Editing in group 2 (after split): replicate to group 2 only
+                groupStart = splitIndexCentral + 1;
+                groupEnd = linhasCentral.length - 1;
+            }
+            
+            // Apply to fields in the appropriate group
+            var campos = document.querySelectorAll(selector);
+            for (var k = 0; k < campos.length; k++) {
+                var fieldTr = campos[k];
+                while (fieldTr && fieldTr.tagName !== 'TR') fieldTr = fieldTr.parentNode;
+                if (!fieldTr) continue;
                 
-                // v1.6: liberar etiqueta ao apagar (campo vazio)
-                if ((campo.value || '').length === 0) {
-                    try {
-                        var xhr = new XMLHttpRequest();
-                        xhr.open("POST", "", true);
-                        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-                        // Incluir, quando possível, a lista de postos do grupo atual (quando split ativo)
-                        try {
-                            var extraClear = '';
-                            var splitVal = (document.getElementById('central_split_index') || { value: '' }).value;
-                            if (splitVal !== '') {
-                                var tblc = document.getElementById('tblCentralIIPR');
-                                if (tblc) {
-                                    var rows2 = tblc.querySelectorAll('tbody tr'); if (!rows2.length) rows2 = tblc.querySelectorAll('tr:not(:first-child)');
-                                    var tr2 = campo; while (tr2 && tr2.tagName !== 'TR') tr2 = tr2.parentNode;
-                                    var rIndex = -1; for (var s=0;s<rows2.length;s++){ if (rows2[s]===tr2){ rIndex=s; break; } }
-                                    var splitIndex2 = parseInt(splitVal,10);
-                                    if (!isNaN(splitIndex2)) {
-                                        var gStart,gEnd;
-                                        if (rIndex <= splitIndex2){ gStart = 0; gEnd = splitIndex2; } else { gStart = splitIndex2+1; gEnd = rows2.length-1; }
-                                        var parts2 = [];
-                                        for (var gi=gStart; gi<=gEnd; gi++){ var rr = rows2[gi]; if(!rr) continue; var code2 = rr.getAttribute('data-posto-codigo') || (rr.querySelector('[data-indice]')? rr.querySelector('[data-indice]').getAttribute('data-indice') : ''); if(code2) parts2.push('group_postos[]=' + encodeURIComponent(code2)); }
-                                        if (parts2.length) extraClear = '&' + parts2.join('&');
-                                    }
-                                }
-                            }
-                        } catch(e){}
-                        xhr.send('limpar_etiqueta=1&indice=' + encodeURIComponent(campo.dataset.indice || campo.getAttribute('data-indice') || '') + extraClear);
-                    } catch(e) {}
-                    if (alertaDiv) { alertaDiv.style.display='none'; alertaDiv.textContent=''; }
-                    return;
-                }
-
-                // Limpar alerta anterior
-                if (alertaDiv) {
-                    alertaDiv.style.display = 'none';
-                    alertaDiv.textContent = '';
+                var fieldRowIndex = -1;
+                for (var n = 0; n < linhasCentral.length; n++) {
+                    if (linhasCentral[n] === fieldTr) { fieldRowIndex = n; break; }
                 }
                 
-                if (campo.value.length === 35) {
-                    // Enviar etiqueta para o servidor com validacao
-                    var xhr = new XMLHttpRequest();
-                    xhr.open("POST", "", true);
-                    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-                    xhr.onreadystatechange = function() {
-                        if (xhr.readyState === 4 && xhr.status === 200) {
-                            try {
-                                var data = JSON.parse(xhr.responseText);
-                                if (data.status === 'erro') {
-                                    // Mostrar alerta de duplicata
-                                    if (alertaDiv) {
-                                        alertaDiv.textContent = data.mensagem;
-                                        alertaDiv.style.display = 'block';
-                                    }
-                                    // Limpar o campo
-                                    campo.value = '';
-                                    campo.focus();
-                                } else {
-                                    // Se for etiqueta da central, atualizar todas as etiquetas readonly da central
-                                    if (campo.className.indexOf('etiqueta-central') >= 0 && campo.className.indexOf('etiqueta-central-readonly') < 0) {
-                                        var etiquetasCentral = document.querySelectorAll('.etiqueta-central-readonly');
-                                        for (var k = 0; k < etiquetasCentral.length; k++) {
-                                            etiquetasCentral[k].value = campo.value;
-                                        }
-                                    }
-                                    
-                                    // Passar automaticamente para o proximo campo de etiqueta
-                                    var nextFieldIndex = idx + 1;
-                                    while (nextFieldIndex < allEtiquetaFields.length &&
-                                           allEtiquetaFields[nextFieldIndex].className.indexOf('etiqueta-central-readonly') >= 0) {
-                                        nextFieldIndex++;
-                                    }
-                                    
-                                    // Se encontrou um proximo campo valido, focar nele
-                                    if (nextFieldIndex < allEtiquetaFields.length) {
-                                        allEtiquetaFields[nextFieldIndex].focus();
-                                    }
-                                }
-                            } catch(e) {}
-                        }
-                    };
-                    // Se houver split aplicado, coletar os postos do grupo corrente e enviar como group_postos[]
-                    var extra = '';
-                    try {
-                        var splitVal = (document.getElementById('central_split_index') || { value: '' }).value;
-                        if (splitVal !== '') {
-                            var tbl = document.getElementById('tblCentralIIPR');
-                            if (tbl) {
-                                var rows = tbl.querySelectorAll('tbody tr');
-                                if (!rows.length) rows = tbl.querySelectorAll('tr:not(:first-child)');
-                                var tr = campo; while (tr && tr.tagName !== 'TR') tr = tr.parentNode;
-                                var rowIndex = -1; for (var ri = 0; ri < rows.length; ri++) { if (rows[ri] === tr) { rowIndex = ri; break; } }
-                                var splitIndex = parseInt(splitVal, 10);
-                                if (!isNaN(splitIndex)) {
-                                    var groupStart, groupEnd;
-                                    if (rowIndex <= splitIndex) { groupStart = 0; groupEnd = splitIndex; }
-                                    else { groupStart = splitIndex + 1; groupEnd = rows.length - 1; }
-                                    var parts = [];
-                                    for (var g = groupStart; g <= groupEnd; g++) {
-                                        var r = rows[g]; if (!r) continue;
-                                        var code = r.getAttribute('data-posto-codigo') || (r.querySelector('[data-indice]') ? (r.querySelector('[data-indice]').getAttribute('data-indice')||'') : '');
-                                        if (code) parts.push('group_postos[]=' + encodeURIComponent(code));
-                                    }
-                                    if (parts.length) extra = '&' + parts.join('&');
-                                }
-                            }
-                        }
-                    } catch(e){}
-                    xhr.send('etiqueta=' + encodeURIComponent(campo.value) + '&indice=' + (campo.dataset.indice || campo.getAttribute('data-indice') || '') + extra);
+                // Replicate if field is within the current group
+                if (fieldRowIndex >= groupStart && fieldRowIndex <= groupEnd) {
+                    campos[k].value = valor;
                 }
-            });
-        })(allEtiquetaFields[i], i);
-    }
-
-    // Codigo para os campos de lacre
-    var allLacreFields = document.querySelectorAll("input.lacre");
-    for (var m = 0; m < allLacreFields.length; m++) {
+            }
+        }
+    };
+    
+    // Add event listeners to central-correios inputs
+    var centralCorreioInputs = document.querySelectorAll('input.central-correios');
+    for (var c = 0; c < centralCorreioInputs.length; c++) {
         (function(campo) {
-            campo.addEventListener("change", function() {
-                // Verificar se o campo esta em uma linha temporaria
-                var parent = campo.parentNode;
-                while (parent) {
-                    if (parent.className && parent.className.indexOf('linha-temporaria') >= 0) return;
-                    parent = parent.parentNode;
-                }
-                
-                var xhr = new XMLHttpRequest();
-                xhr.open("POST", "", true);
-                xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-                // Incluir, quando possível, a lista de postos do grupo atual (quando split ativo)
-                try {
-                    var extraL = '';
-                    var splitValL = (document.getElementById('central_split_index') || { value: '' }).value;
-                    if (splitValL !== '') {
-                        var tblL = document.getElementById('tblCentralIIPR');
-                        if (tblL) {
-                            var rowsL = tblL.querySelectorAll('tbody tr'); if (!rowsL.length) rowsL = tblL.querySelectorAll('tr:not(:first-child)');
-                            var trL = campo; while (trL && trL.tagName !== 'TR') trL = trL.parentNode;
-                            var rIdx = -1; for (var ri=0; ri<rowsL.length; ri++){ if (rowsL[ri]===trL){ rIdx=ri; break; } }
-                            var splitIndexL = parseInt(splitValL,10);
-                            if (!isNaN(splitIndexL)) {
-                                var gStartL, gEndL;
-                                if (rIdx <= splitIndexL) { gStartL = 0; gEndL = splitIndexL; } else { gStartL = splitIndexL+1; gEndL = rowsL.length-1; }
-                                var partsL = [];
-                                for (var gi=gStartL; gi<=gEndL; gi++){ var rr = rowsL[gi]; if(!rr) continue; var codeL = rr.getAttribute('data-posto-codigo') || (rr.querySelector('[data-indice]')? rr.querySelector('[data-indice]').getAttribute('data-indice') : ''); if(codeL) partsL.push('group_postos[]=' + encodeURIComponent(codeL)); }
-                                if (partsL.length) extraL = '&' + partsL.join('&');
-                            }
-                        }
-                    }
-                } catch(e){}
-                xhr.send('update_lacre=' + encodeURIComponent(campo.value) + '&indice=' + (campo.dataset.indice || campo.getAttribute('data-indice') || '') + '&tipo=' + (campo.dataset.tipo || campo.getAttribute('data-tipo') || '') + extraL);
+            campo.addEventListener('change', function() {
+                replicarValor(campo, 'correios');
             });
-        })(allLacreFields[m]);
+        })(centralCorreioInputs[c]);
+    }
+    
+    // Add event listeners to central-etiqueta inputs
+    var centralEtiquetaInputs = document.querySelectorAll('input.central-etiqueta');
+    for (var e = 0; e < centralEtiquetaInputs.length; e++) {
+        (function(campo) {
+            campo.addEventListener('change', function() {
+                replicarValor(campo, 'etiqueta');
+            });
+        })(centralEtiquetaInputs[e]);
     }
 });
 
