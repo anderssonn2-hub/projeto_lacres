@@ -3,16 +3,12 @@
    Patch: liberar etiqueta ao apagar (mover entre inputs)
    Gerado em 2025-11-07T12:28:56 */
 
-// MELHORIAS ANTERIORES: v8.6 (mapa de lacres), v8.5 (persistência confirmada), v8.4 (auto-foco etiqueta), v8.3 (validação duplicata), v8.0 (SPLIT CENTRAL)
-// v8.7: Correção de constraint NOT NULL - lacres IIPR e Correios agora recebem 0 em vez de NULL quando não preenchidos
-// - etiquetaiipr (INT NOT NULL): recebe 0 se lacre não foi digitado
-// - etiquetacorreios (INT NOT NULL): recebe 0 se lacre não foi digitado
-// - etiqueta_correios (VARCHAR(35), NULL): pode ser NULL quando etiqueta não foi preenchida
-// - Leitura de código de barras de 19 dígitos para inserção em ciPostos
-// - Interface escondida que aparece somente através de botão no card Diferença
-// - Painel de análise mais compacto quando recolhido
-// - Mensagens de sucesso que desaparecem automaticamente
-// - Conexão com banco contrsos para obter usuários válidos
+// MELHORIAS ANTERIORES: v8.7 (fallback 0 para lacres), v8.6 (mapa de lacres), v8.5 (persistência confirmada)
+// v8.8: Corrige captura de lacres e etiquetas dos Correios (HTML + POST + gravação)
+// - Introduz arrays alinhados no formulário: posto_lacres[], lacre_iipr[], lacre_correios[], etiqueta_correios[]
+// - Função JS preenche esses arrays antes do submit sem alterar o comportamento existente
+// - Backend usa esses arrays para montar $mapaLacresPorPosto e gravar em ciDespachoLotes
+// - Mantém validações, SPLIT e foco automático inalterados
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -597,34 +593,52 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         $stmtLotes = $pdo_controle->prepare($sqlLotes);
         $stmtLotes->execute($datasSql);
 
-        // v8.6: Criar MAPA DE LACRES POR POSTO a partir do formulário Correios
-        // Os inputs HTML enviam lacres com chaves como lacre_iipr[041], lacre_correios[041], etiqueta_correios[p_041]
-        // Consolidar tudo em um mapa único por código de posto normalizado
+        // v8.8: Criar MAPA DE LACRES POR POSTO a partir do formulário Correios
+        // Preferir arrays alinhados enviados pelo JS: posto_lacres[], lacre_iipr[], lacre_correios[], etiqueta_correios[]
         $mapaLacresPorPosto = array();
 
-        // Ler os arrays capturados na seção "3) Captura os dados enviados pelo formulário"
-        // Já estão normalizados: $lacres_iipr, $lacres_correios, $etiquetas (com chaves '041', '042', etc.)
-        
-        // Para cada combinação única de posto, montar o registro de lacres
-        $todosOsPostos = array_unique(
-            array_merge(
-                array_keys($lacres_iipr),
-                array_keys($lacres_correios),
-                array_keys($etiquetas)
-            )
-        );
+        // Se o formulário forneceu arrays alinhados, usá-los (prioridade)
+        $postosLacres_post = isset($_POST['posto_lacres']) && is_array($_POST['posto_lacres']) ? $_POST['posto_lacres'] : array();
+        if (!empty($postosLacres_post)) {
+            $lacresIIPR_post = isset($_POST['lacre_iipr']) && is_array($_POST['lacre_iipr']) ? $_POST['lacre_iipr'] : array();
+            $lacresCorreios_post = isset($_POST['lacre_correios']) && is_array($_POST['lacre_correios']) ? $_POST['lacre_correios'] : array();
+            $etiquetasCorreios_post = isset($_POST['etiqueta_correios']) && is_array($_POST['etiqueta_correios']) ? $_POST['etiqueta_correios'] : array();
 
-        foreach ($todosOsPostos as $postoCodigo) {
-            $postoCodigo = (string)$postoCodigo;
-            $lacreIIPR      = isset($lacres_iipr[$postoCodigo]) ? trim((string)$lacres_iipr[$postoCodigo]) : '';
-            $lacreCorreios  = isset($lacres_correios[$postoCodigo]) ? trim((string)$lacres_correios[$postoCodigo]) : '';
-            $etiquetaCorr   = isset($etiquetas[$postoCodigo]) ? trim((string)$etiquetas[$postoCodigo]) : '';
+            foreach ($postosLacres_post as $idx => $postoRaw) {
+                $postoCodigo = str_pad(preg_replace('/\D+/', '', (string)$postoRaw), 3, '0', STR_PAD_LEFT);
+                if ($postoCodigo === '') continue;
+                $lacreI = isset($lacresIIPR_post[$idx]) ? trim((string)$lacresIIPR_post[$idx]) : '';
+                $lacreC = isset($lacresCorreios_post[$idx]) ? trim((string)$lacresCorreios_post[$idx]) : '';
+                $eti = isset($etiquetasCorreios_post[$idx]) ? trim((string)$etiquetasCorreios_post[$idx]) : '';
 
-            $mapaLacresPorPosto[$postoCodigo] = array(
-                'lacre_iipr'       => ($lacreIIPR === '' ? 0 : (int)$lacreIIPR),
-                'lacre_correios'   => ($lacreCorreios === '' ? 0 : (int)$lacreCorreios),
-                'etiqueta_correios'=> $etiquetaCorr !== '' ? $etiquetaCorr : null,
+                $mapaLacresPorPosto[$postoCodigo] = array(
+                    'lacre_iipr' => ($lacreI === '' ? 0 : (int)$lacreI),
+                    'lacre_correios' => ($lacreC === '' ? 0 : (int)$lacreC),
+                    'etiqueta_correios' => ($eti === '' ? null : $eti),
+                );
+            }
+        } else {
+            // Fallback: usar arrays nomeados (associativos) já normalizados anteriormente
+            $todosOsPostos = array_unique(
+                array_merge(
+                    array_keys($lacres_iipr),
+                    array_keys($lacres_correios),
+                    array_keys($etiquetas)
+                )
             );
+
+            foreach ($todosOsPostos as $postoCodigo) {
+                $postoCodigo = (string)$postoCodigo;
+                $lacreIIPR = isset($lacres_iipr[$postoCodigo]) ? trim((string)$lacres_iipr[$postoCodigo]) : '';
+                $lacreCorreios = isset($lacres_correios[$postoCodigo]) ? trim((string)$lacres_correios[$postoCodigo]) : '';
+                $etiquetaCorr = isset($etiquetas[$postoCodigo]) ? trim((string)$etiquetas[$postoCodigo]) : '';
+
+                $mapaLacresPorPosto[$postoCodigo] = array(
+                    'lacre_iipr' => ($lacreIIPR === '' ? 0 : (int)$lacreIIPR),
+                    'lacre_correios' => ($lacreCorreios === '' ? 0 : (int)$lacreCorreios),
+                    'etiqueta_correios' => $etiquetaCorr !== '' ? $etiquetaCorr : null,
+                );
+            }
         }
 
         // v8.6: Atualizar SQL do INSERT para incluir campos de lacres
@@ -3478,11 +3492,45 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
 <script type="text/javascript">
 // Funcoes para salvar oficio Correios (compativel com navegadores antigos)
+// v8.8: Prepara arrays alinhados de lacres/etiquetas antes do submit
+function prepararLacresCorreiosParaSubmit(form) {
+    if (!form) return;
+    // Remover inputs ocultos antigos, se existirem
+    var nomes = ['posto_lacres[]','lacre_iipr[]','lacre_correios[]','etiqueta_correios[]'];
+    for (var n=0;n<nomes.length;n++){
+        var els = form.querySelectorAll('input[name="'+nomes[n]+'"]');
+        for (var i=0;i<els.length;i++) { els[i].parentNode.removeChild(els[i]); }
+    }
+
+    // Coletar todas as linhas visíveis com atributo data-posto-codigo
+    var rows = form.querySelectorAll('tr[data-posto-codigo]');
+    for (var r=0;r<rows.length;r++){
+        var tr = rows[r];
+        var posto = tr.getAttribute('data-posto-codigo');
+        if (!posto) continue;
+
+        // Encontrar inputs na linha
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
+        var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+
+        var valI = inpIIPR ? inpIIPR.value : '';
+        var valC = inpCorr ? inpCorr.value : '';
+        var valE = inpEtiq ? inpEtiq.value : '';
+
+        // Criar inputs ocultos alinhados
+        var a = document.createElement('input'); a.type='hidden'; a.name='posto_lacres[]'; a.value=posto; form.appendChild(a);
+        var b = document.createElement('input'); b.type='hidden'; b.name='lacre_iipr[]'; b.value=valI; form.appendChild(b);
+        var c = document.createElement('input'); c.type='hidden'; c.name='lacre_correios[]'; c.value=valC; form.appendChild(c);
+        var d = document.createElement('input'); d.type='hidden'; d.name='etiqueta_correios[]'; d.value=valE; form.appendChild(d);
+    }
+}
 function gravarEImprimirCorreios() {
     var form = document.getElementById('formOficioCorreios');
     if (form) {
         document.getElementById('acaoCorreios').value = 'salvar_oficio_correios';
         document.getElementById('imprimirAposSalvar').value = '1';
+        prepararLacresCorreiosParaSubmit(form);
         form.submit();
     } else {
         alert('Erro: Formulario nao encontrado.');
@@ -3494,6 +3542,7 @@ function apenasGravarCorreios() {
     if (form) {
         document.getElementById('acaoCorreios').value = 'salvar_oficio_correios';
         document.getElementById('imprimirAposSalvar').value = '0';
+        prepararLacresCorreiosParaSubmit(form);
         form.submit();
     } else {
         alert('Erro: Formulario nao encontrado.');
