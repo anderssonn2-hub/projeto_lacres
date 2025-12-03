@@ -3,13 +3,11 @@
    Patch: liberar etiqueta ao apagar (mover entre inputs)
    Gerado em 2025-11-07T12:28:56 */
 
-// Versão 8.6 - Grava lacre IIPR, lacre Correios e etiqueta Correios em ciDespachoLotes (Correios)
-// MELHORIAS ANTERIORES: v8.5 (persistência confirmada), v8.4 (auto-foco etiqueta), v8.3 (validação duplicata), v8.0 (SPLIT CENTRAL)
-// v8.6: Foco SOMENTE em CORREIOS - lacres/etiqueta agora gravados em ciDespachoLotes com campos:
-// - etiquetaiipr (INT): lacre IIPR do malote
-// - etiquetacorreios (INT): lacre Correios do malote
-// - etiqueta_correios (VARCHAR(35)): código de barras do malote
-// - PT (Poupa Tempo): será tratado depois em versão separada
+// MELHORIAS ANTERIORES: v8.6 (mapa de lacres), v8.5 (persistência confirmada), v8.4 (auto-foco etiqueta), v8.3 (validação duplicata), v8.0 (SPLIT CENTRAL)
+// v8.7: Correção de constraint NOT NULL - lacres IIPR e Correios agora recebem 0 em vez de NULL quando não preenchidos
+// - etiquetaiipr (INT NOT NULL): recebe 0 se lacre não foi digitado
+// - etiquetacorreios (INT NOT NULL): recebe 0 se lacre não foi digitado
+// - etiqueta_correios (VARCHAR(35), NULL): pode ser NULL quando etiqueta não foi preenchida
 // - Leitura de código de barras de 19 dígitos para inserção em ciPostos
 // - Interface escondida que aparece somente através de botão no card Diferença
 // - Painel de análise mais compacto quando recolhido
@@ -623,8 +621,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $etiquetaCorr   = isset($etiquetas[$postoCodigo]) ? trim((string)$etiquetas[$postoCodigo]) : '';
 
             $mapaLacresPorPosto[$postoCodigo] = array(
-                'lacre_iipr'       => $lacreIIPR !== '' ? (int)$lacreIIPR : null,
-                'lacre_correios'   => $lacreCorreios !== '' ? (int)$lacreCorreios : null,
+                'lacre_iipr'       => ($lacreIIPR === '' ? 0 : (int)$lacreIIPR),
+                'lacre_correios'   => ($lacreCorreios === '' ? 0 : (int)$lacreCorreios),
                 'etiqueta_correios'=> $etiquetaCorr !== '' ? $etiquetaCorr : null,
             );
         }
@@ -693,8 +691,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
             
             // v8.6: Recuperar lacres do mapa para esse posto
-            $lacreIIPR_lote = null;
-            $lacreCorreios_lote = null;
+            $lacreIIPR_lote = 0;
+            $lacreCorreios_lote = 0;
             $etiquetaCorreios_lote = null;
 
             if (isset($mapaLacresPorPosto[$posto_lote])) {
