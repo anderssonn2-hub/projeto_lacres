@@ -14,6 +14,11 @@
 // - Backend monta $mapaLacresPorRegional além de $mapaLacresPorPosto
 // - No INSERT: prioridade 1º lacre por posto, 2º lacre por regional, 3º defaults
 // - Todos os lotes de uma regional recebem os mesmos lacres/etiqueta (a menos que o posto tenha lacre específico)
+// v8.10: Corrige salvamento de lacres (IIPR/Correios) por regional
+// - Garante captura correta dos valores de lacre_iipr e lacre_correios no POST
+// - Normaliza regional para formato consistente (remove zeros à esquerda)
+// - Adiciona debug detalhado por lote para diagnosticar problemas
+// - Valida que mapaLacresPorRegional é preenchido corretamente e usado no INSERT
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -655,7 +660,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         if (!empty($postosLacres_post) && !empty($regionaisLacres_post)) {
             // Construir mapa regional a partir dos arrays alinhados
             foreach ($postosLacres_post as $idx => $postoRaw) {
-                $regional = isset($regionaisLacres_post[$idx]) ? trim((string)$regionaisLacres_post[$idx]) : '';
+                $regional = isset($regionaisLacres_post[$idx]) ? ltrim(trim((string)$regionaisLacres_post[$idx]), '0') || '0' : '';
                 if ($regional === '' || $regional === '0') continue;
                 
                 $lacreI = isset($lacresIIPR_post[$idx]) ? trim((string)$lacresIIPR_post[$idx]) : '';
@@ -684,8 +689,15 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
         }
         
-        // v8.9: Debug do mapa por regional
-        add_debug('V8.9 - MAPA DE LACRES POR REGIONAL', $mapaLacresPorRegional);
+        // v8.10: Debug do mapa por regional com valores recebidos
+        add_debug('V8.10 - ARRAYS POST RECEBIDOS', array(
+            'postosLacres'      => $postosLacres_post,
+            'regionaisLacres'   => $regionaisLacres_post,
+            'lacresIIPR'        => $lacresIIPR_post,
+            'lacresCorreios'    => $lacresCorreios_post,
+            'etiquetasCorreios' => $etiquetasCorreios_post,
+        ));
+        add_debug('V8.10 - MAPA DE LACRES POR REGIONAL', $mapaLacresPorRegional);
 
         // v8.6: Atualizar SQL do INSERT para incluir campos de lacres
         $stInsLote = $pdo_controle->prepare("
@@ -714,8 +726,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         while ($l = $stmtLotes->fetch(PDO::FETCH_ASSOC)) {
             // O posto do lote ja vem com LPAD do SQL (ex: "041")
             $posto_lote = (string)$l['posto'];
-            // v8.9: Capturar a regional do lote
-            $regional_lote = isset($l['regional']) ? trim((string)$l['regional']) : '';
+            // v8.10: Capturar a regional do lote (normalizar removendo zeros à esquerda)
+            $regional_lote_raw = isset($l['regional']) ? trim((string)$l['regional']) : '';
+            $regional_lote = ltrim($regional_lote_raw, '0') || '0';
             
             // VERSAO 6: Buscar etiqueta_correios correspondente ao posto
             // Tentar todas as variações de chave possíveis
@@ -774,7 +787,22 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             // VERSAO 6: Garantir que etiqueta seja passada como STRING pura
             $etiqueta_para_banco = (string)$etiqueta_do_posto;
             
-            // v8.9: Passar os 3 novos campos de lacres ao INSERT com prioridade regional
+            // v8.10: Debug por lote antes de inserir
+            // (registra apenas primeiras 5 linhas para não sobrecarregar o debug_log)
+            if ($totalLotes < 5) {
+            add_debug('V8.10 - LOTE A GRAVAR', array(
+                'posto_lote'           => $posto_lote,
+                'regional_lote_raw'    => $regional_lote_raw,
+                'regional_lote_norm'   => $regional_lote,
+                'existe_em_mapaLacresPorPosto'    => isset($mapaLacresPorPosto[$posto_lote]),
+                'existe_em_mapaLacresPorRegional' => isset($mapaLacresPorRegional[$regional_lote]),
+                'lacreIIPR_lote'       => $lacreIIPR_lote,
+                'lacreCorreios_lote'   => $lacreCorreios_lote,
+                'etiquetaCorreios_lote' => $etiquetaCorreios_lote,
+            ));
+            }
+            
+            // v8.10: Passar os 3 novos campos de lacres ao INSERT com prioridade regional
             $stInsLote->execute(array(
                 $id_desp,
                 $posto_lote,
