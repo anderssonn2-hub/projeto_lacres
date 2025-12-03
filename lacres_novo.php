@@ -3889,26 +3889,25 @@ document.addEventListener("DOMContentLoaded", function() {
         })(centralEtiquetaInputs[e]);
     }
     
-    // v8.3: Validação de etiquetas_correios duplicadas para CAPITAL + REGIONAIS (não CENTRAL)
+    // v8.3 CORRIGIDA: Validação de etiquetas_correios duplicadas para CAPITAL + REGIONAIS (não CENTRAL)
+    // CORREÇÃO: Usar blur em vez de change, limpar campo sem travar, sem guardas globais
     var etiquetasValidaveis = document.querySelectorAll('input.etiqueta-validavel');
     for (var v = 0; v < etiquetasValidaveis.length; v++) {
         (function(inputEtiqueta) {
-            var valorAnterior = inputEtiqueta.value;
-            
-            inputEtiqueta.addEventListener('change', function() {
+            inputEtiqueta.addEventListener('blur', function() {
                 var valorAtual = (this.value || '').trim();
-                var regionalAtual = this.getAttribute('data-regional') || '0';
+                var indice = this.getAttribute('data-indice');
+                var grupoAtual = this.getAttribute('data-grupo') || '';
                 
-                // Se campo vazio, permita sem validação
+                // Se campo vazio, apenas limpar aviso
                 if (valorAtual === '') {
-                    valorAnterior = '';
                     this.style.background = '';
-                    var alertaDiv = document.getElementById('alerta-' + this.getAttribute('data-indice'));
+                    var alertaDiv = document.getElementById('alerta-' + indice);
                     if (alertaDiv) { alertaDiv.style.display = 'none'; alertaDiv.textContent = ''; }
                     return;
                 }
                 
-                // v8.3: Contar ocorrências deste valor em CAPITAL (regional=0) + REGIONAIS, excluindo CENTRAL IIPR
+                // v8.3 CORRIGIDA: Contar ocorrências deste valor em CAPITAL (regional=0) + REGIONAIS, excluindo CENTRAL IIPR
                 var totalOcorrencias = 0;
                 for (var i = 0; i < etiquetasValidaveis.length; i++) {
                     var outroInput = etiquetasValidaveis[i];
@@ -3923,24 +3922,27 @@ document.addEventListener("DOMContentLoaded", function() {
                     }
                 }
                 
-                // Se tem duplicata (mais de 1 ocorrência), rejeita
+                // Se tem duplicata (mais de 1 ocorrência), limpar campo e alertar
                 if (totalOcorrencias > 1) {
-                    this.value = valorAnterior;
-                    this.style.background = '#ffcccc';
-                    var alertaDiv = document.getElementById('alerta-' + this.getAttribute('data-indice'));
+                    alert('Já existe outro posto com esta mesma etiqueta dos Correios. Cada etiqueta deve ser única para capital e regionais.');
+                    // Limpar apenas o campo atual, sem reverter a anteriores
+                    this.value = '';
+                    this.style.background = '';
+                    // Mostrar aviso no div de alerta associado
+                    var alertaDiv = document.getElementById('alerta-' + indice);
                     if (alertaDiv) {
-                        alertaDiv.textContent = 'Já existe outro posto com esta mesma etiqueta dos Correios. Cada etiqueta deve ser única para capital e regionais. Ajuste antes de prosseguir.';
+                        alertaDiv.textContent = 'Campo limpo. Digite novamente sem duplicar.';
                         alertaDiv.style.display = 'block';
                         alertaDiv.style.color = '#d00';
                         alertaDiv.style.fontSize = '11px';
                         alertaDiv.style.fontWeight = 'bold';
                     }
-                    alert('Etiqueta duplicada! Já existe outro posto com este valor. As etiquetas devem ser únicas para CAPITAL e REGIONAIS.');
+                    // Recolocar foco no campo para permitir nova digitação
+                    this.focus();
                 } else {
-                    // Aceita o valor
-                    valorAnterior = valorAtual;
+                    // Aceita o valor - limpar aviso
                     this.style.background = '';
-                    var alertaDiv = document.getElementById('alerta-' + this.getAttribute('data-indice'));
+                    var alertaDiv = document.getElementById('alerta-' + indice);
                     if (alertaDiv) { alertaDiv.style.display = 'none'; alertaDiv.textContent = ''; }
                 }
             });
