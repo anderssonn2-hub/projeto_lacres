@@ -3,9 +3,9 @@
    Patch: liberar etiqueta ao apagar (mover entre inputs)
    Gerado em 2025-11-07T12:28:56 */
 
-// Versão 8.1 Corrigida - Evita duplicatas ao salvar etiquetas dos Correios na central
-// CORREÇÃO: Etiquetas dos postos da central são salvas apenas uma vez no banco
-// Baseado na versão 8.0 com melhorias específicas
+// Versão 8.3 - Ajustes SPLIT / impressão / validação de etiquetas / gravação ciDespachoLotes
+// MELHORIAS: Botão split oculto na impressão, validação duplicata etiqueta CAPITAL/REGIONAIS, contagem correta postos/lotes, grava etiqueta_correios
+// Baseado na versão 8.1 com melhorias incrementais
 // Novas funcionalidades:
 // - Leitura de código de barras de 19 dígitos para inserção em ciPostos
 // - Interface escondida que aparece somente através de botão no card Diferença
@@ -667,6 +667,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $l['responsaveis'],
                 $etiqueta_para_banco
             ));
+            // v8.3: Registra dados do lote gravado para contar postos distintos
+            if (!isset($lotes_processados_dados)) { $lotes_processados_dados = array(); }
+            $lotes_processados_dados[] = array('posto' => $posto_lote, 'lote' => $l['lote']);
             $totalLotes++;
         }
         
@@ -681,21 +684,29 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             ));
         }
 
-        // 7) Finaliza
+        // 7) v8.3: Calcula total de postos distintos e total de lotes
+        $totalPostosDistintos = 0;
+        if (isset($lotes_processados_dados) && is_array($lotes_processados_dados)) {
+            $postosUnicos = array_unique(array_column($lotes_processados_dados, 'posto'));
+            $totalPostosDistintos = count($postosUnicos);
+        }
+        $totalLotesGravados = $totalLotes;
+        
         $pdo_controle->commit();
 
         // Verifica se deve imprimir após salvar
         $deve_imprimir = isset($_POST['imprimir_apos_salvar']) && $_POST['imprimir_apos_salvar'] === '1';
 
+        // v8.3: Mensagem com contagem correta de postos e lotes
         if ($deve_imprimir) {
             echo "<script>
-                    alert('Oficio Correios salvo com sucesso! No. " . (int)$id_desp . " - Postos: " . (int)$totalInseridos . ", Lotes: " . (int)$totalLotes . "');
+                    alert('Oficio Correios salvo com sucesso! No. " . (int)$id_desp . " - Postos: " . (int)$totalPostosDistintos . ", Lotes: " . (int)$totalLotesGravados . "');
                     if (typeof marcarComoSalvo === 'function') { marcarComoSalvo(); }
                     window.print();
                   </script>";
         } else {
             echo "<script>
-                    alert('Oficio Correios salvo com sucesso! No. " . (int)$id_desp . " - Postos: " . (int)$totalInseridos . ", Lotes: " . (int)$totalLotes . "');
+                    alert('Oficio Correios salvo com sucesso! No. " . (int)$id_desp . " - Postos: " . (int)$totalPostosDistintos . ", Lotes: " . (int)$totalLotesGravados . "');
                     if (typeof marcarComoSalvo === 'function') { marcarComoSalvo(); }
                     window.location.href='" . $_SERVER['PHP_SELF'] . "';
                   </script>";
@@ -2556,6 +2567,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
             .btn-limpar { display: none !important; }
             .btn-imprimir { display: none !important; }
             .btn-salvar-etiquetas { display: none !important; }
+            .no-print { display: none !important; }
             .quadro-formulario, .quadro-formulario * { display: none !important; }
             .quadro-adicionar, .quadro-adicionar * { display: none !important; }
             .alerta, .alerta * { display: none !important; }
@@ -3262,11 +3274,11 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
         </thead>
         <tbody>
             <?php foreach ($itens as $key => $dado): ?>
-            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
+            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td>
                     <?php echo $dado['posto_nome'] ?>
                     <?php if ($grupo === 'CENTRAL IIPR'): ?>
-                    <br><button type="button" class="btn-split-aqui" onclick="definirSplitAqui(this)" style="font-size:11px; padding:2px 6px; margin-top:4px;">Split aqui</button>
+                    <br><button type="button" class="btn-split-aqui no-print" onclick="definirSplitAqui(this)" style="font-size:11px; padding:2px 6px; margin-top:4px;">Split aqui</button>
                     <?php endif; ?>
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
                     <input type="hidden" name="nome_posto[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>">
@@ -3280,7 +3292,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
     <?php elseif ($grupo === 'CENTRAL IIPR'): ?>
         <input class="etiqueta-barras central-etiqueta" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
     <?php else: ?>
-        <input class="etiqueta-barras" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
+        <input class="etiqueta-barras etiqueta-validavel" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
         <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
     <?php endif; ?>
 </td>
@@ -3875,6 +3887,64 @@ document.addEventListener("DOMContentLoaded", function() {
                 replicarValor(campo, 'etiqueta');
             });
         })(centralEtiquetaInputs[e]);
+    }
+    
+    // v8.3: Validação de etiquetas_correios duplicadas para CAPITAL + REGIONAIS (não CENTRAL)
+    var etiquetasValidaveis = document.querySelectorAll('input.etiqueta-validavel');
+    for (var v = 0; v < etiquetasValidaveis.length; v++) {
+        (function(inputEtiqueta) {
+            var valorAnterior = inputEtiqueta.value;
+            
+            inputEtiqueta.addEventListener('change', function() {
+                var valorAtual = (this.value || '').trim();
+                var regionalAtual = this.getAttribute('data-regional') || '0';
+                
+                // Se campo vazio, permita sem validação
+                if (valorAtual === '') {
+                    valorAnterior = '';
+                    this.style.background = '';
+                    var alertaDiv = document.getElementById('alerta-' + this.getAttribute('data-indice'));
+                    if (alertaDiv) { alertaDiv.style.display = 'none'; alertaDiv.textContent = ''; }
+                    return;
+                }
+                
+                // v8.3: Contar ocorrências deste valor em CAPITAL (regional=0) + REGIONAIS, excluindo CENTRAL IIPR
+                var totalOcorrencias = 0;
+                for (var i = 0; i < etiquetasValidaveis.length; i++) {
+                    var outroInput = etiquetasValidaveis[i];
+                    var outroGrupo = outroInput.getAttribute('data-grupo') || '';
+                    
+                    // Saltar se for CENTRAL IIPR (central pode compartilhar)
+                    if (outroGrupo === 'CENTRAL IIPR') continue;
+                    
+                    var outroValor = (outroInput.value || '').trim();
+                    if (outroValor === valorAtual) {
+                        totalOcorrencias++;
+                    }
+                }
+                
+                // Se tem duplicata (mais de 1 ocorrência), rejeita
+                if (totalOcorrencias > 1) {
+                    this.value = valorAnterior;
+                    this.style.background = '#ffcccc';
+                    var alertaDiv = document.getElementById('alerta-' + this.getAttribute('data-indice'));
+                    if (alertaDiv) {
+                        alertaDiv.textContent = 'Já existe outro posto com esta mesma etiqueta dos Correios. Cada etiqueta deve ser única para capital e regionais. Ajuste antes de prosseguir.';
+                        alertaDiv.style.display = 'block';
+                        alertaDiv.style.color = '#d00';
+                        alertaDiv.style.fontSize = '11px';
+                        alertaDiv.style.fontWeight = 'bold';
+                    }
+                    alert('Etiqueta duplicada! Já existe outro posto com este valor. As etiquetas devem ser únicas para CAPITAL e REGIONAIS.');
+                } else {
+                    // Aceita o valor
+                    valorAnterior = valorAtual;
+                    this.style.background = '';
+                    var alertaDiv = document.getElementById('alerta-' + this.getAttribute('data-indice'));
+                    if (alertaDiv) { alertaDiv.style.display = 'none'; alertaDiv.textContent = ''; }
+                }
+            });
+        })(etiquetasValidaveis[v]);
     }
 });
 
