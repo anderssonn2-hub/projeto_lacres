@@ -3237,28 +3237,29 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 </div>
 
 <?php if (!empty($poupaTempoPayload)): ?>
-    <?php
-      // Garante JSON bem formado (com acentos)
-      $poupaTempoPayloadJson = json_encode($poupaTempoPayload, JSON_UNESCAPED_UNICODE);
-    ?>
-
-    <form id="formOficioPoupaTempo"
-          method="post"
-          action="modelo_oficio_poupa_tempo.php"
-          target="_blank"
-          style="display:inline;">
-        <input type="hidden"
-               name="poupatempo_payload"
-               value="<?php echo htmlspecialchars($poupaTempoPayloadJson, ENT_QUOTES, 'UTF-8'); ?>">
-    </form>
-
-    <button type="button"
-            class="btn btn-warning"
-            onclick="document.getElementById('formOficioPoupaTempo').submit();">
-        Ofício Poupatempo
-    </button>
-<?php else: ?>
-    
+        <?php
+            // Garante JSON bem formado (com acentos)
+            $poupaTempoPayloadJson = json_encode($poupaTempoPayload, JSON_UNESCAPED_UNICODE);
+        ?>
+        <!-- Botão Ofício Poupatempo (form gerado fora do form principal para evitar forms aninhados) -->
+        <button type="button" class="btn btn-warning" onclick="abrirOficioPoupaTempo();">Ofício Poupatempo</button>
+        <script type="text/javascript">
+        function abrirOficioPoupaTempo() {
+                var payload = <?php echo json_encode($poupaTempoPayload, JSON_UNESCAPED_UNICODE); ?>;
+                var form = document.createElement('form');
+                form.method = 'post';
+                form.action = 'modelo_oficio_poupa_tempo.php';
+                form.target = '_blank';
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'poupatempo_payload';
+                input.value = JSON.stringify(payload);
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+                document.body.removeChild(form);
+        }
+        </script>
 <?php endif; ?>
 
 
@@ -3504,6 +3505,10 @@ function prepararLacresCorreiosParaSubmit(form) {
 
     // Coletar todas as linhas visíveis com atributo data-posto-codigo
     var rows = form.querySelectorAll('tr[data-posto-codigo]');
+    // Se o form não conter as linhas (ex: inputs renderizados fora do form), tentar buscar globalmente
+    if (!rows || rows.length === 0) {
+        rows = document.querySelectorAll('tr[data-posto-codigo]');
+    }
     for (var r=0;r<rows.length;r++){
         var tr = rows[r];
         var posto = tr.getAttribute('data-posto-codigo');
@@ -3514,9 +3519,9 @@ function prepararLacresCorreiosParaSubmit(form) {
         var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
         var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
 
-        var valI = inpIIPR ? inpIIPR.value : '';
-        var valC = inpCorr ? inpCorr.value : '';
-        var valE = inpEtiq ? inpEtiq.value : '';
+        var valI = inpIIPR ? String(inpIIPR.value || '').trim() : '';
+        var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
+        var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
         // Criar inputs ocultos alinhados
         var a = document.createElement('input'); a.type='hidden'; a.name='posto_lacres[]'; a.value=posto; form.appendChild(a);
