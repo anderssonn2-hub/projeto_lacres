@@ -3,9 +3,9 @@
    Patch: liberar etiqueta ao apagar (mover entre inputs)
    Gerado em 2025-11-07T12:28:56 */
 
-// Versão 8.3 - Ajustes SPLIT / impressão / validação de etiquetas / gravação ciDespachoLotes
-// MELHORIAS: Botão split oculto na impressão, validação duplicata etiqueta CAPITAL/REGIONAIS, contagem correta postos/lotes, grava etiqueta_correios
-// Baseado na versão 8.1 com melhorias incrementais
+// Versão 8.4 - Volta a avançar para o próximo input de etiqueta após leitura
+// MELHORIAS: Auto-foco no próximo input de etiqueta_correios quando valor é aceito, mantém validação duplicata sem travamento
+// Baseado na versão 8.3 com melhoria de usabilidade
 // Novas funcionalidades:
 // - Leitura de código de barras de 19 dígitos para inserção em ciPostos
 // - Interface escondida que aparece somente através de botão no card Diferença
@@ -3889,6 +3889,38 @@ document.addEventListener("DOMContentLoaded", function() {
         })(centralEtiquetaInputs[e]);
     }
     
+    // v8.4: Função auxiliar para focar no próximo input de etiqueta_correios
+    window.focarProximaEtiqueta = function(inputAtual) {
+        // Buscar todos os inputs de etiqueta_correios (class etiqueta-barras que estão em inputs válidos)
+        var todosEtiquetas = document.querySelectorAll('input.etiqueta-barras');
+        var indices = [];
+        for (var i = 0; i < todosEtiquetas.length; i++) {
+            indices.push(todosEtiquetas[i]);
+        }
+        
+        // Encontrar índice do input atual
+        var indiceAtual = -1;
+        for (var j = 0; j < indices.length; j++) {
+            if (indices[j] === inputAtual) {
+                indiceAtual = j;
+                break;
+            }
+        }
+        
+        // Se houver próximo input, focar nele
+        if (indiceAtual >= 0 && indiceAtual + 1 < indices.length) {
+            var proximoInput = indices[indiceAtual + 1];
+            // Aguardar um pouco para garantir que o DOM foi atualizado
+            setTimeout(function() {
+                proximoInput.focus();
+                // Selecionar texto se houver para facilitar sobrescrita
+                if (proximoInput.select) {
+                    proximoInput.select();
+                }
+            }, 50);
+        }
+    };
+    
     // v8.3 CORRIGIDA: Validação de etiquetas_correios duplicadas para CAPITAL + REGIONAIS (não CENTRAL)
     // CORREÇÃO: Usar blur em vez de change, limpar campo sem travar, sem guardas globais
     var etiquetasValidaveis = document.querySelectorAll('input.etiqueta-validavel');
@@ -3937,13 +3969,15 @@ document.addEventListener("DOMContentLoaded", function() {
                         alertaDiv.style.fontSize = '11px';
                         alertaDiv.style.fontWeight = 'bold';
                     }
-                    // Recolocar foco no campo para permitir nova digitação
+                    // Recolocar foco no campo para permitir nova digitação (NÃO avança)
                     this.focus();
                 } else {
                     // Aceita o valor - limpar aviso
                     this.style.background = '';
                     var alertaDiv = document.getElementById('alerta-' + indice);
                     if (alertaDiv) { alertaDiv.style.display = 'none'; alertaDiv.textContent = ''; }
+                    // v8.4: Se aceito, avançar para o próximo input de etiqueta
+                    focarProximaEtiqueta(this);
                 }
             });
         })(etiquetasValidaveis[v]);
