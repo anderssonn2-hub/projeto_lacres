@@ -3,10 +3,11 @@
    Patch: liberar etiqueta ao apagar (mover entre inputs)
    Gerado em 2025-11-07T12:28:56 */
 
-// Versão 8.4 - Volta a avançar para o próximo input de etiqueta após leitura
-// MELHORIAS: Auto-foco no próximo input de etiqueta_correios quando valor é aceito, mantém validação duplicata sem travamento
-// Baseado na versão 8.3 com melhoria de usabilidade
-// Novas funcionalidades:
+// Versão 8.5 - Persistência confirmada de lacres e etiquetas em ciDespachoLotes e ciDespachoItens
+// MELHORIAS ANTERIORES: v8.4 (auto-foco etiqueta), v8.3 (validação duplicata), v8.0 (SPLIT CENTRAL)
+// CONFIRMAÇÃO v8.5: 
+// - CORREIOS: lacres (IIPR e Correios) + etiquetas capturados do POST → ciDespachoItens + ciDespachoLotes
+// - PT (Poupa Tempo): lacre_iipr capturado do POST → ciDespachoItens via modelo_oficio_poupa_tempo.php
 // - Leitura de código de barras de 19 dígitos para inserção em ciPostos
 // - Interface escondida que aparece somente através de botão no card Diferença
 // - Painel de análise mais compacto quando recolhido
