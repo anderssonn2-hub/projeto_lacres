@@ -3926,6 +3926,15 @@ document.addEventListener("DOMContentLoaded", function() {
     var etiquetasValidaveis = document.querySelectorAll('input.etiqueta-validavel');
     for (var v = 0; v < etiquetasValidaveis.length; v++) {
         (function(inputEtiqueta) {
+            // v8.4: Listener de input para disparar blur quando atingir 35 dígitos (para scanner/leitura automática)
+            inputEtiqueta.addEventListener('input', function() {
+                var valor = (this.value || '').replace(/\D/g, ''); // Remove tudo que não é dígito
+                if (valor.length >= 35) {
+                    // Disparar blur para que a validação execute
+                    this.blur();
+                }
+            });
+            
             inputEtiqueta.addEventListener('blur', function() {
                 var valorAtual = (this.value || '').trim();
                 var indice = this.getAttribute('data-indice');
