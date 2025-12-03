@@ -3,11 +3,13 @@
    Patch: liberar etiqueta ao apagar (mover entre inputs)
    Gerado em 2025-11-07T12:28:56 */
 
-// Versão 8.5 - Persistência confirmada de lacres e etiquetas em ciDespachoLotes e ciDespachoItens
-// MELHORIAS ANTERIORES: v8.4 (auto-foco etiqueta), v8.3 (validação duplicata), v8.0 (SPLIT CENTRAL)
-// CONFIRMAÇÃO v8.5: 
-// - CORREIOS: lacres (IIPR e Correios) + etiquetas capturados do POST → ciDespachoItens + ciDespachoLotes
-// - PT (Poupa Tempo): lacre_iipr capturado do POST → ciDespachoItens via modelo_oficio_poupa_tempo.php
+// Versão 8.6 - Grava lacre IIPR, lacre Correios e etiqueta Correios em ciDespachoLotes (Correios)
+// MELHORIAS ANTERIORES: v8.5 (persistência confirmada), v8.4 (auto-foco etiqueta), v8.3 (validação duplicata), v8.0 (SPLIT CENTRAL)
+// v8.6: Foco SOMENTE em CORREIOS - lacres/etiqueta agora gravados em ciDespachoLotes com campos:
+// - etiquetaiipr (INT): lacre IIPR do malote
+// - etiquetacorreios (INT): lacre Correios do malote
+// - etiqueta_correios (VARCHAR(35)): código de barras do malote
+// - PT (Poupa Tempo): será tratado depois em versão separada
 // - Leitura de código de barras de 19 dígitos para inserção em ciPostos
 // - Interface escondida que aparece somente através de botão no card Diferença
 // - Painel de análise mais compacto quando recolhido
@@ -597,9 +599,40 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         $stmtLotes = $pdo_controle->prepare($sqlLotes);
         $stmtLotes->execute($datasSql);
 
+        // v8.6: Criar MAPA DE LACRES POR POSTO a partir do formulário Correios
+        // Os inputs HTML enviam lacres com chaves como lacre_iipr[041], lacre_correios[041], etiqueta_correios[p_041]
+        // Consolidar tudo em um mapa único por código de posto normalizado
+        $mapaLacresPorPosto = array();
+
+        // Ler os arrays capturados na seção "3) Captura os dados enviados pelo formulário"
+        // Já estão normalizados: $lacres_iipr, $lacres_correios, $etiquetas (com chaves '041', '042', etc.)
+        
+        // Para cada combinação única de posto, montar o registro de lacres
+        $todosOsPostos = array_unique(
+            array_merge(
+                array_keys($lacres_iipr),
+                array_keys($lacres_correios),
+                array_keys($etiquetas)
+            )
+        );
+
+        foreach ($todosOsPostos as $postoCodigo) {
+            $postoCodigo = (string)$postoCodigo;
+            $lacreIIPR      = isset($lacres_iipr[$postoCodigo]) ? trim((string)$lacres_iipr[$postoCodigo]) : '';
+            $lacreCorreios  = isset($lacres_correios[$postoCodigo]) ? trim((string)$lacres_correios[$postoCodigo]) : '';
+            $etiquetaCorr   = isset($etiquetas[$postoCodigo]) ? trim((string)$etiquetas[$postoCodigo]) : '';
+
+            $mapaLacresPorPosto[$postoCodigo] = array(
+                'lacre_iipr'       => $lacreIIPR !== '' ? (int)$lacreIIPR : null,
+                'lacre_correios'   => $lacreCorreios !== '' ? (int)$lacreCorreios : null,
+                'etiqueta_correios'=> $etiquetaCorr !== '' ? $etiquetaCorr : null,
+            );
+        }
+
+        // v8.6: Atualizar SQL do INSERT para incluir campos de lacres
         $stInsLote = $pdo_controle->prepare("
-            INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis, etiqueta_correios)
-            VALUES (?,?,?,?,?,?,?)
+            INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis, etiquetaiipr, etiquetacorreios, etiqueta_correios)
+            VALUES (?,?,?,?,?,?,?,?,?)
         ");
 
         // VERSAO 6: Debug MELHORADO - registrar etiquetas recebidas
@@ -610,6 +643,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         // DEBUG V6: Registrar todas as etiquetas recebidas do POST
         add_debug('V6 - Etiquetas RAW do POST', $etiquetas_raw);
         add_debug('V6 - Etiquetas NORMALIZADAS', $etiquetas);
+        
+        // v8.6: Debug do mapa de lacres por posto
+        add_debug('V8.6 - MAPA DE LACRES POR POSTO', $mapaLacresPorPosto);
         
         // Usar as etiquetas ja normalizadas (capturadas e normalizadas no passo 3)
         // A variavel $etiquetas ja contem as chaves no formato "041" (3 digitos)
@@ -656,9 +692,21 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $etiquetas_debug[$posto_lote] = $etiqueta_do_posto;
             }
             
+            // v8.6: Recuperar lacres do mapa para esse posto
+            $lacreIIPR_lote = null;
+            $lacreCorreios_lote = null;
+            $etiquetaCorreios_lote = null;
+
+            if (isset($mapaLacresPorPosto[$posto_lote])) {
+                $lacreIIPR_lote       = $mapaLacresPorPosto[$posto_lote]['lacre_iipr'];
+                $lacreCorreios_lote   = $mapaLacresPorPosto[$posto_lote]['lacre_correios'];
+                $etiquetaCorreios_lote = $mapaLacresPorPosto[$posto_lote]['etiqueta_correios'];
+            }
+
             // VERSAO 6: Garantir que etiqueta seja passada como STRING pura
             $etiqueta_para_banco = (string)$etiqueta_do_posto;
             
+            // v8.6: Passar os 3 novos campos de lacres ao INSERT
             $stInsLote->execute(array(
                 $id_desp,
                 $posto_lote,
@@ -666,7 +714,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 (int)$l['quantidade'],
                 $l['data_carga'],
                 $l['responsaveis'],
-                $etiqueta_para_banco
+                $lacreIIPR_lote,          // etiquetaiipr
+                $lacreCorreios_lote,      // etiquetacorreios
+                $etiquetaCorreios_lote    // etiqueta_correios (a prioridade é o mapa v8.6, não o $etiqueta_do_posto antigo)
             ));
             // v8.3: Registra dados do lote gravado para contar postos distintos
             if (!isset($lotes_processados_dados)) { $lotes_processados_dados = array(); }
@@ -3277,6 +3327,10 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
             <?php foreach ($itens as $key => $dado): ?>
             <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td>
+                    <!-- v8.6: Input oculto com código do posto para manter alinhamento de arrays -->
+                    <?php if ($grupo !== 'POUPA TEMPO'): ?>
+                    <input type="hidden" name="posto_codigo_correios[]" value="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?php endif; ?>
                     <?php echo $dado['posto_nome'] ?>
                     <?php if ($grupo === 'CENTRAL IIPR'): ?>
                     <br><button type="button" class="btn-split-aqui no-print" onclick="definirSplitAqui(this)" style="font-size:11px; padding:2px 6px; margin-top:4px;">Split aqui</button>
