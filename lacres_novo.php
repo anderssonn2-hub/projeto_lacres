@@ -1579,11 +1579,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mensagem_sucesso = "Posto '{$posto_nome}' adicionado com sucesso!";
             
             // Redirecionamento para manter os parâmetros GET
+            // Usar GET se presente, caso contrario usar o ultimo valor salvo em sessao
             $params = array();
-            if (isset($_GET['lacre_capital'])) $params[] = "lacre_capital=" . urlencode($_GET['lacre_capital']);
-            if (isset($_GET['lacre_central'])) $params[] = "lacre_central=" . urlencode($_GET['lacre_central']);
-            if (isset($_GET['lacre_regionais'])) $params[] = "lacre_regionais=" . urlencode($_GET['lacre_regionais']);
-            if (isset($_GET['responsavel'])) $params[] = "responsavel=" . urlencode($_GET['responsavel']);
+            if (isset($_GET['lacre_capital'])) {
+                $params[] = "lacre_capital=" . urlencode($_GET['lacre_capital']);
+            } elseif (isset($_SESSION['ultimo_lacre_capital'])) {
+                $params[] = "lacre_capital=" . urlencode($_SESSION['ultimo_lacre_capital']);
+            }
+
+            if (isset($_GET['lacre_central'])) {
+                $params[] = "lacre_central=" . urlencode($_GET['lacre_central']);
+            } elseif (isset($_SESSION['ultimo_lacre_central'])) {
+                $params[] = "lacre_central=" . urlencode($_SESSION['ultimo_lacre_central']);
+            }
+
+            if (isset($_GET['lacre_regionais'])) {
+                $params[] = "lacre_regionais=" . urlencode($_GET['lacre_regionais']);
+            } elseif (isset($_SESSION['ultimo_lacre_regionais'])) {
+                $params[] = "lacre_regionais=" . urlencode($_SESSION['ultimo_lacre_regionais']);
+            }
+
+            if (isset($_GET['responsavel'])) {
+                $params[] = "responsavel=" . urlencode($_GET['responsavel']);
+            } elseif (isset($_SESSION['ultimo_responsavel'])) {
+                $params[] = "responsavel=" . urlencode($_SESSION['ultimo_responsavel']);
+            }
             
             // Adicionar as datas selecionadas
             if (!empty($_SESSION['datas_filtro'])) {
@@ -1655,6 +1675,13 @@ $analise_expedicao = analisar_expedicao($pdo_controle, $pdo_servico, $datas_filt
 $lacre_capital = isset($_GET['lacre_capital']) ? (int)$_GET['lacre_capital'] : 1;
 $lacre_central = isset($_GET['lacre_central']) ? (int)$_GET['lacre_central'] : 0;
 $lacre_regionais = isset($_GET['lacre_regionais']) ? (int)$_GET['lacre_regionais'] : 0;
+// Persistir os ultimos lacres iniciais na sessao para preservar valores
+// quando ações POST (ex: adicionar posto manual) redirecionarem sem os GETs
+$_SESSION['ultimo_lacre_capital'] = $lacre_capital;
+$_SESSION['ultimo_lacre_central'] = $lacre_central;
+$_SESSION['ultimo_lacre_regionais'] = $lacre_regionais;
+// Persistir responsavel selecionado
+$_SESSION['ultimo_responsavel'] = $responsavel;
 $responsavel = isset($_GET['responsavel']) ? $_GET['responsavel'] : 'Responsável Não Informado';
 $cliente = isset($_GET['cliente']) ? $_GET['cliente'] : 'Cliente Não Informado';
 $data_geracao = date('d/m/Y');
