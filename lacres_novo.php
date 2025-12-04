@@ -3942,7 +3942,6 @@ function apenasGravarCorreios() {
 // Funcoes para excluir postos (compativel com navegadores antigos)
 function excluirPosto(codigo, grupo, nome) {
     if (confirm('Confirma a exclusao do posto ' + nome + '?')) {
-        salvarEstadoEtiquetasCorreios();
         document.getElementById('excluir_posto_flag').value = '1';
         document.getElementById('excluir_posto_regional_flag').value = '';
         document.getElementById('excluir_codigo_posto').value = codigo;
@@ -3953,7 +3952,6 @@ function excluirPosto(codigo, grupo, nome) {
 
 function excluirPostoRegional(codigo, nome) {
     if (confirm('Confirma a exclusao do posto REGIONAL ' + nome + '?')) {
-        salvarEstadoEtiquetasCorreios();
         document.getElementById('excluir_posto_flag').value = '';
         document.getElementById('excluir_posto_regional_flag').value = '1';
         document.getElementById('excluir_codigo_posto').value = codigo;
