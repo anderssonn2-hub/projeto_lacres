@@ -2017,7 +2017,7 @@ if ($recalculo_por_lacre && (int)$lacre_central > 0) {
         $indice = $linha['posto_codigo'];
         $linha['lacre_iipr'] = $lacre_iipr_cur;
         $ultimo_central = $linha['lacre_iipr'];
-        $lacre_iipr_cur += 2;
+        $lacre_iipr_cur += 1;  // v8.11.2: CENTRAL IIPR usa incremento sequencial de +1
     }
     unset($linha);
 } else {
