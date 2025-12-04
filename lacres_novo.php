@@ -3307,17 +3307,16 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
         <?php endforeach; ?>
     </form>
 </div>
-
 <div class="quadro quadro-formulario">
     <form method="post" style="margin-bottom: 10px;" onsubmit="return confirmarLimparSessao(this);">
         <button type="submit" name="limpar_sessao" class="btn-limpar">Limpar Sessão</button>
     </form>
-    <form method="get" action="<?php echo $_SERVER['PHP_SELF'] ?>" id="formFiltroData" onsubmit="salvarEstadoEtiquetasCorreios();">
+    <form method="get" action="<?php echo $_SERVER['PHP_SELF'] ?>" id="formFiltroData" onsubmit="limparLacresPorRecalculo(); salvarEstadoEtiquetasCorreios();">
         <div class="topo-formulario">
             <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>" required></label>
             <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>" required></label>
             <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>" required></label>
-            <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="0">
+            <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo (isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') ? '1' : '0' ?>">
             <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
         </div>
         <div class="alinhado">
@@ -3710,6 +3709,18 @@ function salvarEstadoEtiquetasCorreios() {
         return;
     }
 
+    // v8.11.2: Se estamos em recalculo por lacre, nao salvar em localStorage para
+    // evitar sobrescrita de valores quando a restauracao rodar (mesmo que seja pulada
+    // normalmente, eh mais seguro nao ter valores vazios gravados)
+    try {
+        var recalEl = document.getElementById('recalculo_por_lacre');
+        if (recalEl && String(recalEl.value) === '1') {
+            return;
+        }
+    } catch (e) {
+        // ignore
+    }
+
     var idDespachoInput = document.getElementById('id_despacho');
     var idDespacho = idDespachoInput ? idDespachoInput.value : '';
 
@@ -3963,6 +3974,59 @@ function limparColuna(grupo, tipoColuna) {
     marcarComoNaoSalvo();
     
     alert('Coluna "' + nomeColuna + '" do grupo "' + grupo + '" foi limpa com sucesso!');
+}
+
+// v8.11.2: Limpar lacres de forma silenciosa (sem confirmacao) quando ha recalculo por lacre
+// Esta funcao eh chamada automaticamente antes de submeter o filtro quando o usuario altera lacres iniciais
+function limparLacresPorRecalculo() {
+    var recalEl = document.getElementById('recalculo_por_lacre');
+    var lacreCap = document.getElementById('lacre_capital_input');
+    var lacreCentral = document.getElementById('lacre_central_input');
+    var lacreRegionais = document.getElementById('lacre_regionais_input');
+    
+    // So limpar se recalculo_por_lacre == '1'
+    if (!recalEl || String(recalEl.value) !== '1') {
+        return;
+    }
+    
+    // Determinar quais grupos tiveram alteracao no lacre inicial
+    // Se algum foi alterado, limpamos esse grupo
+    
+    // CAPITAL
+    if (lacreCap && lacreCap.value !== '') {
+        var tabelaCap = document.getElementById('tabela-capital');
+        if (tabelaCap) {
+            var inputsCap = tabelaCap.querySelectorAll('input[name^="lacre_iipr["], input[name^="lacre_correios["]');
+            for (var i = 0; i < inputsCap.length; i++) {
+                inputsCap[i].value = '';
+            }
+        }
+    }
+    
+    // CENTRAL IIPR
+    if (lacreCentral && lacreCentral.value !== '') {
+        var tabelaCentral = document.getElementById('tabela-central-iipr');
+        if (!tabelaCentral) {
+            tabelaCentral = document.getElementById('tblCentralIIPR');
+        }
+        if (tabelaCentral) {
+            var inputsCentral = tabelaCentral.querySelectorAll('input[name^="lacre_iipr["], input[name^="lacre_correios["]');
+            for (var i = 0; i < inputsCentral.length; i++) {
+                inputsCentral[i].value = '';
+            }
+        }
+    }
+    
+    // REGIONAIS
+    if (lacreRegionais && lacreRegionais.value !== '') {
+        var tabelaRegionais = document.getElementById('tabela-regionais');
+        if (tabelaRegionais) {
+            var inputsRegionais = tabelaRegionais.querySelectorAll('input[name^="lacre_iipr["], input[name^="lacre_correios["]');
+            for (var i = 0; i < inputsRegionais.length; i++) {
+                inputsRegionais[i].value = '';
+            }
+        }
+    }
 }
 
 // Funcao especial para limpar etiquetas da Central IIPR (incluindo campos readonly do split)
