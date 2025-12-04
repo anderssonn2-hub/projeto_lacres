@@ -24,6 +24,12 @@
 // - Funções JS: salvarEstadoEtiquetasCorreios(), restaurarEstadoEtiquetasCorreios()
 // - Chamadas: antes de excluir posto, antes de aplicar filtro de data, ao carregar página
 // - Garante que nenhum dado digitado seja perdido ao usar filtros ou remover linhas
+// v8.11.1: Confirmação de gravação, modo sobrescrever/novo ofício, destaque visual de splits na CENTRAL IIPR
+// - Adiciona confirmacao antes de gravar o ofício + escolha sobrescrever/novo
+// - Campo hidden `modo_oficio` no form de Correios
+// - Destaque leve das linhas abaixo do split (.split-central-grupo1/2/...)
+// - Confirmação ao limpar sessão e reset parcial da CENTRAL IIPR ao limpar coluna X
+// - Compatível com PHP 5.3 / ES5 (Yii 1.x)
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -96,6 +102,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_lacres_pt') {
         }
 
         $pdo_controle->beginTransaction();
+
+        
 
         $sqlSel = "
             SELECT COUNT(*)
@@ -384,6 +392,27 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         }
 
         $pdo_controle->beginTransaction();
+
+        // v8.11.1: modo de ofício (sobrescrever / novo)
+        $modoOficio = '';
+        if (isset($_POST['modo_oficio'])) {
+            $modoOficio = $_POST['modo_oficio'];
+        }
+
+        // Recuperar ultimo ofício Correios (se houver)
+        $ultimoIdDespachoCorreios = null;
+        $stUlt = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE grupo = 'CORREIOS' ORDER BY id DESC LIMIT 1");
+        $stUlt->execute();
+        $rowUlt = $stUlt->fetch(PDO::FETCH_ASSOC);
+        if ($rowUlt && isset($rowUlt['id'])) {
+            $ultimoIdDespachoCorreios = (int)$rowUlt['id'];
+        }
+
+        // Se modo sobrescrever, apagar lotes vinculados ao ultimo ofício antes de gravar
+        if ($modoOficio === 'sobrescrever' && $ultimoIdDespachoCorreios !== null) {
+            $stDelOld = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho = ?");
+            $stDelOld->execute(array($ultimoIdDespachoCorreios));
+        }
 
         // 1) Coleta das datas
         $datasStr = '';
@@ -3232,7 +3261,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 </div>
 
 <div class="quadro quadro-formulario">
-    <form method="post" style="margin-bottom: 10px;">
+    <form method="post" style="margin-bottom: 10px;" onsubmit="return confirmarLimparSessao(this);">
         <button type="submit" name="limpar_sessao" class="btn-limpar">Limpar Sessão</button>
     </form>
     <form method="get" action="<?php echo $_SERVER['PHP_SELF'] ?>" id="formFiltroData" onsubmit="salvarEstadoEtiquetasCorreios();">
@@ -3317,10 +3346,11 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
     <input type="hidden" name="acao" id="acaoCorreios" value="salvar_oficio_correios">
     <input type="hidden" name="correios_datas" value="<?php echo htmlspecialchars(implode(',', $datas_filtro), ENT_QUOTES, 'UTF-8'); ?>">
     <input type="hidden" name="imprimir_apos_salvar" id="imprimirAposSalvar" value="0">
+    <input type="hidden" name="modo_oficio" id="modo_oficio" value="" />
 
 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
     <button type="button" class="btn-imprimir" onclick="gravarEImprimirCorreios();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir</button>
-    <button type="button" class="btn-imprimir" onclick="apenasGravarCorreios();"><i>💾</i> Gravar Dados</button>
+    <button type="submit" class="btn-imprimir" onclick="return confirmarGravacaoOficioCorreios(this.form);"><i>💾</i> Gravar Dados</button>
     <button type="button" class="btn-imprimir" onclick="prepararEImprimir();" style="background:#6c757d;"><i>🖨️</i> Apenas Imprimir</button>
     <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()"><i>💾</i> Salvar Etiquetas Correios</button>
 </div>
@@ -3710,6 +3740,78 @@ function restaurarEstadoEtiquetasCorreios() {
     }
 }
 
+// v8.11.1: Confirmacao antes de gravar o oficio + escolha sobrescrever/novo
+function confirmarGravacaoOficioCorreios(form) {
+    if (!form) return false;
+
+    var msg1 = "Você está prestes a GRAVAR TODOS os dados do Ofício dos Correios.\n\n" +
+               "Isso irá registrar no banco de dados os lotes, postos, lacres e etiquetas que estão na tela.\n\n" +
+               "Deseja continuar?";
+    if (!window.confirm(msg1)) {
+        return false;
+    }
+
+    var msg2 = "Como deseja proceder com o Ofício dos Correios?\n\n" +
+               "OK = SOBRESCREVER o último Ofício dos Correios (mantendo apenas este como válido).\n" +
+               "Cancelar = CRIAR um NOVO ofício adicional, sem remover o último.\n\n" +
+               "Cada ofício terá seu número próprio, como já acontece hoje.";
+    var modo = window.confirm(msg2) ? "sobrescrever" : "novo";
+
+    var campoModo = document.getElementById('modo_oficio');
+    if (campoModo) {
+        campoModo.value = modo;
+    }
+
+    // Preparar lacres/etiquetas antes do envio
+    if (typeof prepararLacresCorreiosParaSubmit === 'function') {
+        prepararLacresCorreiosParaSubmit(form);
+    }
+
+    // Garantir que campo acao esteja correto (quando via submit direto)
+    var acao = document.getElementById('acaoCorreios');
+    if (acao) {
+        acao.value = 'salvar_oficio_correios';
+    }
+
+    // Deixar o browser submeter o form (return true)
+    return true;
+}
+
+// v8.11.1: Confirmacao antes de limpar sessao (zera inputs + localStorage relacionado ao oficio)
+function confirmarLimparSessao(form) {
+    var msg = "Você está prestes a LIMPAR TODA A SESSÃO deste Ofício.\n\n" +
+              "Isso irá zerar TODOS os inputs de lacre e de etiqueta dos Correios.\n\n" +
+              "Deseja continuar?";
+    if (!window.confirm(msg)) {
+        return false;
+    }
+
+    try {
+        // Zerar inputs visuais de lacres e etiquetas
+        var inputs = document.querySelectorAll('input.lacre, input.etiqueta-barras, input.central-correios, input.central-etiqueta');
+        for (var i = 0; i < inputs.length; i++) {
+            inputs[i].value = '';
+            try { inputs[i].removeAttribute('readonly'); } catch (e) {}
+        }
+
+        // Limpar localStorage relacionado ao despacho atual
+        var idDespInput = document.getElementById('id_despacho');
+        var idDespacho = idDespInput ? idDespInput.value : '';
+        for (var k = localStorage.length - 1; k >= 0; k--) {
+            var key = localStorage.key(k);
+            if (!key) continue;
+            if (key.indexOf('oficioCorreios:' + idDespacho + ':') === 0) {
+                localStorage.removeItem(key);
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
+
+    // permitir que o form submeta para a action que limpa a sessao
+    return true;
+}
+
 function gravarEImprimirCorreios() {
     var form = document.getElementById('formOficioCorreios');
     if (form) {
@@ -3821,13 +3923,49 @@ function limparEtiquetasCentral() {
         inputs[i].removeAttribute('readonly');
         inputs[i].className = 'etiqueta-barras etiqueta-central';
     }
-    
-    // Resetar estado do split
-    window.splitCentralAtivo = false;
-    
+
+    // Resetar estado do split (variaveis JS e classes visuais)
+    try {
+        window.splitCentralAtivo = false;
+        splitIndexCentral = null;
+        window.splitVisualIndices = [];
+
+        // Remover classes visuais das linhas da central
+        var linhasCentral = document.querySelectorAll('tr.linha-central');
+        for (var r = 0; r < linhasCentral.length; r++) {
+            for (var g = 1; g <= 5; g++) {
+                removerClasse(linhasCentral[r], 'split-central-grupo' + g);
+            }
+        }
+
+        // Resetar estilo dos botões de split
+        var allSplitBtns = document.querySelectorAll('button[onclick*="definirSplitAqui"]');
+        for (var b = 0; b < allSplitBtns.length; b++) {
+            allSplitBtns[b].style.background = '';
+            allSplitBtns[b].textContent = 'Split aqui';
+            allSplitBtns[b].style.border = '';
+        }
+
+        // Limpar localStorage relacionado a CENTRAL IIPR (se houver id_despacho)
+        var idDespInput = document.getElementById('id_despacho');
+        var idDespacho = idDespInput ? idDespInput.value : '';
+        try {
+            for (var k = localStorage.length - 1; k >= 0; k--) {
+                var key = localStorage.key(k);
+                if (!key) continue;
+                if (key.indexOf('oficioCorreios:' + idDespacho + ':') === 0) {
+                    // Opcionalmente, filtrar por regional da central se necessario
+                    localStorage.removeItem(key);
+                }
+            }
+        } catch (e) { /* ignore */ }
+    } catch (e) {
+        // ignore erros de limpeza visual
+    }
+
     // Marcar como nao salvo
     marcarComoNaoSalvo();
-    
+
     alert('Etiquetas da Central IIPR foram limpas com sucesso!');
 }
 
@@ -3868,6 +4006,26 @@ function marcarComoSalvo() {
 
 // Inicializar monitoramento de alteracoes nos inputs
 function inicializarMonitoramentoAlteracoes() {
+    // v8.11.1: Injetar estilos de destaque para splits (se ainda nao existe)
+    if (typeof document !== 'undefined' && document.getElementById && !document.getElementById('split-central-styles')) {
+        try {
+            var styleEl = document.createElement('style');
+            styleEl.id = 'split-central-styles';
+            styleEl.type = 'text/css';
+            var css = '.split-central-grupo1 { background-color: #fffbe6; } ' +
+                      '.split-central-grupo2 { background-color: #e8f7ff; } ' +
+                      '.split-central-grupo3 { background-color: #fff3e0; } ' +
+                      '.split-central-grupo4 { background-color: #f3ffe8; } ' +
+                      '.split-central-grupo5 { background-color: #f0f4ff; }';
+            if (styleEl.styleSheet) { styleEl.styleSheet.cssText = css; } else { styleEl.appendChild(document.createTextNode(css)); }
+            var heads = document.getElementsByTagName('head');
+            if (heads && heads.length) { heads[0].appendChild(styleEl); }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Inicializar array de indices visuais (v8.11.1)
+    window.splitVisualIndices = window.splitVisualIndices || [];
+
     // v8.11: Restaurar estado dos inputs de lacres/etiquetas (localStorage)
     restaurarEstadoEtiquetasCorreios();
     
@@ -4073,37 +4231,83 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // V8.0: Pure JavaScript implementation for SPLIT and field replication (no AJAX)
     var splitIndexCentral = null;
-    
+    // v8.11.1: indices visuais para destacar multiplos splits
+    window.splitVisualIndices = window.splitVisualIndices || [];
+
+    // Aplica destaque visual nas linhas da CENTRAL de acordo com splitVisualIndices
+    function aplicarDestaqueSplits() {
+        var linhasCentral = document.querySelectorAll('tr.linha-central');
+        if (!linhasCentral) return;
+
+        // Remover classes antigas
+        for (var i = 0; i < linhasCentral.length; i++) {
+            for (var g = 1; g <= 5; g++) {
+                removerClasse(linhasCentral[i], 'split-central-grupo' + g);
+            }
+        }
+
+        if (!window.splitVisualIndices || window.splitVisualIndices.length === 0) return;
+
+        // Ordenar indices e aplicar classes aos ranges abaixo de cada split
+        var indices = window.splitVisualIndices.slice(0).sort(function(a,b){return a-b;});
+        var total = linhasCentral.length;
+        for (var gi = 0; gi < indices.length; gi++) {
+            var start = indices[gi] + 1; // linhas abaixo do split
+            var end = (gi + 1 < indices.length) ? (indices[gi+1]) : (total - 1);
+            var classe = 'split-central-grupo' + (gi + 1);
+            for (var r = start; r <= end; r++) {
+                if (r >= 0 && r < total) {
+                    adicionarClasse(linhasCentral[r], classe);
+                }
+            }
+        }
+    }
+
     // Function to define split position (called by button onclick)
     window.definirSplitAqui = function(btn) {
         var tr = btn;
         while (tr && tr.tagName !== 'TR') tr = tr.parentNode;
         if (!tr) return;
-        
+
         var linhasCentral = document.querySelectorAll('tr.linha-central');
         var idx = -1;
         for (var i = 0; i < linhasCentral.length; i++) {
             if (linhasCentral[i] === tr) { idx = i; break; }
         }
         if (idx < 0) return;
-        
-        // Toggle split: if already set to this index, remove it; otherwise set it
-        if (splitIndexCentral === idx) {
-            splitIndexCentral = null;
+
+        // Toggle visual split: se ja existe no array, remover; senao adicionar
+        var foundPos = -1;
+        for (var z = 0; z < window.splitVisualIndices.length; z++) {
+            if (window.splitVisualIndices[z] === idx) { foundPos = z; break; }
+        }
+        if (foundPos >= 0) {
+            // remover
+            window.splitVisualIndices.splice(foundPos, 1);
             btn.style.background = '';
             btn.textContent = 'Split aqui';
         } else {
-            // Clear any previous split button styling
-            var allSplitBtns = document.querySelectorAll('button[onclick*="definirSplitAqui"]');
-            for (var j = 0; j < allSplitBtns.length; j++) {
-                allSplitBtns[j].style.background = '';
-                allSplitBtns[j].textContent = 'Split aqui';
-            }
-            // Set new split
-            splitIndexCentral = idx;
+            // adicionar
+            window.splitVisualIndices.push(idx);
             btn.style.background = '#ff9800';
             btn.textContent = '← Split AQUI';
         }
+
+        // Manter compatibilidade com comportamento antigo: alternar splitIndexCentral para logica de replicacao
+        if (splitIndexCentral === idx) {
+            splitIndexCentral = null;
+        } else {
+            // Limpar estilo de botoes de split antigos para que apenas o "ativo" (logica) fique destacado
+            var allSplitBtns = document.querySelectorAll('button[onclick*="definirSplitAqui"]');
+            for (var j = 0; j < allSplitBtns.length; j++) {
+                allSplitBtns[j].style.border = '';
+            }
+            splitIndexCentral = idx;
+            btn.style.border = '2px solid #ff9800';
+        }
+
+        // Aplicar destaques visuais
+        aplicarDestaqueSplits();
     };
     
     // Function to replicate value within appropriate group (called by input listeners)
