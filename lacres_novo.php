@@ -3266,9 +3266,10 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
     </form>
     <form method="get" action="<?php echo $_SERVER['PHP_SELF'] ?>" id="formFiltroData" onsubmit="salvarEstadoEtiquetasCorreios();">
         <div class="topo-formulario">
-            <label>Lacre Capital: <input type="number" name="lacre_capital" value="<?php echo $lacre_capital ?>" required></label>
-            <label>Lacre Central: <input type="number" name="lacre_central" value="<?php echo $lacre_central ?>" required></label>
-            <label>Lacre Regionais: <input type="number" name="lacre_regionais" value="<?php echo $lacre_regionais ?>" required></label>
+            <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>" required></label>
+            <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>" required></label>
+            <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>" required></label>
+            <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="0">
             <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
         </div>
         <div class="alinhado">
@@ -3701,11 +3702,14 @@ function restaurarEstadoEtiquetasCorreios() {
         return;
     }
 
-    // Se a página foi carregada após um filtro com lacre inicial (GET com lacre_capital/central/regionais),
-    // devemos PRESERVAR os valores calculados no servidor e NÃO restaurar localStorage que sobrescreva
+    // Se a página foi carregada após um filtro com lacre inicial, um hidden
+    // `recalculo_por_lacre` será enviado com valor '1'. Nesse caso, PULAR a
+    // restauração do localStorage para permitir que os valores calculados no
+    // servidor prevaleçam. Em todos os demais casos (remoção de posto, filtro
+    // sem alteração de lacre, etc.) devemos restaurar normalmente.
     try {
-        var hasLacreHidden = document.querySelector('input[type="hidden"][name="lacre_capital"], input[type="hidden"][name="lacre_central"], input[type="hidden"][name="lacre_regionais"]');
-        if (hasLacreHidden) {
+        var recalculoEl = document.getElementById('recalculo_por_lacre');
+        if (recalculoEl && String(recalculoEl.value) === '1') {
             return;
         }
     } catch (e) {
@@ -3754,19 +3758,21 @@ function restaurarEstadoEtiquetasCorreios() {
 // v8.11.1: Confirmacao antes de gravar o oficio + escolha sobrescrever/novo
 function confirmarGravacaoOficioCorreios(form) {
     if (!form) return false;
-
+    // 1ª pergunta: confirmar que quer gravar
     var msg1 = "Você está prestes a GRAVAR TODOS os dados do Ofício dos Correios.\n\n" +
                "Isso irá registrar no banco de dados os lotes, postos, lacres e etiquetas que estão na tela.\n\n" +
-               "Deseja continuar?";
+               "Deseja realmente gravar o Ofício dos Correios agora?";
     if (!window.confirm(msg1)) {
         return false;
     }
 
-    var msg2 = "Como deseja proceder com o Ofício dos Correios?\n\n" +
-               "OK = SOBRESCREVER o último Ofício dos Correios (mantendo apenas este como válido).\n" +
-               "Cancelar = CRIAR um NOVO ofício adicional, sem remover o último.\n\n" +
-               "Cada ofício terá seu número próprio, como já acontece hoje.";
-    var modo = window.confirm(msg2) ? "sobrescrever" : "novo";
+    // 2ª pergunta: escolha entre sobrescrever ou criar novo
+    var msg2 = "Escolha como deseja gravar:\n\n" +
+               "OK = CONFIRMAR SOBRESCRITA do último ofício dos Correios existente (substitui o anterior).\n" +
+               "Cancelar = CRIAR NOVO OFÍCIO para esta data (mantém os anteriores e cria um novo número).\n\n" +
+               "Tem certeza da sua escolha?";
+    var sobrescrever = window.confirm(msg2);
+    var modo = sobrescrever ? 'sobrescrever' : 'novo';
 
     var campoModo = document.getElementById('modo_oficio');
     if (campoModo) {
@@ -3775,7 +3781,7 @@ function confirmarGravacaoOficioCorreios(form) {
 
     // Preparar lacres/etiquetas antes do envio
     if (typeof prepararLacresCorreiosParaSubmit === 'function') {
-        prepararLacresCorreiosParaSubmit(form);
+        try { prepararLacresCorreiosParaSubmit(form); } catch (e) { /* ignore */ }
     }
 
     // Garantir que campo acao esteja correto (quando via submit direto)
@@ -3784,7 +3790,7 @@ function confirmarGravacaoOficioCorreios(form) {
         acao.value = 'salvar_oficio_correios';
     }
 
-    // Deixar o browser submeter o form (return true)
+    // Submeter o form: retornar true (apenas quando usuário confirmou)
     return true;
 }
 
@@ -4056,6 +4062,23 @@ function inicializarMonitoramentoAlteracoes() {
             marcarComoNaoSalvo();
         });
     }
+
+    // Se o usuário alterar os lacres iniciais no formulário de filtro, marcar que
+    // estamos fazendo um recálculo por lacre para que a restauração do localStorage
+    // seja pulada (apenas neste caso). Isso evita que a restauração destrua os
+    // valores calculados quando o usuário quer recalcular.
+    try {
+        var lacreCap = document.getElementById('lacre_capital_input');
+        var lacreCentral = document.getElementById('lacre_central_input');
+        var lacreRegionais = document.getElementById('lacre_regionais_input');
+        var recalEl = document.getElementById('recalculo_por_lacre');
+        var setRecal = function() {
+            try { if (recalEl) recalEl.value = '1'; } catch (e) {}
+        };
+        if (lacreCap) { lacreCap.addEventListener('input', setRecal); lacreCap.addEventListener('change', setRecal); }
+        if (lacreCentral) { lacreCentral.addEventListener('input', setRecal); lacreCentral.addEventListener('change', setRecal); }
+        if (lacreRegionais) { lacreRegionais.addEventListener('input', setRecal); lacreRegionais.addEventListener('change', setRecal); }
+    } catch (e) { /* ignore */ }
     
     // VERSAO 3: Iniciar SEM pulsacao (so pulsa quando ha mudanca)
     // Pagina recarrega apos salvar, entao comeca sempre sem pulsacao
