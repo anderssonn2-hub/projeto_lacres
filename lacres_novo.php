@@ -1964,39 +1964,74 @@ foreach ($dados['REGIONAIS'] as $key => $posto) {
 $dados['REGIONAIS'] = array_values($dados['REGIONAIS']);
 
 // Atribuição de lacres
+// Detectar se houve recálculo por lacre (campo hidden no form de filtro)
+$recalculo_por_lacre = false;
+if ((isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') || (isset($_POST['recalculo_por_lacre']) && $_POST['recalculo_por_lacre'] === '1')) {
+    $recalculo_por_lacre = true;
+}
+
+// Inicializadores padrão
 $lacre_atual_capital = $lacre_capital;
 $lacre_atual_central = $lacre_central;
 $lacre_atual_regionais = $lacre_regionais;
 $ultimo_central = null;
 
+// Se houve recálculo por lacre, iremos sobrescrever totalmente os valores
+// por grupo (CAPITAL, CENTRAL IIPR, REGIONAIS) abaixo, ignorando valores
+// anteriores em sessão ou base.
+
 // CAPITAL: Atribuir lacres
-foreach ($dados['CAPITAL'] as &$linha) {
-    $indice = $linha['posto_codigo'];
-    if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
-        $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
-    } else {
-        $linha['lacre_iipr'] = $lacre_atual_capital++;
+if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
+    $lacre_iipr_cur = (int)$lacre_capital;
+    $lacre_corr_cur = $lacre_iipr_cur + 1;
+    foreach ($dados['CAPITAL'] as &$linha) {
+        $indice = $linha['posto_codigo'];
+        $linha['lacre_iipr'] = $lacre_iipr_cur;
+        $linha['lacre_correios'] = $lacre_corr_cur;
+        $lacre_iipr_cur += 2;
+        $lacre_corr_cur += 2;
     }
-    
-    if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
-        $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
-    } else {
-        $linha['lacre_correios'] = $lacre_atual_capital++;
+    unset($linha);
+} else {
+    foreach ($dados['CAPITAL'] as &$linha) {
+        $indice = $linha['posto_codigo'];
+        if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
+            $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
+        } else {
+            $linha['lacre_iipr'] = $lacre_atual_capital++;
+        }
+        
+        if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
+            $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
+        } else {
+            $linha['lacre_correios'] = $lacre_atual_capital++;
+        }
     }
+    unset($linha);
 }
-unset($linha);
 
 // CENTRAL IIPR: Atribuir lacres IIPR
-foreach ($dados['CENTRAL IIPR'] as &$linha) {
-    $indice = $linha['posto_codigo'];
-    if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
-        $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
-    } else {
-        $linha['lacre_iipr'] = $lacre_atual_central++;
+if ($recalculo_por_lacre && (int)$lacre_central > 0) {
+    $lacre_iipr_cur = (int)$lacre_central;
+    foreach ($dados['CENTRAL IIPR'] as &$linha) {
+        $indice = $linha['posto_codigo'];
+        $linha['lacre_iipr'] = $lacre_iipr_cur;
+        $ultimo_central = $linha['lacre_iipr'];
+        $lacre_iipr_cur += 2;
     }
-    $ultimo_central = $linha['lacre_iipr'];
+    unset($linha);
+} else {
+    foreach ($dados['CENTRAL IIPR'] as &$linha) {
+        $indice = $linha['posto_codigo'];
+        if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
+            $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
+        } else {
+            $linha['lacre_iipr'] = $lacre_atual_central++;
+        }
+        $ultimo_central = $linha['lacre_iipr'];
+    }
+    unset($linha);
 }
-unset($linha);
 
 // CENTRAL IIPR: Atribuir lacre correios por MALOTE (grupos definidos por $splitsCentral)
 // Comportamento:
@@ -2061,21 +2096,34 @@ if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
 }
 
 // REGIONAIS: Atribuir lacres
-foreach ($dados['REGIONAIS'] as &$linha) {
-    $indice = $linha['posto_codigo'];
-    if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
-        $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
-    } else {
-        $linha['lacre_iipr'] = $lacre_atual_regionais++;
+if ($recalculo_por_lacre && (int)$lacre_regionais > 0) {
+    $lacre_iipr_cur = (int)$lacre_regionais;
+    $lacre_corr_cur = $lacre_iipr_cur + 1;
+    foreach ($dados['REGIONAIS'] as &$linha) {
+        $indice = $linha['posto_codigo'];
+        $linha['lacre_iipr'] = $lacre_iipr_cur;
+        $linha['lacre_correios'] = $lacre_corr_cur;
+        $lacre_iipr_cur += 2;
+        $lacre_corr_cur += 2;
     }
-    
-    if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
-        $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
-    } else {
-        $linha['lacre_correios'] = $lacre_atual_regionais++;
+    unset($linha);
+} else {
+    foreach ($dados['REGIONAIS'] as &$linha) {
+        $indice = $linha['posto_codigo'];
+        if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
+            $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
+        } else {
+            $linha['lacre_iipr'] = $lacre_atual_regionais++;
+        }
+        
+        if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
+            $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
+        } else {
+            $linha['lacre_correios'] = $lacre_atual_regionais++;
+        }
     }
+    unset($linha);
 }
-unset($linha);
 
 // Lista de regionais para dropdown
 $todas_regionais = array();
