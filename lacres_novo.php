@@ -387,6 +387,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
 // Salva todos os postos CAPITAL, CENTRAL IIPR e REGIONAIS com lacres e etiquetas
 if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
     try {
+        // Debug: registrar que o handler foi invocado e quais dados chegaram via POST
+        try { add_debug('V8.11.X - salvar_oficio_correios chamado', $_POST); } catch (e) { /* ignore */ }
         if (!isset($pdo_controle) || !($pdo_controle instanceof PDO)) {
             throw new Exception('PDO $pdo_controle nao disponivel.');
         }
@@ -3759,20 +3761,46 @@ function salvarEstadoEtiquetasCorreios() {
 
         if (!postoCodigo) continue;
 
-        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
-        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
+        // Apenas salvar a etiqueta de correios (código de barras).
+        // Evita que valores de lacres calculados/servidos pelo backend sejam
+        // sobrescritos por restaurações do localStorage.
         var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
-
-        var valI = inpIIPR ? String(inpIIPR.value || '').trim() : '';
-        var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
         var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
         var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
-        var valor = {
-            lacre_iipr: valI,
-            lacre_correios: valC,
-            etiqueta_correios: valE
-        };
+        var valor = { etiqueta_correios: valE };
+
+        try {
+            window.localStorage.setItem(chaveBase, JSON.stringify(valor));
+        } catch (e) {
+            // localStorage cheio ou desabilitado
+        }
+    }
+}
+
+// Salvar somente as etiquetas Correios (códigos de barras) no localStorage
+// Usado antes de excluir uma linha para preservar apenas as etiquetas
+function salvarSomenteEtiquetasCorreios() {
+    if (typeof window.localStorage === 'undefined') {
+        return;
+    }
+
+    var idDespachoInput = document.getElementById('id_despacho');
+    var idDespacho = idDespachoInput ? idDespachoInput.value : '';
+
+    var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    for (var r = 0; r < rows.length; r++) {
+        var tr = rows[r];
+        var postoCodigo = tr.getAttribute('data-posto-codigo');
+        var regionalCodigo = tr.getAttribute('data-regional-codigo') || tr.getAttribute('data-regional') || '0';
+
+        if (!postoCodigo) continue;
+
+        var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+        var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
+
+        var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
+        var valor = { etiqueta_correios: valE };
 
         try {
             window.localStorage.setItem(chaveBase, JSON.stringify(valor));
@@ -3788,19 +3816,11 @@ function restaurarEstadoEtiquetasCorreios() {
         return;
     }
 
-    // Se a página foi carregada após um filtro com lacre inicial, um hidden
-    // `recalculo_por_lacre` será enviado com valor '1'. Nesse caso, PULAR a
-    // restauração do localStorage para permitir que os valores calculados no
-    // servidor prevaleçam. Em todos os demais casos (remoção de posto, filtro
-    // sem alteração de lacre, etc.) devemos restaurar normalmente.
-    try {
-        var recalculoEl = document.getElementById('recalculo_por_lacre');
-        if (recalculoEl && String(recalculoEl.value) === '1') {
-            return;
-        }
-    } catch (e) {
-        // ignore
-    }
+    // Restaura apenas as etiquetas de correios (códigos de barras).
+    // Mantemos a restauração mesmo quando `recalculo_por_lacre` estiver setado,
+    // pois lacres são recalculados no servidor e não devem ser substituídos
+    // pelo conteúdo do localStorage; entretanto precisamos preservar as
+    // etiquetas do usuário em qualquer fluxo (remoção, filtro, etc.).
 
     var idDespachoInput = document.getElementById('id_despacho');
     var idDespacho = idDespachoInput ? idDespachoInput.value : '';
@@ -3825,17 +3845,8 @@ function restaurarEstadoEtiquetasCorreios() {
             continue;
         }
 
-        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
-        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
         var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
-
-        if (inpIIPR && valor.lacre_iipr) {
-            inpIIPR.value = valor.lacre_iipr;
-        }
-        if (inpCorr && valor.lacre_correios) {
-            inpCorr.value = valor.lacre_correios;
-        }
-        if (inpEtiq && valor.etiqueta_correios) {
+        if (inpEtiq && valor && valor.etiqueta_correios) {
             inpEtiq.value = valor.etiqueta_correios;
         }
     }
@@ -3942,6 +3953,7 @@ function apenasGravarCorreios() {
 // Funcoes para excluir postos (compativel com navegadores antigos)
 function excluirPosto(codigo, grupo, nome) {
     if (confirm('Confirma a exclusao do posto ' + nome + '?')) {
+        try { if (typeof salvarSomenteEtiquetasCorreios === 'function') salvarSomenteEtiquetasCorreios(); } catch (e) { /* ignore */ }
         document.getElementById('excluir_posto_flag').value = '1';
         document.getElementById('excluir_posto_regional_flag').value = '';
         document.getElementById('excluir_codigo_posto').value = codigo;
@@ -3952,6 +3964,7 @@ function excluirPosto(codigo, grupo, nome) {
 
 function excluirPostoRegional(codigo, nome) {
     if (confirm('Confirma a exclusao do posto REGIONAL ' + nome + '?')) {
+        try { if (typeof salvarSomenteEtiquetasCorreios === 'function') salvarSomenteEtiquetasCorreios(); } catch (e) { /* ignore */ }
         document.getElementById('excluir_posto_flag').value = '';
         document.getElementById('excluir_posto_regional_flag').value = '1';
         document.getElementById('excluir_codigo_posto').value = codigo;
