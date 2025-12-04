@@ -4133,6 +4133,136 @@ function marcarComoSalvo() {
     }
 }
 
+// v8.11.2: Preencher lacres automaticamente ao adicionar posto manualmente
+// Essa funcao calcula o lacre da nova linha com base no ultimo lacre do grupo
+function preencherLacresParaPostoManual(event) {
+    try {
+        var form = document.querySelector('.form-adicionar');
+        if (!form) return;
+
+        // Obter valores do formulario
+        var tipoEl = form.querySelector('select[name="tipo_posto"]');
+        var lacreManualIIPR = form.querySelector('input[name="lacre_iipr_manual"]');
+        var lacreManualCorr = form.querySelector('input[name="lacre_correios_manual"]');
+        if (!tipoEl || !lacreManualIIPR || !lacreManualCorr) return;
+
+        var grupo = String(tipoEl.value || '').trim();
+        var tabelaId = 'tabela-' + grupo.toLowerCase().replace(/ /g, '-');
+        var tabela = document.getElementById(tabelaId);
+
+        // Função util: encontra ultimo valor numerico não vazio em uma lista de inputs
+        var encontrarUltimo = function(inputs) {
+            var ultimo = null;
+            for (var i = 0; i < inputs.length; i++) {
+                var v = String(inputs[i].value || '').trim();
+                if (v !== '') {
+                    var n = parseInt(v, 10);
+                    if (!isNaN(n)) ultimo = n;
+                }
+            }
+            return ultimo;
+        };
+
+        var novoI = null;
+        var novoC = null;
+
+        if (tabela) {
+            // procurar todos os inputs lacre IIPR e Correios dentro da tabela
+            var inputsI = tabela.querySelectorAll('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
+            var inputsC = tabela.querySelectorAll('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
+
+            var ultimoI = encontrarUltimo(inputsI);
+            var ultimoC = encontrarUltimo(inputsC);
+
+            if (ultimoI !== null) {
+                // Grupo CENTRAL IIPR: lacre IIPR incrementa +1
+                if (grupo === 'CENTRAL IIPR') {
+                    novoI = ultimoI + 1;
+                } else {
+                    // CAPITAL e REGIONAIS: incremento +2
+                    novoI = ultimoI + 2;
+                }
+            }
+
+            if (ultimoC !== null) {
+                // Para lacre Correios, manter incremento de 2 para CAPITAL/REGIONAIS
+                if (grupo === 'CENTRAL IIPR') {
+                    // CENTRAL: manter o mesmo comportamento de correios (usar ultimo se existir)
+                    novoC = ultimoC;
+                } else {
+                    novoC = ultimoC + 2;
+                }
+            }
+        }
+
+        // Se nao encontrou ultimo, usar lacre inicial do formulario (caso exista)
+        if (novoI === null) {
+            try {
+                if (grupo === 'CAPITAL') {
+                    var base = document.getElementById('lacre_capital_input');
+                    if (base && String(base.value || '').trim() !== '') {
+                        var b = parseInt(String(base.value), 10);
+                        if (!isNaN(b)) {
+                            novoI = b;
+                        }
+                    }
+                } else if (grupo === 'CENTRAL IIPR') {
+                    var base = document.getElementById('lacre_central_input');
+                    if (base && String(base.value || '').trim() !== '') {
+                        var b = parseInt(String(base.value), 10);
+                        if (!isNaN(b)) {
+                            novoI = b;
+                        }
+                    }
+                } else {
+                    var base = document.getElementById('lacre_regionais_input');
+                    if (base && String(base.value || '').trim() !== '') {
+                        var b = parseInt(String(base.value), 10);
+                        if (!isNaN(b)) {
+                            novoI = b;
+                        }
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        if (novoC === null) {
+            try {
+                if (grupo === 'CAPITAL') {
+                    var baseC = document.getElementById('lacre_capital_input');
+                    if (baseC && String(baseC.value || '').trim() !== '') {
+                        var bc = parseInt(String(baseC.value), 10);
+                        if (!isNaN(bc)) novoC = bc + 1;
+                    }
+                } else if (grupo === 'CENTRAL IIPR') {
+                    // CENTRAL: usar lacre correios calculado pelo servidor por split; se nao houver, usar lacre_central+1
+                    var baseC = document.getElementById('lacre_central_input');
+                    if (baseC && String(baseC.value || '').trim() !== '') {
+                        var bc = parseInt(String(baseC.value), 10);
+                        if (!isNaN(bc)) novoC = bc + 1;
+                    }
+                } else {
+                    var baseC = document.getElementById('lacre_regionais_input');
+                    if (baseC && String(baseC.value || '').trim() !== '') {
+                        var bc = parseInt(String(baseC.value), 10);
+                        if (!isNaN(bc)) novoC = bc + 1;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        // Finalmente, atribuir os valores calculados ao form (sem alterar outras linhas)
+        if (novoI !== null) {
+            lacreManualIIPR.value = String(novoI);
+        }
+        if (novoC !== null) {
+            lacreManualCorr.value = String(novoC);
+        }
+    } catch (e) {
+        // em caso de erro, nao bloquear envio
+    }
+}
+
 // Inicializar monitoramento de alteracoes nos inputs
 function inicializarMonitoramentoAlteracoes() {
     // v8.11.1: Injetar estilos de destaque para splits (se ainda nao existe)
@@ -4191,6 +4321,18 @@ function inicializarMonitoramentoAlteracoes() {
         if (lacreCentral) { lacreCentral.addEventListener('input', setRecal); lacreCentral.addEventListener('change', setRecal); }
         if (lacreRegionais) { lacreRegionais.addEventListener('input', setRecal); lacreRegionais.addEventListener('change', setRecal); }
     } catch (e) { /* ignore */ }
+
+    // Interceptar envio do formulario 'Adicionar Posto Manualmente' para
+    // preencher automaticamente os lacres da nova linha sem tocar nas existentes
+    try {
+        var formAdicionar = document.querySelector('.form-adicionar');
+        if (formAdicionar) {
+            formAdicionar.addEventListener('submit', function(e) {
+                preencherLacresParaPostoManual(e);
+                // nao prevenir submit; apenas garantir que os campos estao preenchidos
+            });
+        }
+    } catch (er) { /* ignore */ }
     
     // VERSAO 3: Iniciar SEM pulsacao (so pulsa quando ha mudanca)
     // Pagina recarrega apos salvar, entao comeca sempre sem pulsacao
