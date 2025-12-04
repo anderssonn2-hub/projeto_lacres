@@ -3692,6 +3692,10 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 // v8.9: Prepara arrays alinhados de lacres/etiquetas + regional antes do submit
 function prepararLacresCorreiosParaSubmit(form) {
     if (!form) return;
+    try{
+        console.log('prepararLacresCorreiosParaSubmit INICIO', 'formId=', form && form.id ? form.id : '(nenhum)', 'rowsAntes=', (form.querySelectorAll ? form.querySelectorAll('tr[data-posto-codigo]').length : '??'));
+        try { alert('Preparando inputs ocultos para envio (início)'); } catch (ie) { /* ignore */ }
+    } catch (e) { /* ignore */ }
     // Remover inputs ocultos antigos, se existirem (v8.9: inclui regional_lacres[])
     var nomes = ['posto_lacres[]','lacre_iipr[]','lacre_correios[]','etiqueta_correios[]','regional_lacres[]'];
     for (var n=0;n<nomes.length;n++){
@@ -3729,6 +3733,10 @@ function prepararLacresCorreiosParaSubmit(form) {
         var d = document.createElement('input'); d.type='hidden'; d.name='etiqueta_correios[]'; d.value=valE; form.appendChild(d);
         var e = document.createElement('input'); e.type='hidden'; e.name='regional_lacres[]'; e.value=regional; form.appendChild(e);
     }
+    try{
+        console.log('prepararLacresCorreiosParaSubmit FIM - inputs ocultos criados para envio');
+        try { alert('Preparação de lacres concluída'); } catch (ie) { /* ignore */ }
+    } catch (e) { /* ignore */ }
 }
 
 // v8.11: Persistencia de lacres/etiquetas em localStorage
@@ -3855,6 +3863,8 @@ function restaurarEstadoEtiquetasCorreios() {
 // v8.11.1: Confirmacao antes de gravar o oficio + escolha sobrescrever/novo
 function confirmarGravacaoOficioCorreios(form) {
     if (!form) return false;
+    console.log('confirmarGravacaoOficioCorreios called', 'formId=', form && form.id ? form.id : '(sem id)');
+    try { alert('Iniciando gravação do Ofício dos Correios'); } catch (e) { /* ignore */ }
     // 1ª pergunta: confirmar que quer gravar
     var msg1 = "Você está prestes a GRAVAR TODOS os dados do Ofício dos Correios.\n\n" +
                "Isso irá registrar no banco de dados os lotes, postos, lacres e etiquetas que estão na tela.\n\n" +
@@ -3878,7 +3888,15 @@ function confirmarGravacaoOficioCorreios(form) {
 
     // Preparar lacres/etiquetas antes do envio
     if (typeof prepararLacresCorreiosParaSubmit === 'function') {
-        try { prepararLacresCorreiosParaSubmit(form); } catch (e) { /* ignore */ }
+        try {
+            console.log('Chamando prepararLacresCorreiosParaSubmit...');
+            try { alert('Preparando lacres e etiquetas para envio...'); } catch (e) { /* ignore */ }
+            prepararLacresCorreiosParaSubmit(form);
+            console.log('prepararLacresCorreiosParaSubmit concluido');
+        } catch (e) {
+            console.error('Erro em prepararLacresCorreiosParaSubmit:', e);
+            try { alert('Erro ao preparar lacres: ' + (e && e.message ? e.message : e)); } catch (ee) { /* ignore */ }
+        }
     }
 
     // Garantir que campo acao esteja correto (quando via submit direto)
@@ -3888,6 +3906,10 @@ function confirmarGravacaoOficioCorreios(form) {
     }
 
     // Submeter o form: retornar true (apenas quando usuário confirmou)
+    try {
+        console.log('confirmarGravacaoOficioCorreios: submetendo form', 'modo=', modo, 'acao=', (acao ? acao.value : '(nenhum)'));
+        try { alert('Submetendo formulário. Modo: ' + modo); } catch (e) { /* ignore */ }
+    } catch (e) { /* ignore */ }
     return true;
 }
 
