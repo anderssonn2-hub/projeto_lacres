@@ -19,6 +19,11 @@
 // - Normaliza regional para formato consistente (remove zeros à esquerda)
 // - Adiciona debug detalhado por lote para diagnosticar problemas
 // - Valida que mapaLacresPorRegional é preenchido corretamente e usado no INSERT
+// v8.11: Preserva inputs de lacres/etiquetas ao excluir postos e ao filtrar por data (compatível com PHP 5.3)
+// - Implementa localStorage para persistir etiquetas/lacres por (id_despacho, regional, posto)
+// - Funções JS: salvarEstadoEtiquetasCorreios(), restaurarEstadoEtiquetasCorreios()
+// - Chamadas: antes de excluir posto, antes de aplicar filtro de data, ao carregar página
+// - Garante que nenhum dado digitado seja perdido ao usar filtros ou remover linhas
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -3230,7 +3235,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
     <form method="post" style="margin-bottom: 10px;">
         <button type="submit" name="limpar_sessao" class="btn-limpar">Limpar Sessão</button>
     </form>
-    <form method="get" action="<?php echo $_SERVER['PHP_SELF'] ?>">
+    <form method="get" action="<?php echo $_SERVER['PHP_SELF'] ?>" id="formFiltroData" onsubmit="salvarEstadoEtiquetasCorreios();">
         <div class="topo-formulario">
             <label>Lacre Capital: <input type="number" name="lacre_capital" value="<?php echo $lacre_capital ?>" required></label>
             <label>Lacre Central: <input type="number" name="lacre_central" value="<?php echo $lacre_central ?>" required></label>
@@ -3618,6 +3623,93 @@ function prepararLacresCorreiosParaSubmit(form) {
         var e = document.createElement('input'); e.type='hidden'; e.name='regional_lacres[]'; e.value=regional; form.appendChild(e);
     }
 }
+
+// v8.11: Persistencia de lacres/etiquetas em localStorage
+// Salva estado dos inputs de lacre IIPR, lacre Correios e etiqueta Correios
+function salvarEstadoEtiquetasCorreios() {
+    if (typeof window.localStorage === 'undefined') {
+        return;
+    }
+
+    var idDespachoInput = document.getElementById('id_despacho');
+    var idDespacho = idDespachoInput ? idDespachoInput.value : '';
+
+    var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    for (var r = 0; r < rows.length; r++) {
+        var tr = rows[r];
+        var postoCodigo = tr.getAttribute('data-posto-codigo');
+        var regionalCodigo = tr.getAttribute('data-regional-codigo') || tr.getAttribute('data-regional') || '0';
+
+        if (!postoCodigo) continue;
+
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
+        var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+
+        var valI = inpIIPR ? String(inpIIPR.value || '').trim() : '';
+        var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
+        var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
+
+        var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
+        var valor = {
+            lacre_iipr: valI,
+            lacre_correios: valC,
+            etiqueta_correios: valE
+        };
+
+        try {
+            window.localStorage.setItem(chaveBase, JSON.stringify(valor));
+        } catch (e) {
+            // localStorage cheio ou desabilitado
+        }
+    }
+}
+
+// v8.11: Restaura estado dos inputs de lacre/etiqueta dos Correios
+function restaurarEstadoEtiquetasCorreios() {
+    if (typeof window.localStorage === 'undefined') {
+        return;
+    }
+
+    var idDespachoInput = document.getElementById('id_despacho');
+    var idDespacho = idDespachoInput ? idDespachoInput.value : '';
+
+    var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    for (var r = 0; r < rows.length; r++) {
+        var tr = rows[r];
+        var postoCodigo = tr.getAttribute('data-posto-codigo');
+        var regionalCodigo = tr.getAttribute('data-regional-codigo') || tr.getAttribute('data-regional') || '0';
+
+        if (!postoCodigo) continue;
+
+        var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
+        var json = window.localStorage.getItem(chaveBase);
+
+        if (!json) continue;
+
+        var valor;
+        try {
+            valor = JSON.parse(json);
+        } catch (e) {
+            continue;
+        }
+
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
+        var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+
+        if (inpIIPR && valor.lacre_iipr) {
+            inpIIPR.value = valor.lacre_iipr;
+        }
+        if (inpCorr && valor.lacre_correios) {
+            inpCorr.value = valor.lacre_correios;
+        }
+        if (inpEtiq && valor.etiqueta_correios) {
+            inpEtiq.value = valor.etiqueta_correios;
+        }
+    }
+}
+
 function gravarEImprimirCorreios() {
     var form = document.getElementById('formOficioCorreios');
     if (form) {
@@ -3645,6 +3737,7 @@ function apenasGravarCorreios() {
 // Funcoes para excluir postos (compativel com navegadores antigos)
 function excluirPosto(codigo, grupo, nome) {
     if (confirm('Confirma a exclusao do posto ' + nome + '?')) {
+        salvarEstadoEtiquetasCorreios();
         document.getElementById('excluir_posto_flag').value = '1';
         document.getElementById('excluir_posto_regional_flag').value = '';
         document.getElementById('excluir_codigo_posto').value = codigo;
@@ -3655,6 +3748,7 @@ function excluirPosto(codigo, grupo, nome) {
 
 function excluirPostoRegional(codigo, nome) {
     if (confirm('Confirma a exclusao do posto REGIONAL ' + nome + '?')) {
+        salvarEstadoEtiquetasCorreios();
         document.getElementById('excluir_posto_flag').value = '';
         document.getElementById('excluir_posto_regional_flag').value = '1';
         document.getElementById('excluir_codigo_posto').value = codigo;
@@ -3774,6 +3868,9 @@ function marcarComoSalvo() {
 
 // Inicializar monitoramento de alteracoes nos inputs
 function inicializarMonitoramentoAlteracoes() {
+    // v8.11: Restaurar estado dos inputs de lacres/etiquetas (localStorage)
+    restaurarEstadoEtiquetasCorreios();
+    
     // Encontrar todos os botoes de gravar
     var btns = document.querySelectorAll('button[onclick*="gravar"], button[onclick*="Gravar"]');
     for (var i = 0; i < btns.length; i++) {
