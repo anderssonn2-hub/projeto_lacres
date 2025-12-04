@@ -3701,6 +3701,17 @@ function restaurarEstadoEtiquetasCorreios() {
         return;
     }
 
+    // Se a página foi carregada após um filtro com lacre inicial (GET com lacre_capital/central/regionais),
+    // devemos PRESERVAR os valores calculados no servidor e NÃO restaurar localStorage que sobrescreva
+    try {
+        var hasLacreHidden = document.querySelector('input[type="hidden"][name="lacre_capital"], input[type="hidden"][name="lacre_central"], input[type="hidden"][name="lacre_regionais"]');
+        if (hasLacreHidden) {
+            return;
+        }
+    } catch (e) {
+        // ignore
+    }
+
     var idDespachoInput = document.getElementById('id_despacho');
     var idDespacho = idDespachoInput ? idDespachoInput.value : '';
 
