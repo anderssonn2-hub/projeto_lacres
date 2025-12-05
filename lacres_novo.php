@@ -61,6 +61,12 @@
 // - Lacres IIPR/Correios: Garantido uso dos valores EXATOS dos inputs (sem sobrescrever com cálculos)
 // - Preservação: Inputs permanecem preenchidos após salvar (valores salvos em $_SESSION['lacres_personalizados'])
 // - Validação: etiquetaiipr ≠ etiquetacorreios quando digitados diferentes, CENTRAL grava apenas postos visíveis
+// v8.13.2: Restauração da lógica ORIGINAL de atribuição automática de lacres
+// - CAPITAL: Lacres em pares incrementais (+2) → lacre_iipr=N, lacre_correios=N+1, próximo=N+2
+// - CENTRAL IIPR: Lacres IIPR sequenciais (+1), lacre Correios = ÚLTIMO lacre IIPR gerado (aplicado a todos)
+// - REGIONAIS: Par de lacres por regional aplicado a todos os postos daquela regional
+// - Snapshot mantido: Ao salvar, grava EXATAMENTE o que está na tela (sem recálculos no handler)
+// - Compatibilidade: PHP 5.3.3 + ES5, sem quebrar funcionalidades existentes
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -2107,7 +2113,10 @@ $ultimo_central = null;
 // por grupo (CAPITAL, CENTRAL IIPR, REGIONAIS) abaixo, ignorando valores
 // anteriores em sessão ou base.
 
-// CAPITAL: Atribuir lacres
+// v8.13.2 CAPITAL: Restaurar lógica original (+2 por linha)
+// - Primeira linha: lacre_iipr=N, lacre_correios=N+1
+// - Segunda linha: lacre_iipr=N+2, lacre_correios=N+3
+// - Exemplo: lacre inicial=18 → linhas: 18/19, 20/21, 22/23...
 if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
     $lacre_iipr_cur = (int)$lacre_capital;
     $lacre_corr_cur = $lacre_iipr_cur + 1;
@@ -2120,109 +2129,114 @@ if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
     }
     unset($linha);
 } else {
+    // Sem recálculo: usar lacres personalizados da sessão ou manter existentes
     foreach ($dados['CAPITAL'] as &$linha) {
         $indice = $linha['posto_codigo'];
         if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
             $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
-        } else {
-            $linha['lacre_iipr'] = $lacre_atual_capital++;
         }
-        
         if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
             $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
-        } else {
-            $linha['lacre_correios'] = $lacre_atual_capital++;
         }
     }
     unset($linha);
 }
 
-// CENTRAL IIPR: Atribuir lacres IIPR
+// v8.13.2 CENTRAL IIPR: Restaurar lógica original
+// - Lacres IIPR sequenciais (+1): 128, 129, 130, 131...
+// - Lacre Correios: ÚLTIMO lacre IIPR gerado (aplicado a TODOS os postos da Central)
+// - Exemplo: 4 postos com lacre inicial=128 → IIPR: 128,129,130,131 | Correios (todos): 131
 if ($recalculo_por_lacre && (int)$lacre_central > 0) {
     $lacre_iipr_cur = (int)$lacre_central;
     foreach ($dados['CENTRAL IIPR'] as &$linha) {
         $indice = $linha['posto_codigo'];
         $linha['lacre_iipr'] = $lacre_iipr_cur;
-        $ultimo_central = $linha['lacre_iipr'];
-        $lacre_iipr_cur += 1;  // v8.11.2: CENTRAL IIPR usa incremento sequencial de +1
+        $ultimo_central = $lacre_iipr_cur;  // Atualiza o último IIPR gerado
+        $lacre_iipr_cur += 1;  // Incremento sequencial +1
     }
     unset($linha);
 } else {
+    // Sem recálculo: usar lacres personalizados da sessão ou manter existentes
     foreach ($dados['CENTRAL IIPR'] as &$linha) {
         $indice = $linha['posto_codigo'];
         if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
             $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
-        } else {
-            $linha['lacre_iipr'] = $lacre_atual_central++;
         }
-        $ultimo_central = $linha['lacre_iipr'];
+        // Atualizar $ultimo_central para ser usado no bloco seguinte
+        if (isset($linha['lacre_iipr'])) {
+            $ultimo_central = $linha['lacre_iipr'];
+        }
     }
     unset($linha);
 }
 
-// CENTRAL IIPR: Atribuir lacre correios por MALOTE (grupos definidos por $splitsCentral)
-// Comportamento:
-// - A lista de postos da CENTRAL IIPR é percorrida na ordem exibida (já ordenada acima).
-// - Cada vez que encontramos um posto cujo código está em $splitsCentral, iniciamos
-//   um novo grupo (malote). O posto que marca o split pertence ao novo grupo.
-// - Para cada malote atribuímos um lacre_correios sequencial (a partir de $ultimo_central + 1)
-// - Se houver lacre personalizado em sessão para o posto, respeitamos esse valor.
+// v8.13.2 CENTRAL IIPR: Atribuir lacre Correios (lógica ORIGINAL restaurada)
+// - Com recalculo_por_lacre: TODOS os postos recebem o ÚLTIMO lacre IIPR gerado
+// - Sem recalculo_por_lacre: Respeita splits/malotes (para compatibilidade com edições manuais)
 if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
-    // Construir mapeamento de grupos para central com base em $splitsCentral
-    $central_groups = array(); // grupo => array(posicoes)
-    $central_group_by_posto = array(); // posto_codigo => grupo
-    $group_index = 0;
-    foreach ($dados['CENTRAL IIPR'] as $idx => $linha) {
-        $posto_code = $linha['posto_codigo'];
-        // Se este posto está configurado como SPLIT, inicia novo grupo *antes* de atribuir
-        if (!empty($splitsCentral) && in_array($posto_code, $splitsCentral)) {
-            $group_index++;
+    if ($recalculo_por_lacre && (int)$lacre_central > 0) {
+        // v8.13.2: Lógica ORIGINAL restaurada - último IIPR vira lacre Correios de TODOS
+        foreach ($dados['CENTRAL IIPR'] as &$linha) {
+            $linha['lacre_correios'] = $ultimo_central;
         }
-        if (!isset($central_groups[$group_index])) $central_groups[$group_index] = array();
-        $central_groups[$group_index][] = $posto_code;
-        $central_group_by_posto[$posto_code] = $group_index;
-    }
-
-    // Gerar lacre para cada grupo (incrementando a partir de $ultimo_central + 1)
-    $group_lacres = array();
-    $base_lacre = $ultimo_central + 1;
-    $total_groups = count($central_groups);
-    for ($g = 0; $g < $total_groups; $g++) {
-        $group_lacres[$g] = $base_lacre + $g;
-    }
-
-    // Atribuir lacre_correios a cada linha de acordo com seu grupo
-    foreach ($dados['CENTRAL IIPR'] as &$linha) {
-        $indice = $linha['posto_codigo'];
-        if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
-            $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
-        } else {
-            $gidx = isset($central_group_by_posto[$indice]) ? $central_group_by_posto[$indice] : 0;
-            $linha['lacre_correios'] = isset($group_lacres[$gidx]) ? $group_lacres[$gidx] : $base_lacre;
+        unset($linha);
+    } else {
+        // Sem recálculo: manter lógica de SPLIT/malotes (para compatibilidade)
+        // Construir mapeamento de grupos para central com base em $splitsCentral
+        $central_groups = array(); // grupo => array(posicoes)
+        $central_group_by_posto = array(); // posto_codigo => grupo
+        $group_index = 0;
+        foreach ($dados['CENTRAL IIPR'] as $idx => $linha) {
+            $posto_code = $linha['posto_codigo'];
+            // Se este posto está configurado como SPLIT, inicia novo grupo *antes* de atribuir
+            if (!empty($splitsCentral) && in_array($posto_code, $splitsCentral)) {
+                $group_index++;
+            }
+            if (!isset($central_groups[$group_index])) $central_groups[$group_index] = array();
+            $central_groups[$group_index][] = $posto_code;
+            $central_group_by_posto[$posto_code] = $group_index;
         }
-    }
-    unset($linha);
 
-    // Expor variáveis úteis para a renderização (template abaixo usa estas informações)
-    // - $central_group_by_posto: mapa posto => grupo
-    // - $central_groups: lista de postos por grupo
-    // - $central_group_first: mapa posto => bool indicando se é o primeiro item do grupo
-    $central_group_first = array();
-    foreach ($central_groups as $g => $posts) {
-        if (!empty($posts)) {
-            $first = $posts[0];
-            $central_group_first[$first] = true;
-            // marcar todos outros como false (para clareza)
-            foreach ($posts as $p) {
-                if ($p !== $first && !isset($central_group_first[$p])) {
-                    $central_group_first[$p] = false;
+        // Gerar lacre para cada grupo (incrementando a partir de $ultimo_central + 1)
+        $group_lacres = array();
+        $base_lacre = $ultimo_central + 1;
+        $total_groups = count($central_groups);
+        for ($g = 0; $g < $total_groups; $g++) {
+            $group_lacres[$g] = $base_lacre + $g;
+        }
+
+        // Atribuir lacre_correios a cada linha de acordo com seu grupo ou sessão
+        foreach ($dados['CENTRAL IIPR'] as &$linha) {
+            $indice = $linha['posto_codigo'];
+            if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
+                $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
+            } else {
+                $gidx = isset($central_group_by_posto[$indice]) ? $central_group_by_posto[$indice] : 0;
+                $linha['lacre_correios'] = isset($group_lacres[$gidx]) ? $group_lacres[$gidx] : $base_lacre;
+            }
+        }
+        unset($linha);
+
+        // Expor variáveis úteis para a renderização (template abaixo usa estas informações)
+        $central_group_first = array();
+        foreach ($central_groups as $g => $posts) {
+            if (!empty($posts)) {
+                $first = $posts[0];
+                $central_group_first[$first] = true;
+                foreach ($posts as $p) {
+                    if ($p !== $first && !isset($central_group_first[$p])) {
+                        $central_group_first[$p] = false;
+                    }
                 }
             }
         }
     }
 }
 
-// REGIONAIS: Atribuir lacres
+// v8.13.2 REGIONAIS: Manter lógica correta (par de lacres por regional)
+// - Cada linha representa uma regional com par de lacres diferentes
+// - Esses lacres serão aplicados a TODOS os postos daquela regional ao salvar
+// - Lacre IIPR e Lacre Correios DEVEM ser diferentes (ex: 5/6, não 5/5)
 if ($recalculo_por_lacre && (int)$lacre_regionais > 0) {
     $lacre_iipr_cur = (int)$lacre_regionais;
     $lacre_corr_cur = $lacre_iipr_cur + 1;
@@ -2235,18 +2249,14 @@ if ($recalculo_por_lacre && (int)$lacre_regionais > 0) {
     }
     unset($linha);
 } else {
+    // Sem recálculo: usar lacres personalizados da sessão ou manter existentes
     foreach ($dados['REGIONAIS'] as &$linha) {
         $indice = $linha['posto_codigo'];
         if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
             $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
-        } else {
-            $linha['lacre_iipr'] = $lacre_atual_regionais++;
         }
-        
         if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
             $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
-        } else {
-            $linha['lacre_correios'] = $lacre_atual_regionais++;
         }
     }
     unset($linha);
