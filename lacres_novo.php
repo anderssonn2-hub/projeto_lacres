@@ -407,7 +407,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
 if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
     try {
         // Debug: registrar que o handler foi invocado e quais dados chegaram via POST
-        try { add_debug('V8.11.X - salvar_oficio_correios chamado', $_POST); } catch (e) { /* ignore */ }
+        try { add_debug('V8.11.X - salvar_oficio_correios chamado', $_POST); } catch (Exception $e) { /* ignore */ }
         if (!isset($pdo_controle) || !($pdo_controle instanceof PDO)) {
             throw new Exception('PDO $pdo_controle nao disponivel.');
         }
