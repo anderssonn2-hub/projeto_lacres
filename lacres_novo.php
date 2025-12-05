@@ -56,6 +56,11 @@
 // - REGIONAIS: expande para todos os postos da regional, mas usa lacres/etiqueta do snapshot
 // - Preservação total: após salvar, inputs permanecem com valores originais (sem recalcular nem zerar)
 // - Compatibilidade: PHP 5.3.3 (Yii 1.x) + JavaScript ES5 (sem let/const/arrow functions)
+// v8.13.1: Correções finais de consistência
+// - CENTRAL IIPR: Confirmado uso exclusivo do snapshot (mesmo comportamento de CAPITAL - sem expansão automática)
+// - Lacres IIPR/Correios: Garantido uso dos valores EXATOS dos inputs (sem sobrescrever com cálculos)
+// - Preservação: Inputs permanecem preenchidos após salvar (valores salvos em $_SESSION['lacres_personalizados'])
+// - Validação: etiquetaiipr ≠ etiquetacorreios quando digitados diferentes, CENTRAL grava apenas postos visíveis
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -652,15 +657,18 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 }
             }
 
-            add_debug('V8.13 - SNAPSHOT recebido e processado', array(
+            add_debug('V8.13.1 - SNAPSHOT recebido e processado', array(
                 'total_linhas' => count($snapshot),
                 'capital' => array_keys($mapaCapital),
+                'capital_lacres' => $mapaCapital,
                 'central' => array_keys($mapaCentral),
+                'central_lacres' => $mapaCentral,
                 'regionais' => array_keys($mapaRegional),
+                'regionais_lacres' => $mapaRegional,
             ));
         } else {
-            // v8.13: FALLBACK para arrays antigos (se snapshot não existir)
-            add_debug('V8.13 - FALLBACK: snapshot vazio, usando arrays antigos', $_POST);
+            // v8.13.1: FALLBACK para arrays antigos (se snapshot não existir)
+            add_debug('V8.13.1 - FALLBACK: snapshot vazio, usando arrays antigos');
             $mapaLacresPorPosto = array();
 
         // Se o formulário forneceu arrays alinhados, usá-los (prioridade)
@@ -751,7 +759,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
         }
 
-            // v8.13 FALLBACK: Criar mapas separados por grupo (se snapshot não existiu)
+            // v8.13.1 FALLBACK: Criar mapas separados por grupo (se snapshot não existiu)
             foreach ($mapaLacresPorPosto as $postoKey => $vals) {
                 $grupoLinha = isset($vals['grupo']) ? trim((string)$vals['grupo']) : '';
                 if ($grupoLinha === 'CAPITAL') {
@@ -764,9 +772,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             // Criar mapaRegional a partir de mapaLacresPorRegional
             $mapaRegional = $mapaLacresPorRegional;
 
-            add_debug('V8.13 FALLBACK - MAPA CAPITAL', $mapaCapital);
-            add_debug('V8.13 FALLBACK - MAPA CENTRAL', $mapaCentral);
-            add_debug('V8.13 FALLBACK - MAPA REGIONAL', $mapaRegional);
+            add_debug('V8.13.1 FALLBACK - MAPA CAPITAL', array('postos' => array_keys($mapaCapital), 'dados' => $mapaCapital));
+            add_debug('V8.13.1 FALLBACK - MAPA CENTRAL', array('postos' => array_keys($mapaCentral), 'dados' => $mapaCentral));
+            add_debug('V8.13.1 FALLBACK - MAPA REGIONAL', array('regionais' => array_keys($mapaRegional), 'dados' => $mapaRegional));
         }
 
         // v8.6: Atualizar SQL do INSERT para incluir campos de lacres
@@ -837,9 +845,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $etiquetas_debug[$posto_lote] = $etiqueta_do_posto;
             }
             
-            // v8.13: Recuperar lacres EXCLUSIVAMENTE do snapshot (sem recálculos)
-            // 1º: CAPITAL (apenas postos visíveis em $mapaCapital)
-            // 2º: CENTRAL IIPR (apenas postos visíveis em $mapaCentral)
+            // v8.13.1: Recuperar lacres EXCLUSIVAMENTE do snapshot (valores EXATOS dos inputs)
+            // 1º: CAPITAL (apenas postos visíveis em $mapaCapital - sem expansão)
+            // 2º: CENTRAL IIPR (apenas postos visíveis em $mapaCentral - sem expansão)
             // 3º: REGIONAIS (expande todos os postos da regional, usa lacres do snapshot)
             $lacreIIPR_lote = 0;
             $lacreCorreios_lote = 0;
@@ -847,21 +855,21 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
 
             $aplicar_mapa = false;
             
-            // Prioridade 1: posto visível em CAPITAL (snapshot)
+            // Prioridade 1: posto visível em CAPITAL (valores EXATOS do input)
             if (isset($mapaCapital[$posto_lote])) {
                 $lacreIIPR_lote       = $mapaCapital[$posto_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = $mapaCapital[$posto_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaCapital[$posto_lote]['etiqueta_correios'];
                 $aplicar_mapa = true;
             }
-            // Prioridade 2: posto visível em CENTRAL IIPR (snapshot)
+            // Prioridade 2: posto visível em CENTRAL IIPR (valores EXATOS do input)
             elseif (isset($mapaCentral[$posto_lote])) {
                 $lacreIIPR_lote       = $mapaCentral[$posto_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = $mapaCentral[$posto_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaCentral[$posto_lote]['etiqueta_correios'];
                 $aplicar_mapa = true;
             }
-            // Prioridade 3: REGIONAIS - expande todos os postos, usa lacres do snapshot
+            // Prioridade 3: REGIONAIS - expande postos da regional (valores EXATOS do input)
             elseif ($regional_lote !== '' && $regional_lote !== '0' && isset($mapaRegional[$regional_lote])) {
                 $lacreIIPR_lote       = $mapaRegional[$regional_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = $mapaRegional[$regional_lote]['lacre_correios'];
