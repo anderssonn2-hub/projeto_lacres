@@ -555,67 +555,10 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $dadosBanco[$row['codigo']] = $row;
         }
 
-        // 5) Prepara statement para inserir itens
-        $stItem = $pdo_controle->prepare("
-            INSERT INTO ciDespachoItens
-            (id_despacho, regional, posto, nome_posto, endereco, lote, quantidade,
-             lacre_iipr, lacre_correios, etiqueta_correios, incluir)
-            VALUES (?,?,?,?,?,?,?,?,?,?,1)
-        ");
-
-        $totalInseridos = 0;
-
-        // Processa todos os postos que vieram do formulário
-        $postos_processados = array();
-        foreach ($lacres_iipr as $posto => $lacre_iipr_val) {
-            $postos_processados[$posto] = true;
-        }
-        foreach ($lacres_correios as $posto => $val) {
-            $postos_processados[$posto] = true;
-        }
-        foreach ($etiquetas as $posto => $val) {
-            $postos_processados[$posto] = true;
-        }
-
-        foreach (array_keys($postos_processados) as $posto) {
-            $posto = (string)$posto;
-            $posto3 = str_pad(preg_replace('/\D+/', '', $posto), 3, '0', STR_PAD_LEFT);
-
-            $lacre_iipr_val = isset($lacres_iipr[$posto]) ? trim($lacres_iipr[$posto]) : '';
-            $lacre_correios_val = isset($lacres_correios[$posto]) ? trim($lacres_correios[$posto]) : '';
-            $etiqueta_val = isset($etiquetas[$posto]) ? trim($etiquetas[$posto]) : '';
-            $nome_posto = isset($nomes_postos[$posto]) ? trim($nomes_postos[$posto]) : '';
-            $grupo_posto = isset($grupos_postos[$posto]) ? trim($grupos_postos[$posto]) : '';
-
-            // Busca dados complementares do banco
-            $regional = '';
-            $endereco = '';
-            $quantidade = 0;
-
-            if (isset($dadosBanco[$posto3])) {
-                $regional = $dadosBanco[$posto3]['regional'];
-                $endereco = $dadosBanco[$posto3]['endereco'];
-                $quantidade = (int)$dadosBanco[$posto3]['quantidade'];
-                if (empty($nome_posto)) {
-                    $nome_posto = $dadosBanco[$posto3]['nome'];
-                }
-            }
-
-            // Insere o item
-            $stItem->execute(array(
-                $id_desp,
-                $regional,
-                $posto,
-                $nome_posto,
-                $endereco,
-                null,
-                $quantidade,
-                $lacre_iipr_val,
-                $lacre_correios_val,
-                $etiqueta_val
-            ));
-            $totalInseridos++;
-        }
+        // v8.12: Para o fluxo CORREIOS, não gravamos em ciDespachoItens
+        // ciDespachoItens será usado apenas para Poupa Tempo
+        // $stItem foi removido (não necessário para Correios)
+        // O trecho anterior que preparava INSERT em ciDespachoItens foi comentado/removido
 
         // 6) Salvar lotes por posto (todos os lotes das datas selecionadas, apenas Correios)
         $sqlLotes = "
@@ -3426,8 +3369,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
     <input type="hidden" name="modo_oficio" id="modo_oficio" value="" />
 
 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-    <button type="button" class="btn-imprimir" onclick="gravarEImprimirCorreios();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir</button>
-    <button type="submit" class="btn-imprimir" onclick="return confirmarGravacaoOficioCorreios(this.form);"><i>💾</i> Gravar Dados</button>
+    <button type="button" class="btn-imprimir" onclick="confirmarGravarEImprimir();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir</button>
     <button type="button" class="btn-imprimir" onclick="prepararEImprimir();" style="background:#6c757d;"><i>🖨️</i> Apenas Imprimir</button>
     <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()"><i>💾</i> Salvar Etiquetas Correios</button>
 </div>
@@ -3692,10 +3634,6 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 // v8.9: Prepara arrays alinhados de lacres/etiquetas + regional antes do submit
 function prepararLacresCorreiosParaSubmit(form) {
     if (!form) return;
-    try{
-        console.log('prepararLacresCorreiosParaSubmit INICIO', 'formId=', form && form.id ? form.id : '(nenhum)', 'rowsAntes=', (form.querySelectorAll ? form.querySelectorAll('tr[data-posto-codigo]').length : '??'));
-        try { alert('Preparando inputs ocultos para envio (início)'); } catch (ie) { /* ignore */ }
-    } catch (e) { /* ignore */ }
     // Remover inputs ocultos antigos, se existirem (v8.9: inclui regional_lacres[])
     var nomes = ['posto_lacres[]','lacre_iipr[]','lacre_correios[]','etiqueta_correios[]','regional_lacres[]'];
     for (var n=0;n<nomes.length;n++){
@@ -3703,14 +3641,23 @@ function prepararLacresCorreiosParaSubmit(form) {
         for (var i=0;i<els.length;i++) { els[i].parentNode.removeChild(els[i]); }
     }
 
-    // Coletar todas as linhas visíveis com atributo data-posto-codigo
+    // v8.12: Coletar APENAS linhas visíveis (não excluídas) com atributo data-posto-codigo
+    // Ignora linhas com display:none, com classe 'removido', ou que estejam ocultas
     var rows = form.querySelectorAll('tr[data-posto-codigo]');
-    // Se o form não conter as linhas (ex: inputs renderizados fora do form), tentar buscar globalmente
     if (!rows || rows.length === 0) {
         rows = document.querySelectorAll('tr[data-posto-codigo]');
     }
+    
     for (var r=0;r<rows.length;r++){
         var tr = rows[r];
+        
+        // v8.12: Pular linhas que estão ocultas (display:none ou classe removido)
+        if (tr.style && tr.style.display === 'none') continue;
+        if (tr.className && tr.className.indexOf('removido') !== -1) continue;
+        
+        var computedStyle = window.getComputedStyle ? window.getComputedStyle(tr) : null;
+        if (computedStyle && computedStyle.display === 'none') continue;
+        
         var posto = tr.getAttribute('data-posto-codigo');
         if (!posto) continue;
 
@@ -3733,10 +3680,6 @@ function prepararLacresCorreiosParaSubmit(form) {
         var d = document.createElement('input'); d.type='hidden'; d.name='etiqueta_correios[]'; d.value=valE; form.appendChild(d);
         var e = document.createElement('input'); e.type='hidden'; e.name='regional_lacres[]'; e.value=regional; form.appendChild(e);
     }
-    try{
-        console.log('prepararLacresCorreiosParaSubmit FIM - inputs ocultos criados para envio');
-        try { alert('Preparação de lacres concluída'); } catch (ie) { /* ignore */ }
-    } catch (e) { /* ignore */ }
 }
 
 // v8.11: Persistencia de lacres/etiquetas em localStorage
@@ -3860,57 +3803,22 @@ function restaurarEstadoEtiquetasCorreios() {
     }
 }
 
-// v8.11.1: Confirmacao antes de gravar o oficio + escolha sobrescrever/novo
-function confirmarGravacaoOficioCorreios(form) {
-    if (!form) return false;
-    console.log('confirmarGravacaoOficioCorreios called', 'formId=', form && form.id ? form.id : '(sem id)');
-    try { alert('Iniciando gravação do Ofício dos Correios'); } catch (e) { /* ignore */ }
-    // 1ª pergunta: confirmar que quer gravar
-    var msg1 = "Você está prestes a GRAVAR TODOS os dados do Ofício dos Correios.\n\n" +
-               "Isso irá registrar no banco de dados os lotes, postos, lacres e etiquetas que estão na tela.\n\n" +
-               "Deseja realmente gravar o Ofício dos Correios agora?";
-    if (!window.confirm(msg1)) {
-        return false;
-    }
-
-    // 2ª pergunta: escolha entre sobrescrever ou criar novo
-    var msg2 = "Escolha como deseja gravar:\n\n" +
-               "OK = CONFIRMAR SOBRESCRITA do último ofício dos Correios existente (substitui o anterior).\n" +
-               "Cancelar = CRIAR NOVO OFÍCIO para esta data (mantém os anteriores e cria um novo número).\n\n" +
-               "Tem certeza da sua escolha?";
-    var sobrescrever = window.confirm(msg2);
+// v8.12: Confirmação antes de gravar e imprimir com opção sobrescrever/novo
+function confirmarGravarEImprimir() {
+    var msg = "Como deseja gravar o Ofício dos Correios?\n\n" +
+              "Clique OK para SOBRESCREVER o ofício existente\n" +
+              "(apagar os lotes do último ofício e gravar este no lugar).\n\n" +
+              "Clique Cancelar para CRIAR UM NOVO OFÍCIO\n" +
+              "(manter o ofício anterior e criar outro com novo número).";
+    var sobrescrever = window.confirm(msg);
     var modo = sobrescrever ? 'sobrescrever' : 'novo';
-
+    
     var campoModo = document.getElementById('modo_oficio');
     if (campoModo) {
         campoModo.value = modo;
     }
-
-    // Preparar lacres/etiquetas antes do envio
-    if (typeof prepararLacresCorreiosParaSubmit === 'function') {
-        try {
-            console.log('Chamando prepararLacresCorreiosParaSubmit...');
-            try { alert('Preparando lacres e etiquetas para envio...'); } catch (e) { /* ignore */ }
-            prepararLacresCorreiosParaSubmit(form);
-            console.log('prepararLacresCorreiosParaSubmit concluido');
-        } catch (e) {
-            console.error('Erro em prepararLacresCorreiosParaSubmit:', e);
-            try { alert('Erro ao preparar lacres: ' + (e && e.message ? e.message : e)); } catch (ee) { /* ignore */ }
-        }
-    }
-
-    // Garantir que campo acao esteja correto (quando via submit direto)
-    var acao = document.getElementById('acaoCorreios');
-    if (acao) {
-        acao.value = 'salvar_oficio_correios';
-    }
-
-    // Submeter o form: retornar true (apenas quando usuário confirmou)
-    try {
-        console.log('confirmarGravacaoOficioCorreios: submetendo form', 'modo=', modo, 'acao=', (acao ? acao.value : '(nenhum)'));
-        try { alert('Submetendo formulário. Modo: ' + modo); } catch (e) { /* ignore */ }
-    } catch (e) { /* ignore */ }
-    return true;
+    
+    gravarEImprimirCorreios();
 }
 
 // v8.11.1: Confirmacao antes de limpar sessao (zera inputs + localStorage relacionado ao oficio)
@@ -3951,6 +3859,10 @@ function confirmarLimparSessao(form) {
 function gravarEImprimirCorreios() {
     var form = document.getElementById('formOficioCorreios');
     if (form) {
+        // v8.12: Salvar etiquetas antes de submeter para garantir restauração após reload
+        if (typeof salvarEstadoEtiquetasCorreios === 'function') {
+            try { salvarEstadoEtiquetasCorreios(); } catch (e) { /* ignore */ }
+        }
         document.getElementById('acaoCorreios').value = 'salvar_oficio_correios';
         document.getElementById('imprimirAposSalvar').value = '1';
         prepararLacresCorreiosParaSubmit(form);
