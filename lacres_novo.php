@@ -631,42 +631,59 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
         }
 
-        // v8.9: Criar MAPA DE LACRES POR REGIONAL (novo)
+        // v8.12: Criar MAPA DE LACRES POR REGIONAL (robusto)
         $mapaLacresPorRegional = array();
-        
-        // Se o formulário forneceu arrays alinhados, usá-los (prioridade)
         $regionaisLacres_post = isset($_POST['regional_lacres']) && is_array($_POST['regional_lacres']) ? $_POST['regional_lacres'] : array();
         if (!empty($postosLacres_post) && !empty($regionaisLacres_post)) {
-            // Construir mapa regional a partir dos arrays alinhados
             foreach ($postosLacres_post as $idx => $postoRaw) {
-                $regional = isset($regionaisLacres_post[$idx]) ? ltrim(trim((string)$regionaisLacres_post[$idx]), '0') || '0' : '';
-                if ($regional === '' || $regional === '0') continue;
-                
+                $regional_raw = isset($regionaisLacres_post[$idx]) ? trim((string)$regionaisLacres_post[$idx]) : '';
+                // normalizar removendo zeros à esquerda
+                $regional = ltrim($regional_raw, '0');
+                if ($regional === '') {
+                    // se não houver regional explícita, pular
+                    continue;
+                }
+
                 $lacreI = isset($lacresIIPR_post[$idx]) ? trim((string)$lacresIIPR_post[$idx]) : '';
                 $lacreC = isset($lacresCorreios_post[$idx]) ? trim((string)$lacresCorreios_post[$idx]) : '';
                 $eti = isset($etiquetasCorreios_post[$idx]) ? trim((string)$etiquetasCorreios_post[$idx]) : '';
-                
-                // Só sobrescreve se houver valor preenchido (para não matar valor já definido com campos vazios)
-                if ($lacreI !== '' || $lacreC !== '' || $eti !== '') {
-                    if (!isset($mapaLacresPorRegional[$regional])) {
-                        $mapaLacresPorRegional[$regional] = array(
-                            'lacre_iipr'        => 0,
-                            'lacre_correios'    => 0,
-                            'etiqueta_correios' => null,
-                        );
-                    }
-                    if ($lacreI !== '') {
-                        $mapaLacresPorRegional[$regional]['lacre_iipr'] = (int)$lacreI;
-                    }
-                    if ($lacreC !== '') {
-                        $mapaLacresPorRegional[$regional]['lacre_correios'] = (int)$lacreC;
-                    }
-                    if ($eti !== '') {
-                        $mapaLacresPorRegional[$regional]['etiqueta_correios'] = $eti;
-                    }
+
+                if ($lacreI === '' && $lacreC === '' && $eti === '') {
+                    continue;
+                }
+
+                if (!isset($mapaLacresPorRegional[$regional])) {
+                    $mapaLacresPorRegional[$regional] = array(
+                        'lacre_iipr' => 0,
+                        'lacre_correios' => 0,
+                        'etiqueta_correios' => null,
+                    );
+                }
+                if ($lacreI !== '') {
+                    $mapaLacresPorRegional[$regional]['lacre_iipr'] = (int)$lacreI;
+                }
+                if ($lacreC !== '') {
+                    $mapaLacresPorRegional[$regional]['lacre_correios'] = (int)$lacreC;
+                }
+                if ($eti !== '') {
+                    $mapaLacresPorRegional[$regional]['etiqueta_correios'] = $eti;
                 }
             }
         }
+
+        // v8.12: Criar mapas separados para CAPITAL e CENTRAL a partir do mapa por posto
+        $mapaCapital = array();
+        $mapaCentral = array();
+        foreach ($mapaLacresPorPosto as $postoKey => $vals) {
+            // Por enquanto, tratamos todos os postos individuais como CAPITAL/CENTRAL
+            // Se for necessário diferenciar CENTRAL, podemos ajustar aqui.
+            $mapaCapital[$postoKey] = $vals;
+            $mapaCentral[$postoKey] = $vals;
+        }
+
+        // Debug dos mapas construidos
+        add_debug('V8.12 - MAPA LACRES POR POSTO', $mapaLacresPorPosto);
+        add_debug('V8.12 - MAPA LACRES POR REGIONAL', $mapaLacresPorRegional);
         
         // v8.10: Debug do mapa por regional com valores recebidos
         add_debug('V8.10 - ARRAYS POST RECEBIDOS', array(
@@ -707,7 +724,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $posto_lote = (string)$l['posto'];
             // v8.10: Capturar a regional do lote (normalizar removendo zeros à esquerda)
             $regional_lote_raw = isset($l['regional']) ? trim((string)$l['regional']) : '';
-            $regional_lote = ltrim($regional_lote_raw, '0') || '0';
+            $regional_lote = ltrim($regional_lote_raw, '0');
+            if ($regional_lote === '') { $regional_lote = '0'; }
             
             // VERSAO 6: Buscar etiqueta_correios correspondente ao posto
             // Tentar todas as variações de chave possíveis
@@ -750,18 +768,24 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $lacreCorreios_lote = 0;
             $etiquetaCorreios_lote = null;
 
+            $aplicar_mapa = false;
             if (isset($mapaLacresPorPosto[$posto_lote])) {
                 // Prioridade 1: lacre específico do posto
                 $lacreIIPR_lote       = $mapaLacresPorPosto[$posto_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = $mapaLacresPorPosto[$posto_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaLacresPorPosto[$posto_lote]['etiqueta_correios'];
+                $aplicar_mapa = true;
             } elseif ($regional_lote !== '' && $regional_lote !== '0' && isset($mapaLacresPorRegional[$regional_lote])) {
                 // Prioridade 2: lacre da regional
                 $lacreIIPR_lote       = $mapaLacresPorRegional[$regional_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = $mapaLacresPorRegional[$regional_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaLacresPorRegional[$regional_lote]['etiqueta_correios'];
+                $aplicar_mapa = true;
             }
-            // Se nenhum mapa tiver dados, mantém os defaults (0, 0, null)
+            // Se nenhum mapa tiver dados, NÃO inserir este lote (postos não visíveis)
+            if (!$aplicar_mapa) {
+                continue;
+            }
 
             // VERSAO 6: Garantir que etiqueta seja passada como STRING pura
             $etiqueta_para_banco = (string)$etiqueta_do_posto;
