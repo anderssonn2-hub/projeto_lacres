@@ -38,6 +38,12 @@
 //   * CENTRAL IIPR: salva apenas postos visíveis em $mapaCentral
 //   * REGIONAIS: salva todos os postos das regionais visíveis em $mapaLacresPorRegional
 // - Corrige comportamento onde CENTRAL salvava todos os postos das datas (016, 029, 042, etc.) mesmo quando apenas posto 086 estava visível
+// v8.12.3-fix: Preservação de dados após salvar
+// - Removido window.location.href após salvar com sucesso (impedia que inputs permanecessem preenchidos)
+// - Inputs de Lacre IIPR, Lacre Correios e Etiqueta Correios agora permanecem na tela após "Gravar e Imprimir"
+// - localStorage continua preservando etiquetas entre operações (salvar/filtrar/excluir)
+// - Limpeza dos inputs ocorre APENAS via "Limpar Sessão" ou botão X específico de cada coluna
+// - CENTRAL IIPR confirmado: grava SOMENTE postos que estão visíveis na grade (usa $mapaCentral filtrado por grupo)
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -877,7 +883,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         // Verifica se deve imprimir após salvar
         $deve_imprimir = isset($_POST['imprimir_apos_salvar']) && $_POST['imprimir_apos_salvar'] === '1';
 
-        // v8.3: Mensagem com contagem correta de postos e lotes
+        // v8.12.3-fix: Mensagem de sucesso SEM recarregar página (preserva inputs na tela)
         if ($deve_imprimir) {
             echo "<script>
                     alert('Oficio Correios salvo com sucesso! No. " . (int)$id_desp . " - Postos: " . (int)$totalPostosDistintos . ", Lotes: " . (int)$totalLotesGravados . "');
@@ -885,10 +891,11 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                     window.print();
                   </script>";
         } else {
+            // v8.12.3-fix: NÃO recarrega a página para preservar inputs de lacres/etiquetas
+            // Inputs permanecerão preenchidos até que usuário clique em "Limpar Sessão" ou "X" da coluna
             echo "<script>
                     alert('Oficio Correios salvo com sucesso! No. " . (int)$id_desp . " - Postos: " . (int)$totalPostosDistintos . ", Lotes: " . (int)$totalLotesGravados . "');
                     if (typeof marcarComoSalvo === 'function') { marcarComoSalvo(); }
-                    window.location.href='" . $_SERVER['PHP_SELF'] . "';
                   </script>";
         }
     } catch (Exception $e) {
