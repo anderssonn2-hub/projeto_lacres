@@ -44,6 +44,11 @@
 // - localStorage continua preservando etiquetas entre operações (salvar/filtrar/excluir)
 // - Limpeza dos inputs ocorre APENAS via "Limpar Sessão" ou botão X específico de cada coluna
 // - CENTRAL IIPR confirmado: grava SOMENTE postos que estão visíveis na grade (usa $mapaCentral filtrado por grupo)
+// v8.12.3-fix2: Correção definitiva dos 3 problemas restantes
+// - CENTRAL IIPR: Confirmado que JÁ grava apenas postos visíveis (lógica correta desde v8.12.3)
+// - LACRES IIPR/CORREIOS: Salvamento em $_SESSION['lacres_personalizados'] após sucesso para preservar valores digitados
+// - PRESERVAÇÃO: Valores restaurados via sessão ao recarregar, sem recalcular (exceto quando recalculo_por_lacre=1)
+// - BUG CORRIGIDO: Regionais usavam mesmo valor para etiquetaiipr e etiquetacorreios (faltava incremento)
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -879,6 +884,23 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         $totalLotesGravados = $totalLotes;
         
         $pdo_controle->commit();
+
+        // v8.12.3-fix2: Salvar lacres em sessão para preservar após reload
+        // Isso garante que os valores digitados permaneçam na tela mesmo após salvar
+        foreach ($mapaLacresPorPosto as $postoCodigo => $info) {
+            if (!isset($_SESSION['lacres_personalizados'])) {
+                $_SESSION['lacres_personalizados'] = array();
+            }
+            if (!isset($_SESSION['lacres_personalizados'][$postoCodigo])) {
+                $_SESSION['lacres_personalizados'][$postoCodigo] = array();
+            }
+            if (isset($info['lacre_iipr']) && $info['lacre_iipr'] > 0) {
+                $_SESSION['lacres_personalizados'][$postoCodigo]['iipr'] = $info['lacre_iipr'];
+            }
+            if (isset($info['lacre_correios']) && $info['lacre_correios'] > 0) {
+                $_SESSION['lacres_personalizados'][$postoCodigo]['correios'] = $info['lacre_correios'];
+            }
+        }
 
         // Verifica se deve imprimir após salvar
         $deve_imprimir = isset($_POST['imprimir_apos_salvar']) && $_POST['imprimir_apos_salvar'] === '1';
