@@ -30,6 +30,14 @@
 // - Destaque leve das linhas abaixo do split (.split-central-grupo1/2/...)
 // - Confirmação ao limpar sessão e reset parcial da CENTRAL IIPR ao limpar coluna X
 // - Compatível com PHP 5.3 / ES5 (Yii 1.x)
+// v8.12.3: Correção crítica - CENTRAL IIPR salva APENAS postos visíveis no grid (não todos os postos das datas)
+// - JS prepararLacresCorreiosParaSubmit agora envia grupo_lacres[] para identificar CAPITAL/CENTRAL/REGIONAIS
+// - Handler PHP separa postos por grupo real: $mapaCapital (CAPITAL), $mapaCentral (CENTRAL IIPR), $mapaLacresPorRegional (REGIONAIS)
+// - Loop de gravação aplica lacres SOMENTE aos postos presentes nos mapas corretos:
+//   * CAPITAL: salva apenas postos visíveis em $mapaCapital
+//   * CENTRAL IIPR: salva apenas postos visíveis em $mapaCentral
+//   * REGIONAIS: salva todos os postos das regionais visíveis em $mapaLacresPorRegional
+// - Corrige comportamento onde CENTRAL salvava todos os postos das datas (016, 029, 042, etc.) mesmo quando apenas posto 086 estava visível
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -583,8 +591,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         $stmtLotes = $pdo_controle->prepare($sqlLotes);
         $stmtLotes->execute($datasSql);
 
-        // v8.8: Criar MAPA DE LACRES POR POSTO a partir do formulário Correios
-        // Preferir arrays alinhados enviados pelo JS: posto_lacres[], lacre_iipr[], lacre_correios[], etiqueta_correios[]
+        // v8.12.3: Criar MAPA DE LACRES POR POSTO a partir do formulário Correios
+        // Preferir arrays alinhados enviados pelo JS: posto_lacres[], lacre_iipr[], lacre_correios[], etiqueta_correios[], grupo_lacres[]
         $mapaLacresPorPosto = array();
 
         // Se o formulário forneceu arrays alinhados, usá-los (prioridade)
@@ -593,6 +601,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $lacresIIPR_post = isset($_POST['lacre_iipr']) && is_array($_POST['lacre_iipr']) ? $_POST['lacre_iipr'] : array();
             $lacresCorreios_post = isset($_POST['lacre_correios']) && is_array($_POST['lacre_correios']) ? $_POST['lacre_correios'] : array();
             $etiquetasCorreios_post = isset($_POST['etiqueta_correios']) && is_array($_POST['etiqueta_correios']) ? $_POST['etiqueta_correios'] : array();
+            $gruposLacres_post = isset($_POST['grupo_lacres']) && is_array($_POST['grupo_lacres']) ? $_POST['grupo_lacres'] : array();
 
             foreach ($postosLacres_post as $idx => $postoRaw) {
                 $postoCodigo = str_pad(preg_replace('/\D+/', '', (string)$postoRaw), 3, '0', STR_PAD_LEFT);
@@ -600,11 +609,13 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $lacreI = isset($lacresIIPR_post[$idx]) ? trim((string)$lacresIIPR_post[$idx]) : '';
                 $lacreC = isset($lacresCorreios_post[$idx]) ? trim((string)$lacresCorreios_post[$idx]) : '';
                 $eti = isset($etiquetasCorreios_post[$idx]) ? trim((string)$etiquetasCorreios_post[$idx]) : '';
+                $grupo = isset($gruposLacres_post[$idx]) ? trim((string)$gruposLacres_post[$idx]) : '';
 
                 $mapaLacresPorPosto[$postoCodigo] = array(
                     'lacre_iipr' => ($lacreI === '' ? 0 : (int)$lacreI),
                     'lacre_correios' => ($lacreC === '' ? 0 : (int)$lacreC),
                     'etiqueta_correios' => ($eti === '' ? null : $eti),
+                    'grupo' => $grupo,
                 );
             }
         } else {
@@ -627,6 +638,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                     'lacre_iipr' => ($lacreIIPR === '' ? 0 : (int)$lacreIIPR),
                     'lacre_correios' => ($lacreCorreios === '' ? 0 : (int)$lacreCorreios),
                     'etiqueta_correios' => $etiquetaCorr !== '' ? $etiquetaCorr : null,
+                    'grupo' => '', // grupo desconhecido no fallback
                 );
             }
         }
@@ -671,19 +683,24 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
         }
 
-        // v8.12: Criar mapas separados para CAPITAL e CENTRAL a partir do mapa por posto
+        // v8.12.3: Criar mapas separados por grupo (CAPITAL, CENTRAL IIPR, REGIONAIS)
         $mapaCapital = array();
         $mapaCentral = array();
         foreach ($mapaLacresPorPosto as $postoKey => $vals) {
-            // Por enquanto, tratamos todos os postos individuais como CAPITAL/CENTRAL
-            // Se for necessário diferenciar CENTRAL, podemos ajustar aqui.
-            $mapaCapital[$postoKey] = $vals;
-            $mapaCentral[$postoKey] = $vals;
+            $grupoLinha = isset($vals['grupo']) ? trim((string)$vals['grupo']) : '';
+            if ($grupoLinha === 'CAPITAL') {
+                $mapaCapital[$postoKey] = $vals;
+            } elseif ($grupoLinha === 'CENTRAL IIPR') {
+                $mapaCentral[$postoKey] = $vals;
+            }
+            // REGIONAIS será tratado via mapaLacresPorRegional (já funciona)
         }
 
         // Debug dos mapas construidos
-        add_debug('V8.12 - MAPA LACRES POR POSTO', $mapaLacresPorPosto);
-        add_debug('V8.12 - MAPA LACRES POR REGIONAL', $mapaLacresPorRegional);
+        add_debug('V8.12.3 - MAPA LACRES POR POSTO', $mapaLacresPorPosto);
+        add_debug('V8.12.3 - MAPA CAPITAL (postos visíveis)', $mapaCapital);
+        add_debug('V8.12.3 - MAPA CENTRAL (postos visíveis)', $mapaCentral);
+        add_debug('V8.12.3 - MAPA LACRES POR REGIONAL', $mapaLacresPorRegional);
         
         // v8.10: Debug do mapa por regional com valores recebidos
         add_debug('V8.10 - ARRAYS POST RECEBIDOS', array(
@@ -763,25 +780,38 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $etiquetas_debug[$posto_lote] = $etiqueta_do_posto;
             }
             
-            // v8.9: Recuperar lacres usando prioridade: 1º posto, 2º regional, 3º defaults
+            // v8.12.3: Recuperar lacres usando prioridade e filtros por grupo
+            // 1º: CAPITAL (apenas postos visíveis em $mapaCapital)
+            // 2º: CENTRAL IIPR (apenas postos visíveis em $mapaCentral)
+            // 3º: REGIONAIS (todos os postos da regional visível em $mapaLacresPorRegional)
             $lacreIIPR_lote = 0;
             $lacreCorreios_lote = 0;
             $etiquetaCorreios_lote = null;
 
             $aplicar_mapa = false;
-            if (isset($mapaLacresPorPosto[$posto_lote])) {
-                // Prioridade 1: lacre específico do posto
-                $lacreIIPR_lote       = $mapaLacresPorPosto[$posto_lote]['lacre_iipr'];
-                $lacreCorreios_lote   = $mapaLacresPorPosto[$posto_lote]['lacre_correios'];
-                $etiquetaCorreios_lote = $mapaLacresPorPosto[$posto_lote]['etiqueta_correios'];
+            
+            // Prioridade 1: posto visível em CAPITAL
+            if (isset($mapaCapital[$posto_lote])) {
+                $lacreIIPR_lote       = $mapaCapital[$posto_lote]['lacre_iipr'];
+                $lacreCorreios_lote   = $mapaCapital[$posto_lote]['lacre_correios'];
+                $etiquetaCorreios_lote = $mapaCapital[$posto_lote]['etiqueta_correios'];
                 $aplicar_mapa = true;
-            } elseif ($regional_lote !== '' && $regional_lote !== '0' && isset($mapaLacresPorRegional[$regional_lote])) {
-                // Prioridade 2: lacre da regional
+            }
+            // Prioridade 2: posto visível em CENTRAL IIPR
+            elseif (isset($mapaCentral[$posto_lote])) {
+                $lacreIIPR_lote       = $mapaCentral[$posto_lote]['lacre_iipr'];
+                $lacreCorreios_lote   = $mapaCentral[$posto_lote]['lacre_correios'];
+                $etiquetaCorreios_lote = $mapaCentral[$posto_lote]['etiqueta_correios'];
+                $aplicar_mapa = true;
+            }
+            // Prioridade 3: regional visível em REGIONAIS (todos os postos da regional)
+            elseif ($regional_lote !== '' && $regional_lote !== '0' && isset($mapaLacresPorRegional[$regional_lote])) {
                 $lacreIIPR_lote       = $mapaLacresPorRegional[$regional_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = $mapaLacresPorRegional[$regional_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaLacresPorRegional[$regional_lote]['etiqueta_correios'];
                 $aplicar_mapa = true;
             }
+            
             // Se nenhum mapa tiver dados, NÃO inserir este lote (postos não visíveis)
             if (!$aplicar_mapa) {
                 continue;
@@ -3658,8 +3688,8 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 // v8.9: Prepara arrays alinhados de lacres/etiquetas + regional antes do submit
 function prepararLacresCorreiosParaSubmit(form) {
     if (!form) return;
-    // Remover inputs ocultos antigos, se existirem (v8.9: inclui regional_lacres[])
-    var nomes = ['posto_lacres[]','lacre_iipr[]','lacre_correios[]','etiqueta_correios[]','regional_lacres[]'];
+    // v8.12.3: Remover inputs ocultos antigos, se existirem (inclui grupo_lacres[])
+    var nomes = ['posto_lacres[]','lacre_iipr[]','lacre_correios[]','etiqueta_correios[]','regional_lacres[]','grupo_lacres[]'];
     for (var n=0;n<nomes.length;n++){
         var els = form.querySelectorAll('input[name="'+nomes[n]+'"]');
         for (var i=0;i<els.length;i++) { els[i].parentNode.removeChild(els[i]); }
@@ -3688,6 +3718,9 @@ function prepararLacresCorreiosParaSubmit(form) {
         // v8.9: Capturar regional da linha (usar data-regional-codigo ou data-regional)
         var regional = tr.getAttribute('data-regional-codigo') || tr.getAttribute('data-regional') || '0';
 
+        // v8.12.3: Capturar grupo da linha (CAPITAL, CENTRAL IIPR, REGIONAIS)
+        var grupo = tr.getAttribute('data-grupo') || '';
+
         // Encontrar inputs na linha
         var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"], input.lacre');
         var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"], input.lacre');
@@ -3697,12 +3730,13 @@ function prepararLacresCorreiosParaSubmit(form) {
         var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
         var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
-        // Criar inputs ocultos alinhados (v8.9: adiciona regional_lacres[])
+        // v8.12.3: Criar inputs ocultos alinhados (adiciona grupo_lacres[])
         var a = document.createElement('input'); a.type='hidden'; a.name='posto_lacres[]'; a.value=posto; form.appendChild(a);
         var b = document.createElement('input'); b.type='hidden'; b.name='lacre_iipr[]'; b.value=valI; form.appendChild(b);
         var c = document.createElement('input'); c.type='hidden'; c.name='lacre_correios[]'; c.value=valC; form.appendChild(c);
         var d = document.createElement('input'); d.type='hidden'; d.name='etiqueta_correios[]'; d.value=valE; form.appendChild(d);
         var e = document.createElement('input'); e.type='hidden'; e.name='regional_lacres[]'; e.value=regional; form.appendChild(e);
+        var f = document.createElement('input'); f.type='hidden'; f.name='grupo_lacres[]'; f.value=grupo; form.appendChild(f);
     }
 }
 
