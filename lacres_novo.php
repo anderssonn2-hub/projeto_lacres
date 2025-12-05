@@ -2132,6 +2132,14 @@ if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
     // Sem recálculo: usar lacres personalizados da sessão ou manter existentes
     foreach ($dados['CAPITAL'] as &$linha) {
         $indice = $linha['posto_codigo'];
+        // Garantir valores padrão para evitar Notice
+        if (!isset($linha['lacre_iipr'])) {
+            $linha['lacre_iipr'] = '';
+        }
+        if (!isset($linha['lacre_correios'])) {
+            $linha['lacre_correios'] = '';
+        }
+        // Sobrescrever com valores personalizados se existirem
         if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
             $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
         }
@@ -2159,11 +2167,16 @@ if ($recalculo_por_lacre && (int)$lacre_central > 0) {
     // Sem recálculo: usar lacres personalizados da sessão ou manter existentes
     foreach ($dados['CENTRAL IIPR'] as &$linha) {
         $indice = $linha['posto_codigo'];
+        // Garantir valor padrão para evitar Notice
+        if (!isset($linha['lacre_iipr'])) {
+            $linha['lacre_iipr'] = '';
+        }
+        // Sobrescrever com valor personalizado se existir
         if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
             $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
         }
         // Atualizar $ultimo_central para ser usado no bloco seguinte
-        if (isset($linha['lacre_iipr'])) {
+        if (isset($linha['lacre_iipr']) && $linha['lacre_iipr'] !== '') {
             $ultimo_central = $linha['lacre_iipr'];
         }
     }
@@ -2208,6 +2221,11 @@ if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
         // Atribuir lacre_correios a cada linha de acordo com seu grupo ou sessão
         foreach ($dados['CENTRAL IIPR'] as &$linha) {
             $indice = $linha['posto_codigo'];
+            // Garantir valor padrão
+            if (!isset($linha['lacre_correios'])) {
+                $linha['lacre_correios'] = '';
+            }
+            // Sobrescrever com valor personalizado ou calculado
             if (isset($_SESSION['lacres_personalizados'][$indice]['correios'])) {
                 $linha['lacre_correios'] = $_SESSION['lacres_personalizados'][$indice]['correios'];
             } else {
@@ -2252,6 +2270,14 @@ if ($recalculo_por_lacre && (int)$lacre_regionais > 0) {
     // Sem recálculo: usar lacres personalizados da sessão ou manter existentes
     foreach ($dados['REGIONAIS'] as &$linha) {
         $indice = $linha['posto_codigo'];
+        // Garantir valores padrão para evitar Notice
+        if (!isset($linha['lacre_iipr'])) {
+            $linha['lacre_iipr'] = '';
+        }
+        if (!isset($linha['lacre_correios'])) {
+            $linha['lacre_correios'] = '';
+        }
+        // Sobrescrever com valores personalizados se existirem
         if (isset($_SESSION['lacres_personalizados'][$indice]['iipr'])) {
             $linha['lacre_iipr'] = $_SESSION['lacres_personalizados'][$indice]['iipr'];
         }
@@ -3656,8 +3682,8 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
                     <input type="hidden" name="grupo_posto[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>">
                     <?php endif; ?>
                 </td>
-                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre" type="text" name="lacre_iipr[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo $dado['lacre_iipr'] ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="iipr"><?php endif; ?></td>
-                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre <?php if ($grupo === 'CENTRAL IIPR'): ?>central-correios<?php endif; ?>" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo $dado['lacre_correios'] ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios"><?php endif; ?></td>
+                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre" type="text" name="lacre_iipr[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_iipr']) ? $dado['lacre_iipr'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="iipr"><?php endif; ?></td>
+                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre <?php if ($grupo === 'CENTRAL IIPR'): ?>central-correios<?php endif; ?>" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_correios']) ? $dado['lacre_correios'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios"><?php endif; ?></td>
                 <td>
     <?php if ($grupo === 'POUPA TEMPO'): ?>—
     <?php elseif ($grupo === 'CENTRAL IIPR'): ?>
