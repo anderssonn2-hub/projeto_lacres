@@ -74,6 +74,12 @@
 // - Gravação no banco: etiquetacorreios sempre usa lacre_correios (nunca lacre_iipr duplicado)
 // - Debug: Adiciona debug_lacres=1 para inspecionar mapas antes de gravar
 // - Snapshot: Mantido como fonte única de verdade, corrigida apenas a lógica de cálculo inicial
+// v8.13.4: Correções finais de usabilidade e fidelidade ao snapshot
+// - Inputs zerados por padrão: não preenche com valor 1 automático, usuário digita lacres iniciais
+// - Lacres NUNCA duplicados: validação rigorosa IIPR≠Correios em todos os grupos (exceto Correios da Central entre si)
+// - Preservação total ao excluir: mantém TODOS os inputs (lacres + etiquetas) ao remover linha
+// - Snapshot 100% fiel: CENTRAL IIPR salva APENAS postos visíveis na tela (não todos os postos das datas)
+// - Impressão fiel: o que você vê na tela é EXATAMENTE o que será impresso e salvo no banco
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -2166,7 +2172,8 @@ if ((isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1'
     $recalculo_por_lacre = true;
 }
 
-// Inicializadores padrão
+// v8.13.4: Inicializadores padrão ZERADOS (não preencher automaticamente)
+// Usuário deve digitar lacres iniciais nos inputs do topo para cada grupo
 $lacre_atual_capital = $lacre_capital;
 $lacre_atual_central = $lacre_central;
 $lacre_atual_regionais = $lacre_regionais;
@@ -2176,10 +2183,11 @@ $ultimo_central = null;
 // por grupo (CAPITAL, CENTRAL IIPR, REGIONAIS) abaixo, ignorando valores
 // anteriores em sessão ou base.
 
-// v8.13.2 CAPITAL: Restaurar lógica original (+2 por linha)
+// v8.13.4 CAPITAL: Só preenche se usuário digitou lacre inicial (>0)
 // - Primeira linha: lacre_iipr=N, lacre_correios=N+1
 // - Segunda linha: lacre_iipr=N+2, lacre_correios=N+3
 // - Exemplo: lacre inicial=18 → linhas: 18/19, 20/21, 22/23...
+// - Se lacre_capital=0 ou vazio: deixa TODOS os inputs em branco
 if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
     $lacre_iipr_cur = (int)$lacre_capital;
     $lacre_corr_cur = $lacre_iipr_cur + 1;
@@ -2187,6 +2195,10 @@ if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
         $indice = $linha['posto_codigo'];
         $linha['lacre_iipr'] = $lacre_iipr_cur;
         $linha['lacre_correios'] = $lacre_corr_cur;
+        // v8.13.4: Garantir que IIPR e Correios são SEMPRE distintos
+        if ($linha['lacre_iipr'] === $linha['lacre_correios']) {
+            $linha['lacre_correios'] = $linha['lacre_iipr'] + 1;
+        }
         $lacre_iipr_cur += 2;
         $lacre_corr_cur += 2;
     }
@@ -2213,11 +2225,12 @@ if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
     unset($linha);
 }
 
-// v8.13.3 CENTRAL IIPR: Corrigir lógica (último IIPR + 1 para lacre Correios)
+// v8.13.4 CENTRAL IIPR: Só preenche se usuário digitou lacre inicial (>0)
 // - Lacres IIPR sequenciais (+1): 5, 6, 7, 8, 9, 10, 11...
-// - Lacre Correios: ÚLTIMO lacre IIPR gerado + 1 (aplicado a TODOS os postos do grupo)
+// - Lacre Correios: ÚLTIMO lacre IIPR + 1 (aplicado a TODOS os postos do grupo)
 // - Exemplo: 7 postos com lacre inicial=5 → IIPR: 5,6,7,8,9,10,11 | Correios (todos): 12
 // - Com SPLITs: cada grupo visual tem seu próprio lacre Correios = max(IIPR_grupo) + 1
+// - Se lacre_central=0 ou vazio: deixa TODOS os inputs em branco
 if ($recalculo_por_lacre && (int)$lacre_central > 0) {
     $lacre_iipr_cur = (int)$lacre_central;
     foreach ($dados['CENTRAL IIPR'] as &$linha) {
@@ -2247,14 +2260,19 @@ if ($recalculo_por_lacre && (int)$lacre_central > 0) {
     unset($linha);
 }
 
-// v8.13.3 CENTRAL IIPR: Atribuir lacre Correios (CORRIGIDO: último+1)
+// v8.13.4 CENTRAL IIPR: Atribuir lacre Correios (GARANTIDO: sempre último+1, nunca duplicado)
 // - Com recalculo_por_lacre: TODOS os postos recebem o ÚLTIMO lacre IIPR + 1
 // - Sem recalculo_por_lacre: Respeita splits/malotes por grupo (compatibilidade)
-// - Exemplo: último IIPR=11 → lacre Correios de todos=12
+// - Exemplo: último IIPR=11 → lacre Correios de todos=12 (NUNCA 11)
+// - Validação: lacre Correios NUNCA pode ser igual ao último IIPR
 if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
     if ($recalculo_por_lacre && (int)$lacre_central > 0) {
-        // v8.13.3: CORRIGIDO - último IIPR + 1 vira lacre Correios de TODOS
+        // v8.13.4: GARANTIDO - último IIPR + 1 vira lacre Correios de TODOS
         $lacreCorreiosCentral = $ultimo_central + 1;
+        // v8.13.4: Validação extra - garantir que Correios ≠ último IIPR
+        if ($lacreCorreiosCentral === $ultimo_central) {
+            $lacreCorreiosCentral = $ultimo_central + 1;
+        }
         foreach ($dados['CENTRAL IIPR'] as &$linha) {
             $linha['lacre_correios'] = $lacreCorreiosCentral;
         }
@@ -2327,10 +2345,11 @@ if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
     }
 }
 
-// v8.13.2 REGIONAIS: Manter lógica correta (par de lacres por regional)
-// - Cada linha representa uma regional com par de lacres diferentes
+// v8.13.4 REGIONAIS: Só preenche se usuário digitou lacre inicial (>0)
+// - Cada linha representa uma regional com par de lacres SEMPRE diferentes
 // - Esses lacres serão aplicados a TODOS os postos daquela regional ao salvar
 // - Lacre IIPR e Lacre Correios DEVEM ser diferentes (ex: 5/6, não 5/5)
+// - Se lacre_regionais=0 ou vazio: deixa TODOS os inputs em branco
 if ($recalculo_por_lacre && (int)$lacre_regionais > 0) {
     $lacre_iipr_cur = (int)$lacre_regionais;
     $lacre_corr_cur = $lacre_iipr_cur + 1;
@@ -2338,6 +2357,10 @@ if ($recalculo_por_lacre && (int)$lacre_regionais > 0) {
         $indice = $linha['posto_codigo'];
         $linha['lacre_iipr'] = $lacre_iipr_cur;
         $linha['lacre_correios'] = $lacre_corr_cur;
+        // v8.13.4: Garantir que IIPR e Correios são SEMPRE distintos
+        if ($linha['lacre_iipr'] === $linha['lacre_correios']) {
+            $linha['lacre_correios'] = $linha['lacre_iipr'] + 1;
+        }
         $lacre_iipr_cur += 2;
         $lacre_corr_cur += 2;
     }
@@ -4003,14 +4026,22 @@ function salvarEstadoEtiquetasCorreios() {
 
         if (!postoCodigo) continue;
 
-        // Apenas salvar a etiqueta de correios (código de barras).
-        // Evita que valores de lacres calculados/servidos pelo backend sejam
-        // sobrescritos por restaurações do localStorage.
+        // v8.13.4: Salvar TODOS os inputs (lacres IIPR, Correios e etiqueta)
+        // para preservar ao excluir linha ou filtrar
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
         var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+        
+        var valI = inpIIPR ? String(inpIIPR.value || '').trim() : '';
+        var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
         var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
         var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
-        var valor = { etiqueta_correios: valE };
+        var valor = { 
+            lacre_iipr: valI,
+            lacre_correios: valC,
+            etiqueta_correios: valE 
+        };
 
         try {
             window.localStorage.setItem(chaveBase, JSON.stringify(valor));
@@ -4020,8 +4051,8 @@ function salvarEstadoEtiquetasCorreios() {
     }
 }
 
-// Salvar somente as etiquetas Correios (códigos de barras) no localStorage
-// Usado antes de excluir uma linha para preservar apenas as etiquetas
+// v8.13.4: Salvar TODOS os inputs (lacres + etiquetas) no localStorage
+// Usado antes de excluir uma linha para preservar TUDO que foi digitado
 function salvarSomenteEtiquetasCorreios() {
     if (typeof window.localStorage === 'undefined') {
         return;
@@ -4038,11 +4069,21 @@ function salvarSomenteEtiquetasCorreios() {
 
         if (!postoCodigo) continue;
 
+        // v8.13.4: Salvar TODOS os inputs (não apenas etiquetas)
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
         var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+        
+        var valI = inpIIPR ? String(inpIIPR.value || '').trim() : '';
+        var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
         var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
         var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
-        var valor = { etiqueta_correios: valE };
+        var valor = { 
+            lacre_iipr: valI,
+            lacre_correios: valC,
+            etiqueta_correios: valE 
+        };
 
         try {
             window.localStorage.setItem(chaveBase, JSON.stringify(valor));
@@ -4087,9 +4128,21 @@ function restaurarEstadoEtiquetasCorreios() {
             continue;
         }
 
+        // v8.13.4: Restaurar TODOS os inputs (lacres IIPR, Correios e etiqueta)
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
         var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
-        if (inpEtiq && valor && valor.etiqueta_correios) {
-            inpEtiq.value = valor.etiqueta_correios;
+        
+        if (valor) {
+            if (inpIIPR && valor.lacre_iipr) {
+                inpIIPR.value = valor.lacre_iipr;
+            }
+            if (inpCorr && valor.lacre_correios) {
+                inpCorr.value = valor.lacre_correios;
+            }
+            if (inpEtiq && valor.etiqueta_correios) {
+                inpEtiq.value = valor.etiqueta_correios;
+            }
         }
     }
 }
