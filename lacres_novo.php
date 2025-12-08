@@ -924,18 +924,17 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $origem_lacre = 'REGIONAL:' . $regional_lote;
             }
             
-            // v8.13.3: Validação crítica - garantir que lacre_correios não seja igual a lacre_iipr
-            // quando deveriam ser diferentes (exceto se ambos forem 0)
+            // v8.14.0: Validação CRÍTICA - lacres NUNCA podem ser iguais (exceto CENTRAL entre si)
+            // CAPITAL e REGIONAIS: IIPR ≠ Correios SEMPRE por posto
+            // CENTRAL IIPR: Correios pode ser igual entre postos (todos usam último+1)
             if ($aplicar_mapa && $lacreIIPR_lote > 0 && $lacreCorreios_lote > 0) {
                 if ($lacreIIPR_lote === $lacreCorreios_lote) {
-                    // ERRO: lacres duplicados detectados - corrigir automaticamente
+                    // CRITICAL: lacres duplicados detectados - corrigir SEMPRE
                     if ($debug_lacres) {
-                        echo "<div style='background:yellow;padding:10px;margin:10px;'>AVISO: Posto $posto_lote ($origem_lacre) tinha lacre_iipr=$lacreIIPR_lote igual a lacre_correios=$lacreCorreios_lote - corrigido automaticamente</div>";
+                        echo "<div style='background:#ff6b6b;color:white;padding:10px;margin:10px;font-weight:bold;'>ERRO CORRIGIDO: Posto $posto_lote ($origem_lacre) tinha IIPR=$lacreIIPR_lote IGUAL Correios=$lacreCorreios_lote - AUTO-CORRIGIDO para Correios=" . ($lacreIIPR_lote + 1) . "</div>";
                     }
-                    // Se for REGIONAIS com incremento esperado, corrigir
-                    if (strpos($origem_lacre, 'REGIONAL') === 0) {
-                        $lacreCorreios_lote = $lacreIIPR_lote + 1;
-                    }
+                    // SEMPRE corrigir: Correios = IIPR + 1 (regra universal)
+                    $lacreCorreios_lote = $lacreIIPR_lote + 1;
                 }
             }
             
@@ -1014,40 +1013,12 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         
         $pdo_controle->commit();
 
-        // v8.13: Salvar lacres em sessão para preservar após qualquer operação
-        // Usa os mapas do snapshot (fonte única de verdade)
-        if (!isset($_SESSION['lacres_personalizados'])) {
-            $_SESSION['lacres_personalizados'] = array();
-        }
-        
-        // Salvar CAPITAL
-        foreach ($mapaCapital as $postoCodigo => $info) {
-            if (!isset($_SESSION['lacres_personalizados'][$postoCodigo])) {
-                $_SESSION['lacres_personalizados'][$postoCodigo] = array();
-            }
-            if (isset($info['lacre_iipr']) && $info['lacre_iipr'] > 0) {
-                $_SESSION['lacres_personalizados'][$postoCodigo]['iipr'] = $info['lacre_iipr'];
-            }
-            if (isset($info['lacre_correios']) && $info['lacre_correios'] > 0) {
-                $_SESSION['lacres_personalizados'][$postoCodigo]['correios'] = $info['lacre_correios'];
-            }
-        }
-        
-        // Salvar CENTRAL
-        foreach ($mapaCentral as $postoCodigo => $info) {
-            if (!isset($_SESSION['lacres_personalizados'][$postoCodigo])) {
-                $_SESSION['lacres_personalizados'][$postoCodigo] = array();
-            }
-            if (isset($info['lacre_iipr']) && $info['lacre_iipr'] > 0) {
-                $_SESSION['lacres_personalizados'][$postoCodigo]['iipr'] = $info['lacre_iipr'];
-            }
-            if (isset($info['lacre_correios']) && $info['lacre_correios'] > 0) {
-                $_SESSION['lacres_personalizados'][$postoCodigo]['correios'] = $info['lacre_correios'];
-            }
-        }
-        
-        // Nota: REGIONAIS não salvamos por posto individual, pois são expandidas
-        // Os lacres das regionais serão recalculados na próxima carga se necessário
+        // v8.14.0: NÃO salvar lacres na sessão após salvar!
+        // - Snapshot é usado APENAS para gravar no BD
+        // - Sessão é atualizada APENAS quando usuário edita inputs manualmente
+        // - Isso evita perpetuar duplicações ou erros do JavaScript
+        // - localStorage já preserva os valores corretos que estavam na tela
+        // (REMOVIDO: código que salvava mapaCapital/mapaCentral na sessão)
 
         // Verifica se deve imprimir após salvar
         $deve_imprimir = isset($_POST['imprimir_apos_salvar']) && $_POST['imprimir_apos_salvar'] === '1';
@@ -4165,7 +4136,7 @@ function confirmarGravarEImprimir() {
     gravarEImprimirCorreios();
 }
 
-// v8.11.1: Confirmacao antes de limpar sessao (zera inputs + localStorage relacionado ao oficio)
+// v8.14.0: Limpar Sessão zera TODOS inputs (incluindo topo: lacre_capital/central/regionais)
 function confirmarLimparSessao(form) {
     var msg = "Você está prestes a LIMPAR TODA A SESSÃO deste Ofício.\n\n" +
               "Isso irá zerar TODOS os inputs de lacre e de etiqueta dos Correios.\n\n" +
@@ -4175,7 +4146,15 @@ function confirmarLimparSessao(form) {
     }
 
     try {
-        // Zerar inputs visuais de lacres e etiquetas
+        // v8.14.0: Zerar inputs DO TOPO (lacre_capital, lacre_central, lacre_regionais)
+        var inputTopo = document.getElementById('lacre_capital_input');
+        if (inputTopo) { inputTopo.value = ''; }
+        inputTopo = document.getElementById('lacre_central_input');
+        if (inputTopo) { inputTopo.value = ''; }
+        inputTopo = document.getElementById('lacre_regionais_input');
+        if (inputTopo) { inputTopo.value = ''; }
+        
+        // Zerar inputs visuais de lacres e etiquetas (linhas da tabela)
         var inputs = document.querySelectorAll('input.lacre, input.etiqueta-barras, input.central-correios, input.central-etiqueta');
         for (var i = 0; i < inputs.length; i++) {
             inputs[i].value = '';
