@@ -89,6 +89,13 @@
 // - MANTIDO: Modal 3 opções para PT e Correios (v8.14.3)
 // - MANTIDO: Toda funcionalidade de impressão e redirect (v8.14.2)
 // - Compatibilidade total entre PT e Correios
+// ==================================================================================
+// v8.14.5: Modal PT + Botões Pulsantes + Correção FK
+// ==================================================================================
+// - NOVO: Modal 3 opções aparece ao clicar "Gravar e Imprimir" em modelo_oficio_poupa_tempo.php
+// - NOVO: Botões pulsam (animação) quando há dados não salvos na tela (PT)
+// - NOVO: Correção erro FK constraint: valida id_despacho existe antes de INSERT em ciDespachoItens
+// - MANTIDO: Todas as funcionalidades de v8.14.4 (lotes, Correios, etc)
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");

@@ -18,6 +18,11 @@
    - Campo lote agora salvo em ciDespachoItens (antes vazio)
    - SELECT usa GROUP_CONCAT para capturar todos os lotes do posto
    - Compatibilidade com pesquisas por lote no BD
+   
+   v8.14.5: Modal confirmação + botões pulsantes + correção FK
+   - Modal 3 opções (Sobrescrever/Novo/Cancelar) ao clicar "Gravar e Imprimir"
+   - Botões pulsam quando há dados não salvos na tela
+   - Correção erro FK: garantir id_despacho existe antes de INSERT em ciDespachoItens
 */
 
 error_reporting(E_ALL & ~E_NOTICE);
@@ -137,16 +142,24 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             }
         }
         
+        // v8.14.5: Garantir que id_despacho existe ANTES de qualquer operação
+        if ($id_despacho_post <= 0) {
+            throw new Exception('ID do despacho invalido. Salve o oficio primeiro na tela anterior.');
+        }
+        
+        // v8.14.5: Verificar se o despacho existe no banco (corrige erro FK)
+        $stVerifica = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE id = ? LIMIT 1");
+        $stVerifica->execute(array($id_despacho_post));
+        if (!$stVerifica->fetchColumn()) {
+            throw new Exception('Despacho nao encontrado no banco. ID: ' . $id_despacho_post);
+        }
+        
         // v8.14.3: Se modo sobrescrever, apagar itens antigos antes de gravar
         if ($modoOficio === 'sobrescrever' && $id_despacho_post > 0) {
             $stDelItens = $pdo_controle->prepare("DELETE FROM ciDespachoItens WHERE id_despacho = ?");
             $stDelItens->execute(array($id_despacho_post));
             $stDelLotes = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho = ?");
             $stDelLotes->execute(array($id_despacho_post));
-        }
-
-        if ($id_despacho_post <= 0) {
-            throw new Exception('Nao foi possivel localizar ou criar o despacho. Salve o oficio primeiro na tela anterior.');
         }
 
         $pdo_controle->beginTransaction();
@@ -475,6 +488,16 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 /* classe auxiliar para esconder na impressão */
 .nao-imprimir{}
 
+/* v8.14.5: Animação de pulsar para botões com dados não salvos */
+@keyframes pulsar {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 5px rgba(255, 193, 7, 0.5); }
+  50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(255, 193, 7, 0.8); }
+}
+.btn-nao-salvo {
+  animation: pulsar 2s ease-in-out infinite;
+  border: 2px solid #ffc107 !important;
+}
+
 /* Mensagens de status */
 .mensagem-status{
     padding:10px 20px;
@@ -615,6 +638,78 @@ function apenasGravar() {
 function apenasImprimir() {
     window.print();
 }
+
+// ============================================================
+// v8.14.5: Sistema de detecção de mudanças e pulsação de botões
+// ============================================================
+var valoresOriginais = {};
+var dadosForamSalvos = <?php echo ($tipo_mensagem === 'sucesso' ? 'true' : 'false'); ?>;
+
+function capturarValoresOriginais() {
+    var inputs = document.querySelectorAll('input[type="text"], input[type="hidden"][name^="lote_posto"]');
+    for (var i = 0; i < inputs.length; i++) {
+        var inp = inputs[i];
+        if (inp.name) {
+            valoresOriginais[inp.name] = inp.value;
+        }
+    }
+}
+
+function verificarMudancas() {
+    var mudou = false;
+    var inputs = document.querySelectorAll('input[type="text"], input[type="hidden"][name^="lote_posto"]');
+    for (var i = 0; i < inputs.length; i++) {
+        var inp = inputs[i];
+        if (inp.name && valoresOriginais[inp.name] !== undefined) {
+            if (valoresOriginais[inp.name] !== inp.value) {
+                mudou = true;
+                break;
+            }
+        }
+    }
+    return mudou;
+}
+
+function atualizarEstadoBotoes() {
+    var temMudancas = verificarMudancas();
+    var botoes = document.querySelectorAll('.btn-imprimir, .btn-salvar');
+    
+    for (var i = 0; i < botoes.length; i++) {
+        var btn = botoes[i];
+        if (temMudancas) {
+            if (!btn.className.match(/btn-nao-salvo/)) {
+                btn.className += ' btn-nao-salvo';
+            }
+        } else {
+            btn.className = btn.className.replace(/\s*btn-nao-salvo/g, '');
+        }
+    }
+}
+
+function inicializarMonitoramento() {
+    capturarValoresOriginais();
+    
+    // Monitorar mudanças em todos os inputs
+    var inputs = document.querySelectorAll('input[type="text"]');
+    for (var i = 0; i < inputs.length; i++) {
+        inputs[i].addEventListener('input', function() {
+            atualizarEstadoBotoes();
+        });
+        inputs[i].addEventListener('change', function() {
+            atualizarEstadoBotoes();
+        });
+    }
+    
+    // Verificar inicialmente
+    atualizarEstadoBotoes();
+}
+
+// Inicializar quando a página carregar
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', inicializarMonitoramento);
+} else {
+    inicializarMonitoramento();
+}
 </script>
 </head>
 <body>
@@ -652,18 +747,18 @@ function apenasImprimir() {
     </p>
 
     <!-- Botão Gravar e Imprimir -->
-    <button type="button" onclick="gravarEImprimir();" class="btn-sucesso">
-        Gravar e Imprimir
+    <button type="button" onclick="gravarEImprimir();" class="btn-sucesso btn-imprimir">
+        💾🖨️ Gravar e Imprimir
     </button>
 
     <!-- Botão apenas Gravar -->
-    <button type="button" onclick="apenasGravar();">
-        Gravar Dados
+    <button type="button" onclick="apenasGravar();" class="btn-salvar">
+        💾 Gravar Dados
     </button>
 
     <!-- Botão apenas Imprimir -->
     <button type="button" onclick="apenasImprimir();" class="btn-imprimir">
-        Apenas Imprimir
+        🖨️ Apenas Imprimir
     </button>
   </div>
 
