@@ -7,6 +7,12 @@
    - Gera uma página de ofício por posto poupatempo
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
+   
+   v8.14.3: Confirmação com 3 opções (Sobrescrever/Criar Novo/Cancelar)
+   - Modal customizado ao clicar "Gravar Dados" ou "Gravar e Imprimir"
+   - Modo sobrescrever: apaga itens/lotes do último ofício antes de gravar
+   - Modo novo: cria novo ofício com número incrementado
+   - Campo modo_oficio enviado via POST para o handler
 */
 
 error_reporting(E_ALL & ~E_NOTICE);
@@ -92,6 +98,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             $dados_salvos[$posto]['quantidade'] = (int)$val;
         }
 
+        // v8.14.3: Verificar modo do ofício (sobrescrever/novo)
+        $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : '';
+        
         // Se não tiver id_despacho, precisa criar o despacho primeiro
         if ($id_despacho_post <= 0 && !empty($datasStr_post)) {
             $grupo = 'POUPA TEMPO';
@@ -112,6 +121,14 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                 $stIns->execute(array($usuario, $grupo, $datasStr_post, $hash));
                 $id_despacho_post = (int)$pdo_controle->lastInsertId();
             }
+        }
+        
+        // v8.14.3: Se modo sobrescrever, apagar itens antigos antes de gravar
+        if ($modoOficio === 'sobrescrever' && $id_despacho_post > 0) {
+            $stDelItens = $pdo_controle->prepare("DELETE FROM ciDespachoItens WHERE id_despacho = ?");
+            $stDelItens->execute(array($id_despacho_post));
+            $stDelLotes = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho = ?");
+            $stDelLotes->execute(array($id_despacho_post));
         }
 
         if ($id_despacho_post <= 0) {
@@ -498,24 +515,79 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 }
 </style>
 <script type="text/javascript">
-// Função para gravar e imprimir (compatível com navegadores antigos)
-function gravarEImprimir() {
+// v8.14.3: Modal de confirmação com 3 opções para Poupa Tempo
+function confirmarGravarPT(comImpressao) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:500px;text-align:center;';
+    
+    var titulo = document.createElement('h3');
+    titulo.textContent = 'Como deseja gravar o Ofício Poupa Tempo?';
+    titulo.style.cssText = 'margin-top:0;color:#333;';
+    
+    var texto = document.createElement('p');
+    texto.innerHTML = '<b>Sobrescrever:</b> Apaga itens do último ofício e grava este no lugar.<br><br>' +
+                      '<b>Criar Novo:</b> Mantém ofício anterior e cria outro com novo número.<br><br>' +
+                      '<b>Cancelar:</b> Aborta a operação.';
+    texto.style.cssText = 'margin:20px 0;line-height:1.6;color:#555;';
+    
+    var botoes = document.createElement('div');
+    botoes.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:25px;';
+    
+    var btnSobrescrever = document.createElement('button');
+    btnSobrescrever.textContent = 'Sobrescrever';
+    btnSobrescrever.style.cssText = 'background:#ff9800;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnSobrescrever.onclick = function() {
+        document.body.removeChild(overlay);
+        executarGravacaoPT('sobrescrever', comImpressao);
+    };
+    
+    var btnCriarNovo = document.createElement('button');
+    btnCriarNovo.textContent = 'Criar Novo';
+    btnCriarNovo.style.cssText = 'background:#28a745;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnCriarNovo.onclick = function() {
+        document.body.removeChild(overlay);
+        executarGravacaoPT('novo', comImpressao);
+    };
+    
+    var btnCancelar = document.createElement('button');
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.style.cssText = 'background:#dc3545;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnCancelar.onclick = function() {
+        document.body.removeChild(overlay);
+    };
+    
+    botoes.appendChild(btnSobrescrever);
+    botoes.appendChild(btnCriarNovo);
+    botoes.appendChild(btnCancelar);
+    
+    modal.appendChild(titulo);
+    modal.appendChild(texto);
+    modal.appendChild(botoes);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+}
+
+function executarGravacaoPT(modo, comImpressao) {
     var form = document.getElementById('formOficio');
     if (form) {
+        document.getElementById('modo_oficio_pt').value = modo;
         document.getElementById('acaoForm').value = 'salvar_oficio_completo';
-        document.getElementById('imprimir_apos_salvar').value = '1';
+        document.getElementById('imprimir_apos_salvar').value = comImpressao ? '1' : '0';
         form.submit();
     }
 }
 
-// Função apenas para gravar
+// Função para gravar e imprimir (agora com modal)
+function gravarEImprimir() {
+    confirmarGravarPT(true);
+}
+
+// Função apenas para gravar (agora com modal)
 function apenasGravar() {
-    var form = document.getElementById('formOficio');
-    if (form) {
-        document.getElementById('acaoForm').value = 'salvar_oficio_completo';
-        document.getElementById('imprimir_apos_salvar').value = '0';
-        form.submit();
-    }
+    confirmarGravarPT(false);
 }
 
 // Função apenas para imprimir
@@ -535,6 +607,8 @@ function apenasImprimir() {
   <input type="hidden" name="pt_datas" value="<?php echo e($datasStr); ?>">
   <!-- Flag para imprimir após salvar -->
   <input type="hidden" name="imprimir_apos_salvar" id="imprimir_apos_salvar" value="0">
+  <!-- v8.14.3: Modo do ofício (sobrescrever/novo) -->
+  <input type="hidden" name="modo_oficio" id="modo_oficio_pt" value="">
 
   <div class="controles-pagina nao-imprimir">
     <h2>Modelo de Oficio - Poupatempo</h2>

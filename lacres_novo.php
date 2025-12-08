@@ -80,6 +80,14 @@
 // - Preservação total ao excluir: mantém TODOS os inputs (lacres + etiquetas) ao remover linha
 // - Snapshot 100% fiel: CENTRAL IIPR salva APENAS postos visíveis na tela (não todos os postos das datas)
 // - Impressão fiel: o que você vê na tela é EXATAMENTE o que será impresso e salvo no banco
+// ==================================================================================
+// v8.14.3: Confirmação 3 opções para Poupa Tempo + mantém funcionalidade Correios
+// ==================================================================================
+// - NOVO: Modal de confirmação no modelo_oficio_poupa_tempo.php (Sobrescrever/Criar Novo/Cancelar)
+// - NOVO: Handler PT com modo_oficio para sobrescrever ou criar novo
+// - MANTIDO: Toda funcionalidade v8.14.2 para Correios (redirect + auto-impressão)
+// - MANTIDO: Impressão correta com valores do BD para Correios
+// - Compatibilidade total entre PT e Correios
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
