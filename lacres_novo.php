@@ -4118,22 +4118,83 @@ function restaurarEstadoEtiquetasCorreios() {
     }
 }
 
-// v8.12: Confirmação antes de gravar e imprimir com opção sobrescrever/novo
-function confirmarGravarEImprimir() {
-    var msg = "Como deseja gravar o Ofício dos Correios?\n\n" +
-              "Clique OK para SOBRESCREVER o ofício existente\n" +
-              "(apagar os lotes do último ofício e gravar este no lugar).\n\n" +
-              "Clique Cancelar para CRIAR UM NOVO OFÍCIO\n" +
-              "(manter o ofício anterior e criar outro com novo número).";
-    var sobrescrever = window.confirm(msg);
-    var modo = sobrescrever ? 'sobrescrever' : 'novo';
-    
-    var campoModo = document.getElementById('modo_oficio');
-    if (campoModo) {
-        campoModo.value = modo;
+// v8.14.1: Função para preencher inputs visualmente antes de imprimir
+// Garante que lacres/etiquetas aparecem no PDF gerado
+function preencherInputsParaImpressao() {
+    var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    for (var r = 0; r < rows.length; r++) {
+        var tr = rows[r];
+        if (tr.style && tr.style.display === 'none') continue;
+        
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
+        var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+        
+        // Garantir que values estão visíveis (renderizados no DOM)
+        if (inpIIPR && inpIIPR.value) { inpIIPR.setAttribute('value', inpIIPR.value); }
+        if (inpCorr && inpCorr.value) { inpCorr.setAttribute('value', inpCorr.value); }
+        if (inpEtiq && inpEtiq.value) { inpEtiq.setAttribute('value', inpEtiq.value); }
     }
+}
+
+// v8.14.1: Confirmação customizada com 3 opções: Sobrescrever | Criar Novo | Cancelar
+function confirmarGravarEImprimir() {
+    // Criar modal customizado com 3 botões
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
     
-    gravarEImprimirCorreios();
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:500px;text-align:center;';
+    
+    var titulo = document.createElement('h3');
+    titulo.textContent = 'Como deseja gravar o Ofício dos Correios?';
+    titulo.style.cssText = 'margin-top:0;color:#333;';
+    
+    var texto = document.createElement('p');
+    texto.innerHTML = '<b>Sobrescrever:</b> Apaga lotes do último ofício e grava este no lugar.<br><br>' +
+                      '<b>Criar Novo:</b> Mantém ofício anterior e cria outro com novo número.<br><br>' +
+                      '<b>Cancelar:</b> Aborta a operação.';
+    texto.style.cssText = 'margin:20px 0;line-height:1.6;color:#555;';
+    
+    var botoes = document.createElement('div');
+    botoes.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:25px;';
+    
+    var btnSobrescrever = document.createElement('button');
+    btnSobrescrever.textContent = 'Sobrescrever';
+    btnSobrescrever.style.cssText = 'background:#ff9800;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnSobrescrever.onclick = function() {
+        document.body.removeChild(overlay);
+        var campoModo = document.getElementById('modo_oficio');
+        if (campoModo) { campoModo.value = 'sobrescrever'; }
+        gravarEImprimirCorreios();
+    };
+    
+    var btnCriarNovo = document.createElement('button');
+    btnCriarNovo.textContent = 'Criar Novo';
+    btnCriarNovo.style.cssText = 'background:#28a745;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnCriarNovo.onclick = function() {
+        document.body.removeChild(overlay);
+        var campoModo = document.getElementById('modo_oficio');
+        if (campoModo) { campoModo.value = 'novo'; }
+        gravarEImprimirCorreios();
+    };
+    
+    var btnCancelar = document.createElement('button');
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.style.cssText = 'background:#dc3545;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnCancelar.onclick = function() {
+        document.body.removeChild(overlay);
+    };
+    
+    botoes.appendChild(btnSobrescrever);
+    botoes.appendChild(btnCriarNovo);
+    botoes.appendChild(btnCancelar);
+    
+    modal.appendChild(titulo);
+    modal.appendChild(texto);
+    modal.appendChild(botoes);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
 }
 
 // v8.14.0: Limpar Sessão zera TODOS inputs (incluindo topo: lacre_capital/central/regionais)
@@ -4182,6 +4243,10 @@ function confirmarLimparSessao(form) {
 function gravarEImprimirCorreios() {
     var form = document.getElementById('formOficioCorreios');
     if (form) {
+        // v8.14.1: Preencher inputs visualmente antes de submeter (garante impressão correta)
+        if (typeof preencherInputsParaImpressao === 'function') {
+            try { preencherInputsParaImpressao(); } catch (e) { /* ignore */ }
+        }
         // v8.12: Salvar etiquetas antes de submeter para garantir restauração após reload
         if (typeof salvarEstadoEtiquetasCorreios === 'function') {
             try { salvarEstadoEtiquetasCorreios(); } catch (e) { /* ignore */ }
