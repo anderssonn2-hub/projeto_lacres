@@ -13,6 +13,11 @@
    - Modo sobrescrever: apaga itens/lotes do último ofício antes de gravar
    - Modo novo: cria novo ofício com número incrementado
    - Campo modo_oficio enviado via POST para o handler
+   
+   v8.14.4: Gravação completa de lotes PT
+   - Campo lote agora salvo em ciDespachoItens (antes vazio)
+   - SELECT usa GROUP_CONCAT para capturar todos os lotes do posto
+   - Compatibilidade com pesquisas por lote no BD
 */
 
 error_reporting(E_ALL & ~E_NOTICE);
@@ -97,6 +102,15 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             }
             $dados_salvos[$posto]['quantidade'] = (int)$val;
         }
+        
+        // v8.14.4: Capturar lotes do POST (vindos dos hidden inputs do form)
+        $lotes_post = isset($_POST['lote_posto']) && is_array($_POST['lote_posto']) ? $_POST['lote_posto'] : array();
+        foreach ($lotes_post as $posto => $val) {
+            if (!isset($dados_salvos[$posto])) {
+                $dados_salvos[$posto] = array();
+            }
+            $dados_salvos[$posto]['lote'] = trim($val);
+        }
 
         // v8.14.3: Verificar modo do ofício (sobrescrever/novo)
         $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : '';
@@ -146,6 +160,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                SET lacre_iipr = :lacre,
                    nome_posto = :nome,
                    endereco = :endereco,
+                   lote = :lote,
                    quantidade = :quantidade
              WHERE id_despacho = :id_despacho
                AND posto = :posto
@@ -153,8 +168,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         $stmUpd = $pdo_controle->prepare($sqlUpd);
 
         $sqlIns = "
-            INSERT INTO ciDespachoItens (id_despacho, posto, lacre_iipr, nome_posto, endereco, quantidade, incluir)
-            VALUES (:id_despacho, :posto, :lacre, :nome, :endereco, :quantidade, 1)
+            INSERT INTO ciDespachoItens (id_despacho, posto, lacre_iipr, nome_posto, endereco, lote, quantidade, incluir)
+            VALUES (:id_despacho, :posto, :lacre, :nome, :endereco, :lote, :quantidade, 1)
         ";
         $stmIns = $pdo_controle->prepare($sqlIns);
 
@@ -168,6 +183,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             $valorLacre = isset($dados_salvos[$posto]['lacre']) ? $dados_salvos[$posto]['lacre'] : '';
             $valorNome = isset($dados_salvos[$posto]['nome']) ? $dados_salvos[$posto]['nome'] : '';
             $valorEndereco = isset($dados_salvos[$posto]['endereco']) ? $dados_salvos[$posto]['endereco'] : '';
+            $valorLote = isset($dados_salvos[$posto]['lote']) ? $dados_salvos[$posto]['lote'] : '';
             $valorQuantidade = isset($dados_salvos[$posto]['quantidade']) ? $dados_salvos[$posto]['quantidade'] : 0;
 
             // Verifica se já existe registro para este posto
@@ -183,6 +199,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                     ':lacre' => $valorLacre,
                     ':nome' => $valorNome,
                     ':endereco' => $valorEndereco,
+                    ':lote' => $valorLote,
                     ':quantidade' => $valorQuantidade,
                     ':id_despacho' => $id_despacho_post,
                     ':posto' => $posto
@@ -196,6 +213,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                     ':lacre' => $valorLacre,
                     ':nome' => $valorNome,
                     ':endereco' => $valorEndereco,
+                    ':lote' => $valorLote,
                     ':quantidade' => $valorQuantidade
                 ));
                 $totalInseridos++;
@@ -282,6 +300,7 @@ if ($pdo_controle && !empty($datasNorm)) {
             LPAD(c.posto,3,'0') AS codigo,
             COALESCE(r.nome, CONCAT('POUPA TEMPO - ', LPAD(c.posto,3,'0'))) AS nome,
             SUM(COALESCE(c.quantidade,0)) AS quantidade,
+            GROUP_CONCAT(DISTINCT c.lote ORDER BY c.lote SEPARATOR ',') AS lotes,
             r.endereco AS endereco
         FROM ciPostosCsv c
         INNER JOIN ciRegionais r 
@@ -300,12 +319,14 @@ if ($pdo_controle && !empty($datasNorm)) {
             $codigo   = (string)$r['codigo'];           
             $nome     = (string)$r['nome'];             
             $quant    = (int)$r['quantidade'];          
+            $lotes    = isset($r['lotes']) ? (string)$r['lotes'] : '';
             $endereco = trim((string)$r['endereco']);   
 
             $paginas[] = array(
                 'codigo'   => $codigo,
                 'nome'     => $nome,
                 'qtd'      => $quant,
+                'lotes'    => $lotes,
                 'endereco' => $endereco,
             );
         }
@@ -721,6 +742,11 @@ function apenasImprimir() {
                     value="<?php echo e($valorLacre); ?>"
                     class="input-editavel"
                     style="text-align:right;"
+                >
+                <!-- v8.14.4: Hidden input para lote (usado ao salvar) -->
+                <input type="hidden"
+                    name="lote_posto[<?php echo e($codigo3); ?>]"
+                    value="<?php echo e($p['lotes']); ?>"
                 >
               </td>
             </tr>

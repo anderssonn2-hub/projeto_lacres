@@ -81,12 +81,13 @@
 // - Snapshot 100% fiel: CENTRAL IIPR salva APENAS postos visíveis na tela (não todos os postos das datas)
 // - Impressão fiel: o que você vê na tela é EXATAMENTE o que será impresso e salvo no banco
 // ==================================================================================
-// v8.14.3: Confirmação 3 opções para Poupa Tempo + mantém funcionalidade Correios
+// v8.14.4: Melhorias UX + gravação completa de lotes PT
 // ==================================================================================
-// - NOVO: Modal de confirmação no modelo_oficio_poupa_tempo.php (Sobrescrever/Criar Novo/Cancelar)
-// - NOVO: Handler PT com modo_oficio para sobrescrever ou criar novo
-// - MANTIDO: Toda funcionalidade v8.14.2 para Correios (redirect + auto-impressão)
-// - MANTIDO: Impressão correta com valores do BD para Correios
+// - NOVO: Botão renomeado para "Gravar e Imprimir Correios" (clareza)
+// - NOVO: Campo lote salvo em ciDespachoItens para PT (antes vazio)
+// - NOVO: GROUP_CONCAT de lotes no SELECT PT para capturar todos
+// - MANTIDO: Modal 3 opções para PT e Correios (v8.14.3)
+// - MANTIDO: Toda funcionalidade de impressão e redirect (v8.14.2)
 // - Compatibilidade total entre PT e Correios
 
 // Conexões com os bancos de dados
@@ -3638,7 +3639,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
     <input type="hidden" name="modo_oficio" id="modo_oficio" value="" />
 
 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-    <button type="button" class="btn-imprimir" onclick="confirmarGravarEImprimir();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir</button>
+    <button type="button" class="btn-imprimir" onclick="confirmarGravarEImprimir();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir Correios</button>
     <button type="button" class="btn-imprimir" onclick="prepararEImprimir();" style="background:#6c757d;"><i>🖨️</i> Apenas Imprimir</button>
     <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()"><i>💾</i> Salvar Etiquetas Correios</button>
 </div>
