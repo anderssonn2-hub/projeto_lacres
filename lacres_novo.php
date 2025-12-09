@@ -382,6 +382,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
         }
 
         // 3) SELECT principal: SOMA por posto (igual ao modelo do ofício)
+        // v8.14.9: Adicionar campo usuario de ciPostosCsv
         $placeholders = implode(',', array_fill(0, count($datasSql), '?'));
 
         $sqlItens = "
@@ -390,7 +391,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
                 COALESCE(r.nome, CONCAT('POUPA TEMPO - ', LPAD(c.posto,3,'0'))) AS nome,
                 SUM(COALESCE(c.quantidade,0)) AS quantidade,
                 r.endereco AS endereco,
-                r.regional AS regional
+                r.regional AS regional,
+                MAX(c.usuario) AS usuario
             FROM ciPostosCsv c
             INNER JOIN ciRegionais r 
                     ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
@@ -412,11 +414,12 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
         }
 
         // 4) Insere os itens do despacho (1 linha por posto)
+        // v8.14.9: Adicionar campo usuario
         $stItem = $pdo_controle->prepare("
             INSERT INTO ciDespachoItens
             (id_despacho, regional, posto, nome_posto, endereco, lote, quantidade,
-             lacre_iipr, lacre_correios, etiqueta_correios, incluir)
-            VALUES (?,?,?,?,?,?,?,?,?,?,1)
+             lacre_iipr, lacre_correios, etiqueta_correios, usuario, incluir)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
         ");
 
         foreach ($rows as $r) {
@@ -425,6 +428,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
             $qtd_total  = (int)$r['quantidade'];
             $endereco   = trim((string)$r['endereco']);
             $regional   = $r['regional'];
+            $usuario_posto = isset($r['usuario']) ? trim((string)$r['usuario']) : '';
 
             $lacre_iipr    = null;
             $lacre_corr    = null;
@@ -440,7 +444,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
                 $qtd_total,
                 $lacre_iipr,
                 $lacre_corr,
-                $etiqueta_corr
+                $etiqueta_corr,
+                $usuario_posto  // v8.14.9: usuario do pacote
             ));
         }
 

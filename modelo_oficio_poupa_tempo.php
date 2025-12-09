@@ -23,6 +23,12 @@
    - Modal 3 opções (Sobrescrever/Novo/Cancelar) ao clicar "Gravar e Imprimir"
    - Botões pulsam quando há dados não salvos na tela
    - Correção erro FK: garantir id_despacho existe antes de INSERT em ciDespachoItens
+   
+   v8.14.9: "Criar Novo" corrigido + campo usuario
+   - "Criar Novo" agora cria ofício separado (hash com timestamp)
+   - Campo usuario (varchar 15) salvo em ciDespachoItens
+   - Captura usuario de ciPostosCsv.usuario para cada posto
+   - SELECT incluído em queries de exibição (paginas array)
 */
 
 error_reporting(E_ALL & ~E_NOTICE);
@@ -118,27 +124,42 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         }
 
         // v8.14.3: Verificar modo do ofício (sobrescrever/novo)
+        // v8.14.9: CORRIGIDO - modo "novo" realmente cria novo ofício (não usa hash)
         $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : '';
         
         // Se não tiver id_despacho, precisa criar o despacho primeiro
         if ($id_despacho_post <= 0 && !empty($datasStr_post)) {
             $grupo = 'POUPA TEMPO';
             $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
-            $hash = sha1($grupo . '|' . $datasStr_post);
-
-            // Verifica se já existe
-            $stFind = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE hash_chave = ? LIMIT 1");
-            $stFind->execute(array($hash));
-            $id_despacho_post = (int)$stFind->fetchColumn();
-
-            if ($id_despacho_post <= 0) {
-                // Cria novo despacho
+            
+            // v8.14.9: Se modo for "novo", NÃO usar hash (cria sempre novo)
+            if ($modoOficio === 'novo') {
+                // Cria novo despacho SEMPRE (não busca existente)
+                $hash = sha1($grupo . '|' . $datasStr_post . '|' . time()); // hash único com timestamp
                 $stIns = $pdo_controle->prepare("
                     INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs)
                     VALUES (?, ?, ?, ?, 1, NULL)
                 ");
                 $stIns->execute(array($usuario, $grupo, $datasStr_post, $hash));
                 $id_despacho_post = (int)$pdo_controle->lastInsertId();
+            } else {
+                // Modo sobrescrever: usa hash para encontrar ofício existente
+                $hash = sha1($grupo . '|' . $datasStr_post);
+                
+                // Verifica se já existe
+                $stFind = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE hash_chave = ? LIMIT 1");
+                $stFind->execute(array($hash));
+                $id_despacho_post = (int)$stFind->fetchColumn();
+
+                if ($id_despacho_post <= 0) {
+                    // Cria novo despacho
+                    $stIns = $pdo_controle->prepare("
+                        INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs)
+                        VALUES (?, ?, ?, ?, 1, NULL)
+                    ");
+                    $stIns->execute(array($usuario, $grupo, $datasStr_post, $hash));
+                    $id_despacho_post = (int)$pdo_controle->lastInsertId();
+                }
             }
         }
         
@@ -168,26 +189,31 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         $sqlSel = "SELECT COUNT(*) FROM ciDespachoItens WHERE id_despacho = :id_despacho AND posto = :posto";
         $stmSel = $pdo_controle->prepare($sqlSel);
 
+        // v8.14.9: Adicionar campo usuario
         $sqlUpd = "
             UPDATE ciDespachoItens
                SET lacre_iipr = :lacre,
                    nome_posto = :nome,
                    endereco = :endereco,
                    lote = :lote,
-                   quantidade = :quantidade
+                   quantidade = :quantidade,
+                   usuario = :usuario
              WHERE id_despacho = :id_despacho
                AND posto = :posto
         ";
         $stmUpd = $pdo_controle->prepare($sqlUpd);
 
         $sqlIns = "
-            INSERT INTO ciDespachoItens (id_despacho, posto, lacre_iipr, nome_posto, endereco, lote, quantidade, incluir)
-            VALUES (:id_despacho, :posto, :lacre, :nome, :endereco, :lote, :quantidade, 1)
+            INSERT INTO ciDespachoItens (id_despacho, posto, lacre_iipr, nome_posto, endereco, lote, quantidade, usuario, incluir)
+            VALUES (:id_despacho, :posto, :lacre, :nome, :endereco, :lote, :quantidade, :usuario, 1)
         ";
         $stmIns = $pdo_controle->prepare($sqlIns);
 
         $totalInseridos = 0;
         $totalAtualizados = 0;
+
+        // v8.14.9: Preparar busca de usuario por posto
+        $stmUsuario = $pdo_controle->prepare("SELECT MAX(usuario) FROM ciPostosCsv WHERE posto = ? LIMIT 1");
 
         // Itera sobre todos os postos
         $postos_processados = array_keys($dados_salvos);
@@ -198,6 +224,14 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             $valorEndereco = isset($dados_salvos[$posto]['endereco']) ? $dados_salvos[$posto]['endereco'] : '';
             $valorLote = isset($dados_salvos[$posto]['lote']) ? $dados_salvos[$posto]['lote'] : '';
             $valorQuantidade = isset($dados_salvos[$posto]['quantidade']) ? $dados_salvos[$posto]['quantidade'] : 0;
+            
+            // v8.14.9: Buscar usuario do posto
+            $valorUsuario = '';
+            $stmUsuario->execute(array($posto));
+            $tempUsuario = $stmUsuario->fetchColumn();
+            if ($tempUsuario !== false && $tempUsuario !== null) {
+                $valorUsuario = trim((string)$tempUsuario);
+            }
 
             // Verifica se já existe registro para este posto
             $stmSel->execute(array(
@@ -214,6 +248,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                     ':endereco' => $valorEndereco,
                     ':lote' => $valorLote,
                     ':quantidade' => $valorQuantidade,
+                    ':usuario' => $valorUsuario,
                     ':id_despacho' => $id_despacho_post,
                     ':posto' => $posto
                 ));
@@ -227,7 +262,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                     ':nome' => $valorNome,
                     ':endereco' => $valorEndereco,
                     ':lote' => $valorLote,
-                    ':quantidade' => $valorQuantidade
+                    ':quantidade' => $valorQuantidade,
+                    ':usuario' => $valorUsuario
                 ));
                 $totalInseridos++;
             }
@@ -308,13 +344,15 @@ if ($pdo_controle && !empty($datasNorm)) {
 
     $in = "'" . implode("','", array_map('strval', $datasNorm)) . "'";
 
+    // v8.14.9: Adicionar campo usuario de ciPostosCsv
     $sql = "
         SELECT 
             LPAD(c.posto,3,'0') AS codigo,
             COALESCE(r.nome, CONCAT('POUPA TEMPO - ', LPAD(c.posto,3,'0'))) AS nome,
             SUM(COALESCE(c.quantidade,0)) AS quantidade,
             GROUP_CONCAT(DISTINCT c.lote ORDER BY c.lote SEPARATOR ',') AS lotes,
-            r.endereco AS endereco
+            r.endereco AS endereco,
+            MAX(c.usuario) AS usuario
         FROM ciPostosCsv c
         INNER JOIN ciRegionais r 
                 ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
@@ -333,7 +371,8 @@ if ($pdo_controle && !empty($datasNorm)) {
             $nome     = (string)$r['nome'];             
             $quant    = (int)$r['quantidade'];          
             $lotes    = isset($r['lotes']) ? (string)$r['lotes'] : '';
-            $endereco = trim((string)$r['endereco']);   
+            $endereco = trim((string)$r['endereco']);
+            $usuario  = isset($r['usuario']) ? trim((string)$r['usuario']) : '';   // v8.14.9
 
             $paginas[] = array(
                 'codigo'   => $codigo,
@@ -341,6 +380,7 @@ if ($pdo_controle && !empty($datasNorm)) {
                 'qtd'      => $quant,
                 'lotes'    => $lotes,
                 'endereco' => $endereco,
+                'usuario'  => $usuario,  // v8.14.9
             );
         }
     } catch (Exception $e) {
