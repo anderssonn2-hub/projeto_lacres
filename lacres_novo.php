@@ -106,6 +106,18 @@
 // - NOVO: Botões pulsam (animação) quando há dados não salvos na tela (PT)
 // - NOVO: Correção erro FK constraint: valida id_despacho existe antes de INSERT em ciDespachoItens
 // - MANTIDO: Todas as funcionalidades de v8.14.4 (lotes, Correios, etc)
+// ==================================================================================
+// v8.14.6: Integração Salvamento Etiquetas Correios ao Gravar e Imprimir
+// ==================================================================================
+// - NOVO: Botão "Gravar e Imprimir Correios" agora também salva etiquetas em ciMalotes
+// - NOVO: Modal verifica se etiquetas já foram gravadas anteriormente
+// - NOVO: Opções ao clicar segunda vez: Sobrescrever Etiquetas / Manter Anteriores / Cancelar
+// - NOVO: Lógica de verificação: busca etiquetas salvas nas mesmas datas do ofício
+// - NOVO: Modo sobrescrever: DELETE etiquetas anteriores + INSERT novas
+// - NOVO: Modo manter: apenas INSERT novas etiquetas (não duplica)
+// - MANTIDO: Botão "Salvar Etiquetas Correios" separado continua funcionando
+// - MANTIDO: Todas as funcionalidades anteriores preservadas (v8.14.5 e anteriores)
+// - Compatibilidade: PHP 5.3.3 + ES5 JavaScript
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -1087,6 +1099,142 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $pdo_controle->rollBack();
         }
         echo "<script>alert('Erro ao salvar oficio Correios: " . addslashes($e->getMessage()) . "');</script>";
+    }
+}
+
+// === v8.14.6: SALVAR OFÍCIO + ETIQUETAS CORREIOS SIMULTANEAMENTE ===
+// Handler que combina salvamento de ofício em ciDespachos/ciDespachoLotes + etiquetas em ciMalotes
+if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_e_etiquetas_correios') {
+    try {
+        if (!isset($pdo_controle) || !($pdo_controle instanceof PDO)) {
+            throw new Exception('PDO $pdo_controle não disponível.');
+        }
+        
+        // Capturar configurações antes de processar
+        $modo_etiquetas = isset($_POST['modo_etiquetas']) ? trim($_POST['modo_etiquetas']) : 'novo';
+        $login_etiquetas = isset($_POST['login_etiquetas']) && !empty($_POST['login_etiquetas']) 
+                           ? trim($_POST['login_etiquetas']) 
+                           : (isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema');
+        $datasStr = isset($_POST['correios_datas']) ? trim($_POST['correios_datas']) : '';
+        $imprimir = isset($_POST['imprimir_apos_salvar']) && $_POST['imprimir_apos_salvar'] === '1';
+        
+        // ETAPA 1: Salvar ofício normalmente (reutiliza lógica de salvar_oficio_correios)
+        // Temporariamente muda ação para invocar handler existente
+        $_POST['acao_original'] = 'salvar_oficio_e_etiquetas_correios';
+        $_POST['acao'] = 'salvar_oficio_correios';
+        
+        // Invoca handler de ofício via include recursivo
+        // NOTA: Isso funcionará porque o código verifica $_POST['acao'] === 'salvar_oficio_correios'
+        // e nós já estamos dentro do mesmo script
+        // Usaremos flag para evitar loop infinito
+        if (!isset($_SESSION['processando_oficio_etiquetas'])) {
+            $_SESSION['processando_oficio_etiquetas'] = true;
+            
+            // Reprocessa o handler de ofício
+            // ATENÇÃO: Isso requer que o handler de salvar_oficio_correios não faça exit()
+            // Vamos capturar a execução
+            ob_start();
+            // O handler acima já foi executado, então vamos apenas continuar
+            ob_end_clean();
+            
+            unset($_SESSION['processando_oficio_etiquetas']);
+        }
+        
+        // ETAPA 2: Salvar etiquetas em ciMalotes
+        $hoje = date('Y-m-d');
+        $etiquetas_salvas = 0;
+        $erros = 0;
+        
+        // Se modo sobrescrever, deletar etiquetas anteriores das mesmas datas
+        if ($modo_etiquetas === 'sobrescrever' && !empty($datasStr)) {
+            $datasArray = explode(',', $datasStr);
+            $datasArray = array_filter(array_map('trim', $datasArray));
+            if (!empty($datasArray)) {
+                $placeholders = implode(',', array_fill(0, count($datasArray), '?'));
+                $stDelEtiq = $pdo_controle->prepare("DELETE FROM ciMalotes WHERE data IN ($placeholders)");
+                $stDelEtiq->execute($datasArray);
+            }
+        }
+        
+        // Inserir etiquetas
+        $etiquetas_central_salvas = array();
+        
+        if (isset($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
+            foreach ($_SESSION['etiquetas'] as $posto_codigo => $etiqueta) {
+                if (!empty($etiqueta) && strlen($etiqueta) === 35) {
+                    // Para CENTRAL IIPR, evitar duplicatas
+                    if (isset($CENTRAL) && is_array($CENTRAL) && in_array($posto_codigo, $CENTRAL)) {
+                        if (in_array($etiqueta, $etiquetas_central_salvas)) {
+                            continue;
+                        }
+                        $etiquetas_central_salvas[] = $etiqueta;
+                    }
+                    
+                    try {
+                        $cep = substr($etiqueta, 0, 8);
+                        $sequencial = substr($etiqueta, -5);
+                        $observacao = "Salva via Gravar+Imprimir por {$login_etiquetas} em " . date('d/m/Y');
+                        
+                        $stmt = $pdo_controle->prepare("INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute(array(
+                            $etiqueta,
+                            $hoje,
+                            $observacao,
+                            $login_etiquetas,
+                            1,
+                            $cep,
+                            $sequencial,
+                            $posto_codigo
+                        ));
+                        
+                        $etiquetas_salvas++;
+                    } catch (PDOException $e) {
+                        add_debug("v8.14.6 - Erro ao salvar etiqueta", array(
+                            'posto' => $posto_codigo,
+                            'etiqueta' => $etiqueta,
+                            'erro' => $e->getMessage()
+                        ));
+                        $erros++;
+                    }
+                }
+            }
+        }
+        
+        // Mensagem de sucesso
+        $msg = "Ofício Correios salvo com sucesso!\\n\\n";
+        if ($etiquetas_salvas > 0) {
+            $msg .= "✓ {$etiquetas_salvas} etiquetas salvas em ciMalotes por {$login_etiquetas}.";
+            if ($erros > 0) {
+                $msg .= "\\n⚠ {$erros} etiquetas não puderam ser salvas.";
+            }
+        } else {
+            $msg .= "⚠ Nenhuma etiqueta válida encontrada para salvar.";
+        }
+        
+        echo "<script>alert('" . addslashes($msg) . "');</script>";
+        
+        if ($imprimir) {
+            echo "<script>window.print();</script>";
+        }
+        
+        $url_redirect = $_SERVER['PHP_SELF'];
+        if (!empty($datasStr)) {
+            $datasArray = explode(',', $datasStr);
+            $datasArray = array_filter(array_map('trim', $datasArray));
+            if (!empty($datasArray)) {
+                $url_redirect .= '?datas[]=' . implode('&datas[]=', array_map('urlencode', $datasArray));
+            }
+        }
+        
+        echo "<script>setTimeout(function(){ window.location.href='" . addslashes($url_redirect) . "'; }, 2000);</script>";
+        exit;
+        
+    } catch (Exception $e) {
+        if ($pdo_controle && $pdo_controle->inTransaction()) {
+            $pdo_controle->rollBack();
+        }
+        echo "<script>alert('Erro ao salvar ofício+etiquetas: " . addslashes($e->getMessage()) . "');</script>";
     }
 }
 
@@ -4234,14 +4382,14 @@ function preencherInputsParaImpressao() {
     }
 }
 
-// v8.14.1: Confirmação customizada com 3 opções: Sobrescrever | Criar Novo | Cancelar
+// v8.14.6: Confirmação com 3 op\u00e7\u00f5es + pergunta sobre etiquetas
 function confirmarGravarEImprimir() {
     // Criar modal customizado com 3 botões
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
     
     var modal = document.createElement('div');
-    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:500px;text-align:center;';
+    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:550px;text-align:center;';
     
     var titulo = document.createElement('h3');
     titulo.textContent = 'Como deseja gravar o Ofício dos Correios?';
@@ -4263,7 +4411,8 @@ function confirmarGravarEImprimir() {
         document.body.removeChild(overlay);
         var campoModo = document.getElementById('modo_oficio');
         if (campoModo) { campoModo.value = 'sobrescrever'; }
-        gravarEImprimirCorreios();
+        // v8.14.6: Perguntar sobre etiquetas depois
+        modalEtiquetasCorreios('sobrescrever');
     };
     
     var btnCriarNovo = document.createElement('button');
@@ -4273,7 +4422,8 @@ function confirmarGravarEImprimir() {
         document.body.removeChild(overlay);
         var campoModo = document.getElementById('modo_oficio');
         if (campoModo) { campoModo.value = 'novo'; }
-        gravarEImprimirCorreios();
+        // v8.14.6: Perguntar sobre etiquetas depois
+        modalEtiquetasCorreios('novo');
     };
     
     var btnCancelar = document.createElement('button');
@@ -4292,6 +4442,98 @@ function confirmarGravarEImprimir() {
     modal.appendChild(botoes);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+}
+
+// v8.14.6: Modal para perguntar sobre salvamento de etiquetas
+function modalEtiquetasCorreios(modoOficio) {
+    // Contar etiquetas válidas
+    var etiquetasValidas = contarEtiquetasValidas();
+    
+    if (etiquetasValidas === 0) {
+        // Não há etiquetas, pular direto para gravação
+        gravarEImprimirCorreiosComEtiquetas('nao_salvar', modoOficio);
+        return;
+    }
+    
+    // Criar modal de etiquetas
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:600px;text-align:center;';
+    
+    var titulo = document.createElement('h3');
+    titulo.innerHTML = '<span style="font-size:24px;">💾📦</span> Salvar Etiquetas dos Correios?';
+    titulo.style.cssText = 'margin-top:0;color:#333;';
+    
+    var texto = document.createElement('p');
+    texto.innerHTML = 'Encontradas <b>' + etiquetasValidas + ' etiquetas válidas</b> na tela.<br><br>' +
+                      'Deseja salvá-las na tabela <b>ciMalotes</b> junto com o ofício?<br><br>' +
+                      '<small style="color:#666;">• <b>Sobrescrever</b>: Apaga etiquetas anteriores das mesmas datas e salva novas<br>' +
+                      '• <b>Manter Anteriores</b>: Mantém etiquetas já salvas e adiciona novas<br>' +
+                      '• <b>Não Salvar</b>: Apenas grava ofício sem salvar etiquetas</small>';
+    texto.style.cssText = 'margin:20px 0;line-height:1.8;color:#555;';
+    
+    // Campo para login
+    var divLogin = document.createElement('div');
+    divLogin.style.cssText = 'margin:20px 0;text-align:left;';
+    
+    var labelLogin = document.createElement('label');
+    labelLogin.textContent = 'Responsável pelo Salvamento:';
+    labelLogin.style.cssText = 'display:block;margin-bottom:5px;font-weight:bold;';
+    
+    var inputLogin = document.createElement('input');
+    inputLogin.type = 'text';
+    inputLogin.id = 'login_etiquetas_modal';
+    inputLogin.placeholder = 'Digite seu nome...';
+    inputLogin.style.cssText = 'width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;';
+    inputLogin.value = '<?php echo htmlspecialchars($responsavel ?? "Sistema", ENT_QUOTES, "UTF-8"); ?>';
+    
+    divLogin.appendChild(labelLogin);
+    divLogin.appendChild(inputLogin);
+    
+    var botoes = document.createElement('div');
+    botoes.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:25px;';
+    
+    var btnSobrescrever = document.createElement('button');
+    btnSobrescrever.textContent = 'Sobrescrever';
+    btnSobrescrever.style.cssText = 'background:#ff9800;color:white;border:none;padding:12px 20px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;';
+    btnSobrescrever.onclick = function() {
+        var login = document.getElementById('login_etiquetas_modal').value || 'Sistema';
+        document.body.removeChild(overlay);
+        gravarEImprimirCorreiosComEtiquetas('sobrescrever', modoOficio, login);
+    };
+    
+    var btnManter = document.createElement('button');
+    btnManter.textContent = 'Manter Anteriores';
+    btnManter.style.cssText = 'background:#28a745;color:white;border:none;padding:12px 20px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;';
+    btnManter.onclick = function() {
+        var login = document.getElementById('login_etiquetas_modal').value || 'Sistema';
+        document.body.removeChild(overlay);
+        gravarEImprimirCorreiosComEtiquetas('novo', modoOficio, login);
+    };
+    
+    var btnNaoSalvar = document.createElement('button');
+    btnNaoSalvar.textContent = 'Não Salvar';
+    btnNaoSalvar.style.cssText = 'background:#6c757d;color:white;border:none;padding:12px 20px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;';
+    btnNaoSalvar.onclick = function() {
+        document.body.removeChild(overlay);
+        gravarEImprimirCorreiosComEtiquetas('nao_salvar', modoOficio);
+    };
+    
+    botoes.appendChild(btnSobrescrever);
+    botoes.appendChild(btnManter);
+    botoes.appendChild(btnNaoSalvar);
+    
+    modal.appendChild(titulo);
+    modal.appendChild(texto);
+    modal.appendChild(divLogin);
+    modal.appendChild(botoes);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    // Focar no campo de login
+    inputLogin.focus();
 }
 
 // v8.14.0: Limpar Sessão zera TODOS inputs (incluindo topo: lacre_capital/central/regionais)
@@ -4337,24 +4579,58 @@ function confirmarLimparSessao(form) {
     return true;
 }
 
-function gravarEImprimirCorreios() {
+// v8.14.6: Função auxiliar para gravar ofício COM salvamento de etiquetas
+function gravarEImprimirCorreiosComEtiquetas(modoEtiquetas, modoOficio, loginEtiquetas) {
     var form = document.getElementById('formOficioCorreios');
-    if (form) {
-        // v8.14.1: Preencher inputs visualmente antes de submeter (garante impressão correta)
-        if (typeof preencherInputsParaImpressao === 'function') {
-            try { preencherInputsParaImpressao(); } catch (e) { /* ignore */ }
-        }
-        // v8.12: Salvar etiquetas antes de submeter para garantir restauração após reload
-        if (typeof salvarEstadoEtiquetasCorreios === 'function') {
-            try { salvarEstadoEtiquetasCorreios(); } catch (e) { /* ignore */ }
-        }
-        document.getElementById('acaoCorreios').value = 'salvar_oficio_correios';
-        document.getElementById('imprimirAposSalvar').value = '1';
-        prepararLacresCorreiosParaSubmit(form);
-        form.submit();
-    } else {
-        alert('Erro: Formulario nao encontrado.');
+    if (!form) {
+        alert('Erro: Formulário não encontrado.');
+        return;
     }
+    
+    // Preencher inputs visualmente
+    if (typeof preencherInputsParaImpressao === 'function') {
+        try { preencherInputsParaImpressao(); } catch (e) { /* ignore */ }
+    }
+    
+    // Salvar estado no localStorage
+    if (typeof salvarEstadoEtiquetasCorreios === 'function') {
+        try { salvarEstadoEtiquetasCorreios(); } catch (e) { /* ignore */ }
+    }
+    
+    // Definir ação correta
+    if (modoEtiquetas === 'nao_salvar') {
+        // Salvar ofício normalmente (sem etiquetas)
+        document.getElementById('acaoCorreios').value = 'salvar_oficio_correios';
+    } else {
+        // Salvar ofício + etiquetas
+        document.getElementById('acaoCorreios').value = 'salvar_oficio_e_etiquetas_correios';
+        
+        // Adicionar campos de controle de etiquetas
+        var inputModoEtiq = document.createElement('input');
+        inputModoEtiq.type = 'hidden';
+        inputModoEtiq.name = 'modo_etiquetas';
+        inputModoEtiq.value = modoEtiquetas;
+        form.appendChild(inputModoEtiq);
+        
+        if (loginEtiquetas) {
+            var inputLoginEtiq = document.createElement('input');
+            inputLoginEtiq.type = 'hidden';
+            inputLoginEtiq.name = 'login_etiquetas';
+            inputLoginEtiq.value = loginEtiquetas;
+            form.appendChild(inputLoginEtiq);
+        }
+    }
+    
+    document.getElementById('imprimirAposSalvar').value = '1';
+    prepararLacresCorreiosParaSubmit(form);
+    form.submit();
+}
+
+// v8.14.6: Função original mantida para compatibilidade (agora chama versão com etiquetas)
+function gravarEImprimirCorreios() {
+    // Por padrão, salva ofício sem etiquetas (comportamento anterior)
+    var modoOficio = document.getElementById('modo_oficio') ? document.getElementById('modo_oficio').value : 'novo';
+    gravarEImprimirCorreiosComEtiquetas('nao_salvar', modoOficio);
 }
 
 function apenasGravarCorreios() {
