@@ -511,15 +511,20 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_snapshot') {
         $snapshot_data = isset($_POST['snapshot_data']) ? trim($_POST['snapshot_data']) : '';
         $usuario = isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema';
         
+        // Debug: log recebimento
+        error_log("[SNAPSHOT] Recebido: chave=" . $chave_datas . ", tamanho=" . strlen($snapshot_data));
+        
         if (empty($chave_datas) || empty($snapshot_data)) {
-            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos']);
+            error_log("[SNAPSHOT] ERRO: Dados incompletos");
+            echo json_encode(array('sucesso' => false, 'erro' => 'Dados incompletos'));
             exit;
         }
         
         // Validar JSON
         $teste = json_decode($snapshot_data);
         if ($teste === null) {
-            echo json_encode(['sucesso' => false, 'erro' => 'JSON inválido']);
+            error_log("[SNAPSHOT] ERRO: JSON inválido");
+            echo json_encode(array('sucesso' => false, 'erro' => 'JSON inválido'));
             exit;
         }
         
@@ -532,11 +537,14 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_snapshot') {
                     ultima_atualizacao = CURRENT_TIMESTAMP";
         
         $stmt = $pdo_controle->prepare($sql);
-        $stmt->execute([$chave_datas, $snapshot_data, $usuario]);
+        $resultado = $stmt->execute(array($chave_datas, $snapshot_data, $usuario));
         
-        echo json_encode(['sucesso' => true]);
+        error_log("[SNAPSHOT] Salvo com sucesso: " . ($resultado ? 'SIM' : 'NÃO'));
+        
+        echo json_encode(array('sucesso' => true));
     } catch (Exception $e) {
-        echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
+        error_log("[SNAPSHOT] EXCEÇÃO: " . $e->getMessage());
+        echo json_encode(array('sucesso' => false, 'erro' => $e->getMessage()));
     }
     exit;
 }
@@ -546,21 +554,25 @@ if (isset($_GET['acao']) && $_GET['acao'] === 'carregar_snapshot') {
     try {
         $chave_datas = isset($_GET['chave_datas']) ? trim($_GET['chave_datas']) : '';
         
+        error_log("[SNAPSHOT] Carregando: chave=" . $chave_datas);
+        
         if (empty($chave_datas)) {
-            echo json_encode(['sucesso' => false, 'erro' => 'Chave não fornecida']);
+            echo json_encode(array('sucesso' => false, 'erro' => 'Chave não fornecida'));
             exit;
         }
         
         $sql = "SELECT snapshot_data FROM ciSnapshotCorreios WHERE chave_datas = ? LIMIT 1";
         $stmt = $pdo_controle->prepare($sql);
-        $stmt->execute([$chave_datas]);
+        $stmt->execute(array($chave_datas));
         
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($row) {
-            echo json_encode(['sucesso' => true, 'snapshot' => $row['snapshot_data']]);
+            error_log("[SNAPSHOT] Encontrado: tamanho=" . strlen($row['snapshot_data']));
+            echo json_encode(array('sucesso' => true, 'snapshot' => $row['snapshot_data']));
         } else {
-            echo json_encode(['sucesso' => false, 'erro' => 'Snapshot não encontrado']);
+            error_log("[SNAPSHOT] Não encontrado");
+            echo json_encode(array('sucesso' => false, 'erro' => 'Snapshot não encontrado'));
         }
     } catch (Exception $e) {
         echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
@@ -5093,27 +5105,32 @@ function coletarEstadoTela() {
     
     // Coletar todos os inputs de lacres e etiquetas
     var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    console.log('[SNAPSHOT] Coletando de ' + rows.length + ' linhas');
+    
     for (var i = 0; i < rows.length; i++) {
         var tr = rows[i];
         var postoCodigo = tr.getAttribute('data-posto-codigo');
         if (!postoCodigo) continue;
         
-        // Lacre IIPR
-        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+        // Lacre IIPR - buscar input com data-tipo="iipr"
+        var inpIIPR = tr.querySelector('input[data-tipo="iipr"]');
         if (inpIIPR && inpIIPR.value) {
             estado.lacres_iipr[postoCodigo] = inpIIPR.value;
+            console.log('[SNAPSHOT] IIPR coletado: ' + postoCodigo + ' = ' + inpIIPR.value);
         }
         
-        // Lacre Correios
-        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
+        // Lacre Correios - buscar input com data-tipo="correios"
+        var inpCorr = tr.querySelector('input[data-tipo="correios"]');
         if (inpCorr && inpCorr.value) {
             estado.lacres_correios[postoCodigo] = inpCorr.value;
+            console.log('[SNAPSHOT] Correios coletado: ' + postoCodigo + ' = ' + inpCorr.value);
         }
         
-        // Etiqueta Correios
-        var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+        // Etiqueta Correios - buscar input com classe etiqueta-barras
+        var inpEtiq = tr.querySelector('input.etiqueta-barras');
         if (inpEtiq && inpEtiq.value) {
             estado.etiquetas_correios[postoCodigo] = inpEtiq.value;
+            console.log('[SNAPSHOT] Etiqueta coletada: ' + postoCodigo + ' = ' + inpEtiq.value.substring(0, 10) + '...');
         }
         
         // Checkbox selecionado
@@ -5123,6 +5140,7 @@ function coletarEstadoTela() {
         }
     }
     
+    console.log('[SNAPSHOT] Estado coletado:', estado);
     return estado;
 }
 
@@ -5172,16 +5190,24 @@ function obterChaveSnapshot() {
 // Função para salvar snapshot (localStorage + backend)
 function salvarSnapshotCorreios() {
     var chave = obterChaveSnapshot();
-    if (!chave) return;
+    if (!chave) {
+        console.log('[SNAPSHOT] Chave não disponível, abortando');
+        return;
+    }
+    
+    console.log('[SNAPSHOT] Iniciando salvamento com chave: ' + chave);
     
     var estado = coletarEstadoTela();
     var estadoJSON = JSON.stringify(estado);
     
+    console.log('[SNAPSHOT] JSON gerado, tamanho: ' + estadoJSON.length + ' bytes');
+    
     // 1. Salvar no localStorage (rápido, local)
     try {
         window.localStorage.setItem(chave, estadoJSON);
+        console.log('[SNAPSHOT] Salvo no localStorage');
     } catch (e) {
-        console.log('Erro ao salvar no localStorage:', e);
+        console.log('[SNAPSHOT] Erro ao salvar no localStorage:', e);
     }
     
     // 2. Salvar no backend (persistente, compartilhado)
@@ -5189,12 +5215,16 @@ function salvarSnapshotCorreios() {
         snapshotSalvando = true;
         atualizarIndicadorSnapshot('salvando');
         
+        console.log('[SNAPSHOT] Enviando para backend...');
+        
         var xhr = new XMLHttpRequest();
         xhr.open('POST', window.location.href, true);
         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
         
         xhr.onload = function() {
             snapshotSalvando = false;
+            console.log('[SNAPSHOT] Resposta recebida, status: ' + xhr.status);
+            console.log('[SNAPSHOT] Resposta: ' + xhr.responseText);
             if (xhr.status === 200) {
                 atualizarIndicadorSnapshot('salvo');
             } else {
@@ -5204,12 +5234,16 @@ function salvarSnapshotCorreios() {
         
         xhr.onerror = function() {
             snapshotSalvando = false;
+            console.log('[SNAPSHOT] Erro na requisição XHR');
             atualizarIndicadorSnapshot('erro');
         };
         
         var params = 'acao=salvar_snapshot&chave_datas=' + encodeURIComponent(chave) + 
                      '&snapshot_data=' + encodeURIComponent(estadoJSON);
+        console.log('[SNAPSHOT] Parâmetros preparados, enviando...');
         xhr.send(params);
+    } else {
+        console.log('[SNAPSHOT] Já está salvando, aguardando...');
     }
 }
 
@@ -5278,15 +5312,22 @@ function atualizarIndicadorSnapshot(status) {
 
 // Inicializar auto-save (debounced a cada 3 segundos)
 function iniciarAutoSave() {
+    console.log('[SNAPSHOT] Iniciando auto-save...');
+    
     // Restaurar snapshot ao carregar
     carregarSnapshotCorreios();
     
     // Monitorar mudanças e fazer auto-save
-    var inputs = document.querySelectorAll('input[name^="lacre_"], input[name^="etiqueta_"], input[type="checkbox"]');
+    // Buscar inputs por data-tipo e classe
+    var inputs = document.querySelectorAll('input[data-tipo="iipr"], input[data-tipo="correios"], input.etiqueta-barras, input[type="checkbox"]');
+    console.log('[SNAPSHOT] Monitorando ' + inputs.length + ' inputs');
+    
     for (var i = 0; i < inputs.length; i++) {
         inputs[i].addEventListener('input', function() {
+            console.log('[SNAPSHOT] Input alterado, resetando timer...');
             if (snapshotTimer) clearTimeout(snapshotTimer);
             snapshotTimer = setTimeout(function() {
+                console.log('[SNAPSHOT] Timer expirado, salvando...');
                 salvarSnapshotCorreios();
             }, 3000);
         });
