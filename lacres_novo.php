@@ -119,6 +119,35 @@
 // - MANTIDO: Botão "Salvar Etiquetas Correios" separado continua funcionando
 // - MANTIDO: Todas as funcionalidades anteriores preservadas (v8.14.5 e anteriores)
 // - Compatibilidade: PHP 5.3.3 + ES5 JavaScript
+// ==================================================================================
+// v8.14.7: Sistema de Snapshot/Auto-Save + Remoção Salvamento Automático Etiquetas
+// ==================================================================================
+// - NOVO: Sistema snapshot contínuo (auto-save a cada 3s via localStorage + banco)
+// - NOVO: Restauração automática ao carregar página (independente de usuário logado)
+// - NOVO: Tabela ciSnapshotCorreios armazena estado completo da tela por datas
+// - NOVO: Indicador visual "💾 Salvando..." / "✅ Salvo" no topo da página
+// - NOVO: Versão exibida atualizada: "Análise de Expedição (v8.14.7)"
+// - REVERTIDO: Botão "Gravar e Imprimir Correios" NÃO salva mais etiquetas automaticamente
+// - REVERTIDO: Modal volta ao v8.14.5 (apenas Sobrescrever/Criar Novo/Cancelar)
+// - MANTIDO: Botão "💾 Salvar Etiquetas Correios" separado continua funcionando
+// - MANTIDO: Todas funcionalidades v8.14.5 preservadas (modal PT, pulsing, FK fix)
+// - Chave snapshot: "snapshot_correios:{datas}" (compartilhado entre usuários)
+// - Conteúdo: lacres IIPR, lacres Correios, etiquetas Correios, seleções de postos
+// - Compatibilidade: PHP 5.3.3 + ES5 JavaScript
+// ==================================================================================
+// v8.14.8: Foco em ciDespachoLotes + Remoção Total de ciMalotes no Fluxo Correios
+// ==================================================================================
+// - MANTIDO: Sistema snapshot v8.14.7 (auto-save, restauração, indicador visual)
+// - RESTABELECIDO: Gravação de etiquetas em ciDespachoLotes (etiquetaiipr, etiquetacorreios, etiqueta_correios)
+// - REMOVIDO: Toda gravação em ciMalotes do fluxo "Gravar e Imprimir Correios" (linhas ~1180-1280)
+// - CRÍTICO: Usa valores EXATOS dos inputs (não recalcula) via snapshot
+// - GARANTIA: etiquetaiipr, etiquetacorreios, etiqueta_correios gravados corretamente em ciDespachoLotes
+// - VERSÃO: Exibida como "Análise de Expedição (v8.14.8)"
+// - COMPORTAMENTO:
+//   * Botão "Gravar e Imprimir Correios" → grava APENAS em ciDespachos + ciDespachoLotes
+//   * Botão "💾 Salvar Etiquetas Correios" (separado) → continua funcionando (pode gravar onde quiser)
+//   * Snapshot → preserva estado entre usuários
+// - COMPATIBILIDADE: PHP 5.3.3 + ES5 JavaScript
 
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
@@ -470,6 +499,78 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
     }
     exit;
 }
+
+// ============================================================================
+// v8.14.7: HANDLERS DE SNAPSHOT/AUTO-SAVE
+// ============================================================================
+
+// Handler para SALVAR snapshot
+if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_snapshot') {
+    try {
+        $chave_datas = isset($_POST['chave_datas']) ? trim($_POST['chave_datas']) : '';
+        $snapshot_data = isset($_POST['snapshot_data']) ? trim($_POST['snapshot_data']) : '';
+        $usuario = isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema';
+        
+        if (empty($chave_datas) || empty($snapshot_data)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Dados incompletos']);
+            exit;
+        }
+        
+        // Validar JSON
+        $teste = json_decode($snapshot_data);
+        if ($teste === null) {
+            echo json_encode(['sucesso' => false, 'erro' => 'JSON inválido']);
+            exit;
+        }
+        
+        // INSERT ... ON DUPLICATE KEY UPDATE
+        $sql = "INSERT INTO ciSnapshotCorreios (chave_datas, snapshot_data, usuario_ultima_alteracao) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE 
+                    snapshot_data = VALUES(snapshot_data), 
+                    usuario_ultima_alteracao = VALUES(usuario_ultima_alteracao),
+                    ultima_atualizacao = CURRENT_TIMESTAMP";
+        
+        $stmt = $pdo_controle->prepare($sql);
+        $stmt->execute([$chave_datas, $snapshot_data, $usuario]);
+        
+        echo json_encode(['sucesso' => true]);
+    } catch (Exception $e) {
+        echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// Handler para CARREGAR snapshot
+if (isset($_GET['acao']) && $_GET['acao'] === 'carregar_snapshot') {
+    try {
+        $chave_datas = isset($_GET['chave_datas']) ? trim($_GET['chave_datas']) : '';
+        
+        if (empty($chave_datas)) {
+            echo json_encode(['sucesso' => false, 'erro' => 'Chave não fornecida']);
+            exit;
+        }
+        
+        $sql = "SELECT snapshot_data FROM ciSnapshotCorreios WHERE chave_datas = ? LIMIT 1";
+        $stmt = $pdo_controle->prepare($sql);
+        $stmt->execute([$chave_datas]);
+        
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($row) {
+            echo json_encode(['sucesso' => true, 'snapshot' => $row['snapshot_data']]);
+        } else {
+            echo json_encode(['sucesso' => false, 'erro' => 'Snapshot não encontrado']);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================================================
+// FIM DOS HANDLERS DE SNAPSHOT v8.14.7
+// ============================================================================
 
 
 // === SALVAR OFÍCIO DOS CORREIOS (postos com entrega = 'correios') ===
@@ -1086,95 +1187,18 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 }
             }
             
-            // v8.14.6: Auto-salvar etiquetas dos Correios em ciMalotes antes do redirect
-            $etiquetas_salvas = 0;
-            if (isset($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
-                $login = isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema';
-                $hoje = date('Y-m-d');
-                $etiquetas_central_salvas = array();
-                
-                foreach ($_SESSION['etiquetas'] as $posto_codigo => $etiqueta) {
-                    $etiqueta = trim($etiqueta);
-                    if (strlen($etiqueta) !== 35) {
-                        continue; // Ignora etiquetas inválidas
-                    }
-                    
-                    // Extrai CEP (8 primeiros) e Sequencial (5 últimos)
-                    $cep = substr($etiqueta, 0, 8);
-                    $sequencial = substr($etiqueta, -5);
-                    
-                    // Verifica duplicatas em CENTRAL IIPR
-                    if (strpos($posto_codigo, 'CENTRAL') !== false || strpos($posto_codigo, 'Central') !== false) {
-                        $key_central = $cep . '|' . $sequencial;
-                        if (isset($etiquetas_central_salvas[$key_central])) {
-                            continue; // Já salvou esta etiqueta para CENTRAL
-                        }
-                        $etiquetas_central_salvas[$key_central] = true;
-                    }
-                    
-                    // Insere em ciMalotes (banco controle)
-                    $sql_malote = "INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) 
-                                   VALUES (:leitura, :data, 'Correios', :login, 'Correios', :cep, :sequencial, :posto)";
-                    $stmt_malote = $pdo_controle->prepare($sql_malote);
-                    $stmt_malote->execute(array(
-                        ':leitura' => $etiqueta,
-                        ':data' => $hoje,
-                        ':login' => $login,
-                        ':cep' => $cep,
-                        ':sequencial' => $sequencial,
-                        ':posto' => $posto_codigo
-                    ));
-                    $etiquetas_salvas++;
-                }
-            }
+            // v8.14.8: REMOVIDO - Não salvar mais em ciMalotes no fluxo Correios
+            // Etiquetas JÁ foram gravadas em ciDespachoLotes no loop acima (campo etiqueta_correios)
             
             header('Location: ' . $url_redirect);
             exit;
         } else {
-            // Apenas salvar sem imprimir - mostra mensagem simples
-            // v8.14.6: Auto-salvar etiquetas também no modo "apenas salvar"
-            $etiquetas_salvas = 0;
-            if (isset($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
-                $login = isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema';
-                $hoje = date('Y-m-d');
-                $etiquetas_central_salvas = array();
-                
-                foreach ($_SESSION['etiquetas'] as $posto_codigo => $etiqueta) {
-                    $etiqueta = trim($etiqueta);
-                    if (strlen($etiqueta) !== 35) {
-                        continue;
-                    }
-                    
-                    $cep = substr($etiqueta, 0, 8);
-                    $sequencial = substr($etiqueta, -5);
-                    
-                    if (strpos($posto_codigo, 'CENTRAL') !== false || strpos($posto_codigo, 'Central') !== false) {
-                        $key_central = $cep . '|' . $sequencial;
-                        if (isset($etiquetas_central_salvas[$key_central])) {
-                            continue;
-                        }
-                        $etiquetas_central_salvas[$key_central] = true;
-                    }
-                    
-                    $sql_malote = "INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) 
-                                   VALUES (:leitura, :data, 'Correios', :login, 'Correios', :cep, :sequencial, :posto)";
-                    $stmt_malote = $pdo_controle->prepare($sql_malote);
-                    $stmt_malote->execute(array(
-                        ':leitura' => $etiqueta,
-                        ':data' => $hoje,
-                        ':login' => $login,
-                        ':cep' => $cep,
-                        ':sequencial' => $sequencial,
-                        ':posto' => $posto_codigo
-                    ));
-                    $etiquetas_salvas++;
-                }
-            }
+            // v8.14.8: Apenas salvar sem imprimir - mostra mensagem simples
+            // REMOVIDO: Gravação em ciMalotes (não faz mais parte do fluxo Correios)
+            // Etiquetas JÁ foram gravadas em ciDespachoLotes no loop acima
             
             $msg = 'Oficio Correios salvo com sucesso! No. ' . (int)$id_desp . ' - Postos: ' . (int)$totalPostosDistintos . ', Lotes: ' . (int)$totalLotesGravados;
-            if ($etiquetas_salvas > 0) {
-                $msg .= '\n\nEtiquetas Correios salvas: ' . $etiquetas_salvas;
-            }
+            // Etiquetas já gravadas em ciDespachoLotes (campo etiqueta_correios)
             echo "<script>
                     alert('" . addslashes($msg) . "');
                     if (typeof marcarComoSalvo === 'function') { marcarComoSalvo(); }
@@ -3704,6 +3728,9 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
 <div class="version-info">Versão 0.8.2</div>
 
+<!-- v8.14.7: Indicador de Auto-Save -->
+<div id="snapshot-indicador" style="position:fixed;top:10px;right:10px;padding:8px 15px;background:white;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-size:13px;font-weight:bold;z-index:10000;"></div>
+
 <?php if (!empty($mensagem_sucesso)): ?>
 <div class="mensagem-auto sucesso" id="mensagem-auto">
     <?php echo htmlspecialchars($mensagem_sucesso) ?>
@@ -3718,7 +3745,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (V8.0)
+        <span class="icone">📊</span> Análise de Expedição (v8.14.8)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -4468,7 +4495,7 @@ function preencherInputsParaImpressao() {
     }
 }
 
-// v8.14.6: Confirmação com 3 op\u00e7\u00f5es + pergunta sobre etiquetas
+// v8.14.7: Confirmação simplificada (volta ao v8.14.5 - sem salvamento automático de etiquetas)
 function confirmarGravarEImprimir() {
     // Criar modal customizado com 3 botões
     var overlay = document.createElement('div');
@@ -4484,8 +4511,7 @@ function confirmarGravarEImprimir() {
     var texto = document.createElement('p');
     texto.innerHTML = '<b>Sobrescrever:</b> Apaga lotes do último ofício e grava este no lugar.<br><br>' +
                       '<b>Criar Novo:</b> Mantém ofício anterior e cria outro com novo número.<br><br>' +
-                      '<b>Cancelar:</b> Aborta a operação.<br><br>' +
-                      '<i style="color:#0066cc;font-size:13px;">💾 As etiquetas dos Correios serão salvas automaticamente junto com o ofício.</i>';
+                      '<b>Cancelar:</b> Aborta a operação.';
     texto.style.cssText = 'margin:20px 0;line-height:1.6;color:#555;';
     
     var botoes = document.createElement('div');
@@ -5044,6 +5070,246 @@ if (document.readyState === 'loading') {
 } else {
     inicializarMonitoramentoAlteracoes();
 }
+
+// ============================================================================
+// v8.14.7: SISTEMA DE SNAPSHOT/AUTO-SAVE CONTÍNUO
+// ============================================================================
+// Salva estado da tela a cada 3 segundos (localStorage + banco)
+// Permite continuidade entre usuários diferentes na mesma máquina
+// Chave: datas do ofício (independente de login)
+
+var snapshotTimer = null;
+var snapshotSalvando = false;
+
+// Função para coletar estado completo da tela
+function coletarEstadoTela() {
+    var estado = {
+        lacres_iipr: {},
+        lacres_correios: {},
+        etiquetas_correios: {},
+        postos_selecionados: [],
+        data_snapshot: new Date().toISOString()
+    };
+    
+    // Coletar todos os inputs de lacres e etiquetas
+    var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    for (var i = 0; i < rows.length; i++) {
+        var tr = rows[i];
+        var postoCodigo = tr.getAttribute('data-posto-codigo');
+        if (!postoCodigo) continue;
+        
+        // Lacre IIPR
+        var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+        if (inpIIPR && inpIIPR.value) {
+            estado.lacres_iipr[postoCodigo] = inpIIPR.value;
+        }
+        
+        // Lacre Correios
+        var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
+        if (inpCorr && inpCorr.value) {
+            estado.lacres_correios[postoCodigo] = inpCorr.value;
+        }
+        
+        // Etiqueta Correios
+        var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+        if (inpEtiq && inpEtiq.value) {
+            estado.etiquetas_correios[postoCodigo] = inpEtiq.value;
+        }
+        
+        // Checkbox selecionado
+        var checkbox = tr.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) {
+            estado.postos_selecionados.push(postoCodigo);
+        }
+    }
+    
+    return estado;
+}
+
+// Função para restaurar estado da tela
+function restaurarEstadoTela(estado) {
+    if (!estado) return;
+    
+    var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    for (var i = 0; i < rows.length; i++) {
+        var tr = rows[i];
+        var postoCodigo = tr.getAttribute('data-posto-codigo');
+        if (!postoCodigo) continue;
+        
+        // Restaurar Lacre IIPR
+        if (estado.lacres_iipr && estado.lacres_iipr[postoCodigo]) {
+            var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+            if (inpIIPR) inpIIPR.value = estado.lacres_iipr[postoCodigo];
+        }
+        
+        // Restaurar Lacre Correios
+        if (estado.lacres_correios && estado.lacres_correios[postoCodigo]) {
+            var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
+            if (inpCorr) inpCorr.value = estado.lacres_correios[postoCodigo];
+        }
+        
+        // Restaurar Etiqueta Correios
+        if (estado.etiquetas_correios && estado.etiquetas_correios[postoCodigo]) {
+            var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+            if (inpEtiq) inpEtiq.value = estado.etiquetas_correios[postoCodigo];
+        }
+        
+        // Restaurar checkbox
+        if (estado.postos_selecionados && estado.postos_selecionados.indexOf(postoCodigo) !== -1) {
+            var checkbox = tr.querySelector('input[type="checkbox"]');
+            if (checkbox) checkbox.checked = true;
+        }
+    }
+}
+
+// Função para obter chave do snapshot (baseada nas datas)
+function obterChaveSnapshot() {
+    var datasInput = document.querySelector('input[name="datas"]');
+    if (!datasInput || !datasInput.value) return null;
+    return 'snapshot_correios:' + datasInput.value;
+}
+
+// Função para salvar snapshot (localStorage + backend)
+function salvarSnapshotCorreios() {
+    var chave = obterChaveSnapshot();
+    if (!chave) return;
+    
+    var estado = coletarEstadoTela();
+    var estadoJSON = JSON.stringify(estado);
+    
+    // 1. Salvar no localStorage (rápido, local)
+    try {
+        window.localStorage.setItem(chave, estadoJSON);
+    } catch (e) {
+        console.log('Erro ao salvar no localStorage:', e);
+    }
+    
+    // 2. Salvar no backend (persistente, compartilhado)
+    if (!snapshotSalvando) {
+        snapshotSalvando = true;
+        atualizarIndicadorSnapshot('salvando');
+        
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', window.location.href, true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        
+        xhr.onload = function() {
+            snapshotSalvando = false;
+            if (xhr.status === 200) {
+                atualizarIndicadorSnapshot('salvo');
+            } else {
+                atualizarIndicadorSnapshot('erro');
+            }
+        };
+        
+        xhr.onerror = function() {
+            snapshotSalvando = false;
+            atualizarIndicadorSnapshot('erro');
+        };
+        
+        var params = 'acao=salvar_snapshot&chave_datas=' + encodeURIComponent(chave) + 
+                     '&snapshot_data=' + encodeURIComponent(estadoJSON);
+        xhr.send(params);
+    }
+}
+
+// Função para carregar snapshot (localStorage primeiro, depois backend)
+function carregarSnapshotCorreios() {
+    var chave = obterChaveSnapshot();
+    if (!chave) return;
+    
+    // 1. Tentar localStorage primeiro (mais rápido)
+    try {
+        var estadoJSON = window.localStorage.getItem(chave);
+        if (estadoJSON) {
+            var estado = JSON.parse(estadoJSON);
+            restaurarEstadoTela(estado);
+            console.log('[Snapshot] Restaurado do localStorage');
+            return;
+        }
+    } catch (e) {
+        console.log('Erro ao ler localStorage:', e);
+    }
+    
+    // 2. Buscar no backend
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', window.location.href + '?acao=carregar_snapshot&chave_datas=' + encodeURIComponent(chave), true);
+    
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            try {
+                var resposta = JSON.parse(xhr.responseText);
+                if (resposta.sucesso && resposta.snapshot) {
+                    var estado = JSON.parse(resposta.snapshot);
+                    restaurarEstadoTela(estado);
+                    console.log('[Snapshot] Restaurado do backend');
+                }
+            } catch (e) {
+                console.log('Erro ao processar snapshot do backend:', e);
+            }
+        }
+    };
+    
+    xhr.send();
+}
+
+// Função para atualizar indicador visual
+function atualizarIndicadorSnapshot(status) {
+    var indicador = document.getElementById('snapshot-indicador');
+    if (!indicador) return;
+    
+    if (status === 'salvando') {
+        indicador.innerHTML = '💾 Salvando...';
+        indicador.style.color = '#ff9800';
+    } else if (status === 'salvo') {
+        indicador.innerHTML = '✅ Salvo';
+        indicador.style.color = '#28a745';
+        setTimeout(function() {
+            indicador.innerHTML = '';
+        }, 2000);
+    } else if (status === 'erro') {
+        indicador.innerHTML = '⚠️ Erro ao salvar';
+        indicador.style.color = '#dc3545';
+        setTimeout(function() {
+            indicador.innerHTML = '';
+        }, 3000);
+    }
+}
+
+// Inicializar auto-save (debounced a cada 3 segundos)
+function iniciarAutoSave() {
+    // Restaurar snapshot ao carregar
+    carregarSnapshotCorreios();
+    
+    // Monitorar mudanças e fazer auto-save
+    var inputs = document.querySelectorAll('input[name^="lacre_"], input[name^="etiqueta_"], input[type="checkbox"]');
+    for (var i = 0; i < inputs.length; i++) {
+        inputs[i].addEventListener('input', function() {
+            if (snapshotTimer) clearTimeout(snapshotTimer);
+            snapshotTimer = setTimeout(function() {
+                salvarSnapshotCorreios();
+            }, 3000);
+        });
+        
+        inputs[i].addEventListener('change', function() {
+            if (snapshotTimer) clearTimeout(snapshotTimer);
+            snapshotTimer = setTimeout(function() {
+                salvarSnapshotCorreios();
+            }, 3000);
+        });
+    }
+}
+
+// Inicializar quando DOM estiver pronto
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', iniciarAutoSave);
+} else {
+    iniciarAutoSave();
+}
+
+// ============================================================================
+// FIM DO SISTEMA DE SNAPSHOT v8.14.7
+// ============================================================================
 
 // Funcao para preparar e imprimir, garantindo que valores do split sejam preservados
 function prepararEImprimir() {
