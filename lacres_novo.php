@@ -107,14 +107,15 @@
 // - NOVO: Correção erro FK constraint: valida id_despacho existe antes de INSERT em ciDespachoItens
 // - MANTIDO: Todas as funcionalidades de v8.14.4 (lotes, Correios, etc)
 // ==================================================================================
-// v8.14.6: Integração Salvamento Etiquetas Correios ao Gravar e Imprimir
+// v8.14.6: Salvamento AUTOMÁTICO de Etiquetas Correios (Simplificado)
 // ==================================================================================
-// - NOVO: Botão "Gravar e Imprimir Correios" agora também salva etiquetas em ciMalotes
-// - NOVO: Modal verifica se etiquetas já foram gravadas anteriormente
-// - NOVO: Opções ao clicar segunda vez: Sobrescrever Etiquetas / Manter Anteriores / Cancelar
-// - NOVO: Lógica de verificação: busca etiquetas salvas nas mesmas datas do ofício
-// - NOVO: Modo sobrescrever: DELETE etiquetas anteriores + INSERT novas
-// - NOVO: Modo manter: apenas INSERT novas etiquetas (não duplica)
+// - NOVO: Etiquetas salvam AUTOMATICAMENTE ao gravar ofício Correios
+// - NOVO: Integração inline no handler salvar_oficio_correios (linha ~1085)
+// - NOVO: Extrai CEP (8 chars) e Sequencial (5 últimos) de cada etiqueta
+// - NOVO: INSERT direto em ciMalotes com dados: leitura, data, login, cep, sequencial, posto
+// - NOVO: Controle duplicatas CENTRAL IIPR (mesmo CEP+Sequencial não repete)
+// - NOVO: Modal simplificado (apenas 3 botões: Sobrescrever/Criar Novo/Cancelar)
+// - NOVO: Alert de sucesso inclui quantidade de etiquetas salvas
 // - MANTIDO: Botão "Salvar Etiquetas Correios" separado continua funcionando
 // - MANTIDO: Todas as funcionalidades anteriores preservadas (v8.14.5 e anteriores)
 // - Compatibilidade: PHP 5.3.3 + ES5 JavaScript
@@ -1085,12 +1086,97 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 }
             }
             
+            // v8.14.6: Auto-salvar etiquetas dos Correios em ciMalotes antes do redirect
+            $etiquetas_salvas = 0;
+            if (isset($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
+                $login = isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema';
+                $hoje = date('Y-m-d');
+                $etiquetas_central_salvas = array();
+                
+                foreach ($_SESSION['etiquetas'] as $posto_codigo => $etiqueta) {
+                    $etiqueta = trim($etiqueta);
+                    if (strlen($etiqueta) !== 35) {
+                        continue; // Ignora etiquetas inválidas
+                    }
+                    
+                    // Extrai CEP (8 primeiros) e Sequencial (5 últimos)
+                    $cep = substr($etiqueta, 0, 8);
+                    $sequencial = substr($etiqueta, -5);
+                    
+                    // Verifica duplicatas em CENTRAL IIPR
+                    if (strpos($posto_codigo, 'CENTRAL') !== false || strpos($posto_codigo, 'Central') !== false) {
+                        $key_central = $cep . '|' . $sequencial;
+                        if (isset($etiquetas_central_salvas[$key_central])) {
+                            continue; // Já salvou esta etiqueta para CENTRAL
+                        }
+                        $etiquetas_central_salvas[$key_central] = true;
+                    }
+                    
+                    // Insere em ciMalotes
+                    $sql_malote = "INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) 
+                                   VALUES (:leitura, :data, 'Correios', :login, 'Correios', :cep, :sequencial, :posto)";
+                    $stmt_malote = $pdo_servico->prepare($sql_malote);
+                    $stmt_malote->execute(array(
+                        ':leitura' => $etiqueta,
+                        ':data' => $hoje,
+                        ':login' => $login,
+                        ':cep' => $cep,
+                        ':sequencial' => $sequencial,
+                        ':posto' => $posto_codigo
+                    ));
+                    $etiquetas_salvas++;
+                }
+            }
+            
             header('Location: ' . $url_redirect);
             exit;
         } else {
             // Apenas salvar sem imprimir - mostra mensagem simples
+            // v8.14.6: Auto-salvar etiquetas também no modo "apenas salvar"
+            $etiquetas_salvas = 0;
+            if (isset($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
+                $login = isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema';
+                $hoje = date('Y-m-d');
+                $etiquetas_central_salvas = array();
+                
+                foreach ($_SESSION['etiquetas'] as $posto_codigo => $etiqueta) {
+                    $etiqueta = trim($etiqueta);
+                    if (strlen($etiqueta) !== 35) {
+                        continue;
+                    }
+                    
+                    $cep = substr($etiqueta, 0, 8);
+                    $sequencial = substr($etiqueta, -5);
+                    
+                    if (strpos($posto_codigo, 'CENTRAL') !== false || strpos($posto_codigo, 'Central') !== false) {
+                        $key_central = $cep . '|' . $sequencial;
+                        if (isset($etiquetas_central_salvas[$key_central])) {
+                            continue;
+                        }
+                        $etiquetas_central_salvas[$key_central] = true;
+                    }
+                    
+                    $sql_malote = "INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) 
+                                   VALUES (:leitura, :data, 'Correios', :login, 'Correios', :cep, :sequencial, :posto)";
+                    $stmt_malote = $pdo_servico->prepare($sql_malote);
+                    $stmt_malote->execute(array(
+                        ':leitura' => $etiqueta,
+                        ':data' => $hoje,
+                        ':login' => $login,
+                        ':cep' => $cep,
+                        ':sequencial' => $sequencial,
+                        ':posto' => $posto_codigo
+                    ));
+                    $etiquetas_salvas++;
+                }
+            }
+            
+            $msg = 'Oficio Correios salvo com sucesso! No. ' . (int)$id_desp . ' - Postos: ' . (int)$totalPostosDistintos . ', Lotes: ' . (int)$totalLotesGravados;
+            if ($etiquetas_salvas > 0) {
+                $msg .= '\n\nEtiquetas Correios salvas: ' . $etiquetas_salvas;
+            }
             echo "<script>
-                    alert('Oficio Correios salvo com sucesso! No. " . (int)$id_desp . " - Postos: " . (int)$totalPostosDistintos . ", Lotes: " . (int)$totalLotesGravados . "');
+                    alert('" . addslashes($msg) . "');
                     if (typeof marcarComoSalvo === 'function') { marcarComoSalvo(); }
                   </script>";
         }
@@ -1102,9 +1188,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
     }
 }
 
-// === v8.14.6: SALVAR OFÍCIO + ETIQUETAS CORREIOS SIMULTANEAMENTE ===
-// Handler que combina salvamento de ofício em ciDespachos/ciDespachoLotes + etiquetas em ciMalotes
-if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_e_etiquetas_correios') {
+// === v8.14.6: HANDLER REMOVIDO - etiquetas salvam automaticamente em salvar_oficio_correios ===
+// Não é mais necessário handler separado - integração inline acima (linha ~1085)
+if (false && isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_e_etiquetas_correios_REMOVIDO') {
     try {
         if (!isset($pdo_controle) || !($pdo_controle instanceof PDO)) {
             throw new Exception('PDO $pdo_controle não disponível.');
@@ -4398,7 +4484,8 @@ function confirmarGravarEImprimir() {
     var texto = document.createElement('p');
     texto.innerHTML = '<b>Sobrescrever:</b> Apaga lotes do último ofício e grava este no lugar.<br><br>' +
                       '<b>Criar Novo:</b> Mantém ofício anterior e cria outro com novo número.<br><br>' +
-                      '<b>Cancelar:</b> Aborta a operação.';
+                      '<b>Cancelar:</b> Aborta a operação.<br><br>' +
+                      '<i style="color:#0066cc;font-size:13px;">💾 As etiquetas dos Correios serão salvas automaticamente junto com o ofício.</i>';
     texto.style.cssText = 'margin:20px 0;line-height:1.6;color:#555;';
     
     var botoes = document.createElement('div');
@@ -4411,8 +4498,7 @@ function confirmarGravarEImprimir() {
         document.body.removeChild(overlay);
         var campoModo = document.getElementById('modo_oficio');
         if (campoModo) { campoModo.value = 'sobrescrever'; }
-        // v8.14.6: Perguntar sobre etiquetas depois
-        modalEtiquetasCorreios('sobrescrever');
+        gravarEImprimirCorreios();
     };
     
     var btnCriarNovo = document.createElement('button');
@@ -4422,8 +4508,7 @@ function confirmarGravarEImprimir() {
         document.body.removeChild(overlay);
         var campoModo = document.getElementById('modo_oficio');
         if (campoModo) { campoModo.value = 'novo'; }
-        // v8.14.6: Perguntar sobre etiquetas depois
-        modalEtiquetasCorreios('novo');
+        gravarEImprimirCorreios();
     };
     
     var btnCancelar = document.createElement('button');
@@ -4444,97 +4529,8 @@ function confirmarGravarEImprimir() {
     document.body.appendChild(overlay);
 }
 
-// v8.14.6: Modal para perguntar sobre salvamento de etiquetas
-function modalEtiquetasCorreios(modoOficio) {
-    // Contar etiquetas válidas
-    var etiquetasValidas = contarEtiquetasValidas();
-    
-    if (etiquetasValidas === 0) {
-        // Não há etiquetas, pular direto para gravação
-        gravarEImprimirCorreiosComEtiquetas('nao_salvar', modoOficio);
-        return;
-    }
-    
-    // Criar modal de etiquetas
-    var overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
-    
-    var modal = document.createElement('div');
-    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:600px;text-align:center;';
-    
-    var titulo = document.createElement('h3');
-    titulo.innerHTML = '<span style="font-size:24px;">💾📦</span> Salvar Etiquetas dos Correios?';
-    titulo.style.cssText = 'margin-top:0;color:#333;';
-    
-    var texto = document.createElement('p');
-    texto.innerHTML = 'Encontradas <b>' + etiquetasValidas + ' etiquetas válidas</b> na tela.<br><br>' +
-                      'Deseja salvá-las na tabela <b>ciMalotes</b> junto com o ofício?<br><br>' +
-                      '<small style="color:#666;">• <b>Sobrescrever</b>: Apaga etiquetas anteriores das mesmas datas e salva novas<br>' +
-                      '• <b>Manter Anteriores</b>: Mantém etiquetas já salvas e adiciona novas<br>' +
-                      '• <b>Não Salvar</b>: Apenas grava ofício sem salvar etiquetas</small>';
-    texto.style.cssText = 'margin:20px 0;line-height:1.8;color:#555;';
-    
-    // Campo para login
-    var divLogin = document.createElement('div');
-    divLogin.style.cssText = 'margin:20px 0;text-align:left;';
-    
-    var labelLogin = document.createElement('label');
-    labelLogin.textContent = 'Responsável pelo Salvamento:';
-    labelLogin.style.cssText = 'display:block;margin-bottom:5px;font-weight:bold;';
-    
-    var inputLogin = document.createElement('input');
-    inputLogin.type = 'text';
-    inputLogin.id = 'login_etiquetas_modal';
-    inputLogin.placeholder = 'Digite seu nome...';
-    inputLogin.style.cssText = 'width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;';
-    inputLogin.value = '<?php echo htmlspecialchars($responsavel ?? "Sistema", ENT_QUOTES, "UTF-8"); ?>';
-    
-    divLogin.appendChild(labelLogin);
-    divLogin.appendChild(inputLogin);
-    
-    var botoes = document.createElement('div');
-    botoes.style.cssText = 'display:flex;gap:10px;justify-content:center;margin-top:25px;';
-    
-    var btnSobrescrever = document.createElement('button');
-    btnSobrescrever.textContent = 'Sobrescrever';
-    btnSobrescrever.style.cssText = 'background:#ff9800;color:white;border:none;padding:12px 20px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;';
-    btnSobrescrever.onclick = function() {
-        var login = document.getElementById('login_etiquetas_modal').value || 'Sistema';
-        document.body.removeChild(overlay);
-        gravarEImprimirCorreiosComEtiquetas('sobrescrever', modoOficio, login);
-    };
-    
-    var btnManter = document.createElement('button');
-    btnManter.textContent = 'Manter Anteriores';
-    btnManter.style.cssText = 'background:#28a745;color:white;border:none;padding:12px 20px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;';
-    btnManter.onclick = function() {
-        var login = document.getElementById('login_etiquetas_modal').value || 'Sistema';
-        document.body.removeChild(overlay);
-        gravarEImprimirCorreiosComEtiquetas('novo', modoOficio, login);
-    };
-    
-    var btnNaoSalvar = document.createElement('button');
-    btnNaoSalvar.textContent = 'Não Salvar';
-    btnNaoSalvar.style.cssText = 'background:#6c757d;color:white;border:none;padding:12px 20px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;';
-    btnNaoSalvar.onclick = function() {
-        document.body.removeChild(overlay);
-        gravarEImprimirCorreiosComEtiquetas('nao_salvar', modoOficio);
-    };
-    
-    botoes.appendChild(btnSobrescrever);
-    botoes.appendChild(btnManter);
-    botoes.appendChild(btnNaoSalvar);
-    
-    modal.appendChild(titulo);
-    modal.appendChild(texto);
-    modal.appendChild(divLogin);
-    modal.appendChild(botoes);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    
-    // Focar no campo de login
-    inputLogin.focus();
-}
+// v8.14.6: FUNÇÃO REMOVIDA - segunda modal não é mais necessária
+// Etiquetas salvam automaticamente dentro do handler salvar_oficio_correios
 
 // v8.14.0: Limpar Sessão zera TODOS inputs (incluindo topo: lacre_capital/central/regionais)
 function confirmarLimparSessao(form) {
@@ -4579,8 +4575,8 @@ function confirmarLimparSessao(form) {
     return true;
 }
 
-// v8.14.6: Função auxiliar para gravar ofício COM salvamento de etiquetas
-function gravarEImprimirCorreiosComEtiquetas(modoEtiquetas, modoOficio, loginEtiquetas) {
+// v8.14.6: Função SIMPLIFICADA - etiquetas salvam automaticamente no handler
+function gravarEImprimirCorreios() {
     var form = document.getElementById('formOficioCorreios');
     if (!form) {
         alert('Erro: Formulário não encontrado.');
@@ -4597,40 +4593,11 @@ function gravarEImprimirCorreiosComEtiquetas(modoEtiquetas, modoOficio, loginEti
         try { salvarEstadoEtiquetasCorreios(); } catch (e) { /* ignore */ }
     }
     
-    // Definir ação correta
-    if (modoEtiquetas === 'nao_salvar') {
-        // Salvar ofício normalmente (sem etiquetas)
-        document.getElementById('acaoCorreios').value = 'salvar_oficio_correios';
-    } else {
-        // Salvar ofício + etiquetas
-        document.getElementById('acaoCorreios').value = 'salvar_oficio_e_etiquetas_correios';
-        
-        // Adicionar campos de controle de etiquetas
-        var inputModoEtiq = document.createElement('input');
-        inputModoEtiq.type = 'hidden';
-        inputModoEtiq.name = 'modo_etiquetas';
-        inputModoEtiq.value = modoEtiquetas;
-        form.appendChild(inputModoEtiq);
-        
-        if (loginEtiquetas) {
-            var inputLoginEtiq = document.createElement('input');
-            inputLoginEtiq.type = 'hidden';
-            inputLoginEtiq.name = 'login_etiquetas';
-            inputLoginEtiq.value = loginEtiquetas;
-            form.appendChild(inputLoginEtiq);
-        }
-    }
-    
+    // v8.14.6: Sempre usa salvar_oficio_correios (etiquetas salvam automaticamente dentro dele)
+    document.getElementById('acaoCorreios').value = 'salvar_oficio_correios';
     document.getElementById('imprimirAposSalvar').value = '1';
     prepararLacresCorreiosParaSubmit(form);
     form.submit();
-}
-
-// v8.14.6: Função original mantida para compatibilidade (agora chama versão com etiquetas)
-function gravarEImprimirCorreios() {
-    // Por padrão, salva ofício sem etiquetas (comportamento anterior)
-    var modoOficio = document.getElementById('modo_oficio') ? document.getElementById('modo_oficio').value : 'novo';
-    gravarEImprimirCorreiosComEtiquetas('nao_salvar', modoOficio);
 }
 
 function apenasGravarCorreios() {
