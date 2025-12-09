@@ -143,6 +143,15 @@
 // - CRÍTICO: Usa valores EXATOS dos inputs (não recalcula) via snapshot
 // - GARANTIA: etiquetaiipr, etiquetacorreios, etiqueta_correios gravados corretamente em ciDespachoLotes
 // - VERSÃO: Exibida como "Análise de Expedição (v8.14.8)"
+// ==================================================================================
+// v8.14.9: "Criar Novo" Funcional + Campo usuario + Modal Poupa Tempo
+// ==================================================================================
+// - CORREÇÃO CRÍTICA: Modal confirmação adicionado ao botão "Gravar Ofício" Poupa Tempo (era submit direto)
+// - CORREÇÃO: Handler salvar_oficio_pt agora verifica modo_oficio e usa timestamp no hash quando modo=novo
+// - NOVO: Campo usuario (varchar 15) em ciDespachoItens capturado de ciPostosCsv.usuario
+// - GARANTIA: "Criar Novo" agora efetivamente cria ofício separado (não sobrescreve)
+// - MODAL: 3 opções (Sobrescrever/Criar Novo/Cancelar) agora presente em ambos fluxos
+// - VERSÃO: Exibida como "Análise de Expedição (v8.14.9)"
 // - COMPORTAMENTO:
 //   * Botão "Gravar e Imprimir Correios" → grava APENAS em ciDespachos + ciDespachoLotes
 //   * Botão "💾 Salvar Etiquetas Correios" (separado) → continua funcionando (pode gravar onde quiser)
@@ -343,9 +352,17 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
         }
 
         // 2) Cabeçalho em ciDespachos (UPSERT pelo hash de grupo+datas)
+        // v8.14.9: Verificar modo (sobrescrever ou criar novo)
         $grupo   = 'POUPA TEMPO';
         $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
-        $hash    = sha1($grupo . '|' . $datasStr);
+        $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : 'sobrescrever';
+        
+        // v8.14.9: Se modo=novo, adicionar timestamp ao hash para forçar novo registro
+        if ($modoOficio === 'novo') {
+            $hash = sha1($grupo . '|' . $datasStr . '|' . time());
+        } else {
+            $hash = sha1($grupo . '|' . $datasStr);
+        }
 
         $stFind = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE hash_chave=? LIMIT 1");
         $stFind->execute(array($hash));
@@ -3762,7 +3779,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v8.14.8)
+        <span class="icone">📊</span> Análise de Expedição (v8.14.9)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -6833,6 +6850,7 @@ try {
   }
 
   // 5) Ao clicar, posta em form oculto para o handler PHP (acao=salvar_oficio_pt)
+  // v8.14.9: Adicionar modal de confirmação (Sobrescrever/Criar Novo/Cancelar)
   btn.onclick = function(){
     var itens = coletarPT();
     if (!itens || !itens.length){
@@ -6841,15 +6859,78 @@ try {
     }
     var datas = coletarDatas();
 
+    // v8.14.9: Mostrar modal antes de gravar
+    mostrarModalConfirmacaoPT(itens, datas);
+  };
+
+  // v8.14.9: Função para mostrar modal de confirmação Poupa Tempo
+  function mostrarModalConfirmacaoPT(itens, datas) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;max-width:500px;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+    
+    var titulo = document.createElement('h3');
+    titulo.textContent = 'Como deseja gravar o ofício?';
+    titulo.style.cssText = 'margin-top:0;color:#333;font-size:18px;margin-bottom:20px;';
+    
+    var texto = document.createElement('p');
+    texto.innerHTML = 
+        '<b>Sobrescrever:</b> Atualiza o ofício existente (mesmo número).<br><br>' +
+        '<b>Criar Novo:</b> Mantém ofício anterior e cria outro com novo número.<br><br>' +
+        'Escolha uma opção:';
+    texto.style.cssText = 'margin-bottom:25px;line-height:1.6;color:#555;';
+    
+    var botoes = document.createElement('div');
+    botoes.style.cssText = 'display:flex;gap:10px;justify-content:center;';
+    
+    var btnSobrescrever = document.createElement('button');
+    btnSobrescrever.textContent = 'Sobrescrever';
+    btnSobrescrever.style.cssText = 'background:#ff9800;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnSobrescrever.onclick = function() {
+        document.body.removeChild(overlay);
+        gravarOficioPT(itens, datas, 'sobrescrever');
+    };
+    
+    var btnCriarNovo = document.createElement('button');
+    btnCriarNovo.textContent = 'Criar Novo';
+    btnCriarNovo.style.cssText = 'background:#28a745;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnCriarNovo.onclick = function() {
+        document.body.removeChild(overlay);
+        gravarOficioPT(itens, datas, 'novo');
+    };
+    
+    var btnCancelar = document.createElement('button');
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.style.cssText = 'background:#dc3545;color:white;border:none;padding:12px 24px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    btnCancelar.onclick = function() {
+        document.body.removeChild(overlay);
+    };
+    
+    botoes.appendChild(btnSobrescrever);
+    botoes.appendChild(btnCriarNovo);
+    botoes.appendChild(btnCancelar);
+    
+    modal.appendChild(titulo);
+    modal.appendChild(texto);
+    modal.appendChild(botoes);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
+  // v8.14.9: Função que efetivamente grava o ofício PT
+  function gravarOficioPT(itens, datas, modo) {
     var f = document.createElement('form');
     f.method = 'post';
     f.action = ''; // mesma página
     var a = document.createElement('input'); a.type='hidden'; a.name='acao';       a.value='salvar_oficio_pt'; f.appendChild(a);
     var b = document.createElement('input'); b.type='hidden'; b.name='datas_str';  b.value=datas.join(',');    f.appendChild(b);
     var c = document.createElement('input'); c.type='hidden'; c.name='payload_json'; c.value=JSON.stringify(itens); f.appendChild(c);
+    var d = document.createElement('input'); d.type='hidden'; d.name='modo_oficio'; d.value=modo; f.appendChild(d);
     document.body.appendChild(f);
     f.submit();
-  };
+  }
 
 })();
 </script>
