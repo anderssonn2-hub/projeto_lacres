@@ -61,7 +61,7 @@ SELECT
     posto,
     data,
     login
-FROM servico.ciMalotes 
+FROM controle.ciMalotes 
 WHERE tipo = 'Correios' 
 ORDER BY data DESC 
 LIMIT 10;
@@ -118,9 +118,9 @@ Após executar os testes acima, marcar:
 - Verificar se função `confirmarGravarEImprimir()` existe
 
 ### **Problema 2:** Etiquetas não salvam
-- Verificar no banco: `SELECT * FROM servico.ciMalotes WHERE tipo='Correios' ORDER BY data DESC LIMIT 10;`
+- Verificar no banco: `SELECT * FROM controle.ciMalotes WHERE tipo='Correios' ORDER BY data DESC LIMIT 10;`
 - Se vazio: verificar logs PHP (`error_log`)
-- Verificar conexão `$pdo_servico` funciona
+- Verificar conexão `$pdo_controle` funciona
 
 ### **Problema 3:** Página em branco
 - Verificar logs PHP

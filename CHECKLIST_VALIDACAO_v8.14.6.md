@@ -136,7 +136,7 @@ if (isset($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
 
 - [ ] **Verificar ciMalotes (NOVO)**
   ```sql
-  SELECT * FROM servico.ciMalotes 
+  SELECT * FROM controle.ciMalotes 
   WHERE tipo = 'Correios' 
   ORDER BY data DESC 
   LIMIT 20;
@@ -256,8 +256,8 @@ cp lacres_novo.php.v8.14.5.backup lacres_novo.php
 
 **Problema:** Etiquetas não salvam
 - Verificar: `$_SESSION['etiquetas']` está populada?
-- Verificar: Conexão `$pdo_servico` funciona?
-- Verificar: Tabela `ciMalotes` existe no banco `servico`?
+- Verificar conexão `$pdo_controle` funciona?
+- Verificar: Tabela `ciMalotes` existe no banco `controle`?
 
 **Problema:** Erro ao gravar ofício
 - Verificar: Handler `salvar_oficio_correios` está sendo chamado?

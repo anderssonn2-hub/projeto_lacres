@@ -1112,10 +1112,10 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                         $etiquetas_central_salvas[$key_central] = true;
                     }
                     
-                    // Insere em ciMalotes
+                    // Insere em ciMalotes (banco controle)
                     $sql_malote = "INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) 
                                    VALUES (:leitura, :data, 'Correios', :login, 'Correios', :cep, :sequencial, :posto)";
-                    $stmt_malote = $pdo_servico->prepare($sql_malote);
+                    $stmt_malote = $pdo_controle->prepare($sql_malote);
                     $stmt_malote->execute(array(
                         ':leitura' => $etiqueta,
                         ':data' => $hoje,
@@ -1158,7 +1158,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                     
                     $sql_malote = "INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) 
                                    VALUES (:leitura, :data, 'Correios', :login, 'Correios', :cep, :sequencial, :posto)";
-                    $stmt_malote = $pdo_servico->prepare($sql_malote);
+                    $stmt_malote = $pdo_controle->prepare($sql_malote);
                     $stmt_malote->execute(array(
                         ':leitura' => $etiqueta,
                         ':data' => $hoje,

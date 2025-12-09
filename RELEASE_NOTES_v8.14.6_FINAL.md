@@ -127,7 +127,7 @@ function confirmarGravarEImprimir() {
 
 ## 📊 Persistência de Dados
 
-### Tabela `ciMalotes` (banco: `servico`)
+### Tabela `ciMalotes` (banco: `controle`)
 
 Cada etiqueta salva gera um registro:
 
@@ -168,15 +168,13 @@ Cada etiqueta salva gera um registro:
    - Alert mostra: "Oficio Correios salvo com sucesso! No. X - Postos: Y, Lotes: Z\n\nEtiquetas Correios salvas: W"
    - Redirect para impressão do ofício
 7. **Validar no banco:**
-   ```sql
-   -- Ver etiquetas salvas
-   SELECT * FROM servico.ciMalotes 
-   WHERE tipo = 'Correios' 
-   ORDER BY data DESC 
-   LIMIT 20;
-   ```
-
----
+  ```sql
+  -- Ver etiquetas salvas
+  SELECT * FROM controle.ciMalotes 
+  WHERE tipo = 'Correios' 
+  ORDER BY data DESC 
+  LIMIT 20;
+  ```---
 
 ## 🐛 Problemas Resolvidos (vs v8.14.6 inicial)
 
