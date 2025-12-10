@@ -1,6 +1,6 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.14.9.1
+ * consulta_producao.php - Versao 8.14.9.2
  * Sistema de busca avancada de producao de cedulas
  * 
  * Funcionalidades:
@@ -18,6 +18,12 @@
  * - Detalhes Correios: adiciona colunas Lacre IIPR e Lacre Correios
  * - Badge visual indicando tipo de posto (POUPA TEMPO / CORREIOS) nos detalhes
  * - Totais de postos e carteiras visíveis em ambos os tipos
+ * 
+ * Versao 8.14.9.2 (Dezembro 2025):
+ * - ciDespachoLotes badge corrigido: sempre mostra "CORREIOS" (não condicional)
+ * - Formato de data padronizado: dd-mm-yyyy (d-m-Y)
+ * - PDF Ofício: novo padrão de nomenclatura #ID_tipo_dd-mm-yyyy.pdf
+ * - Link PDF aponta para Q:\cosep\IIPR\Ofícios\{Mes Ano}\{TIPO}\#{arquivo}.pdf
  * - Query JOIN aprimorada para buscar dados completos de ciDespachoLotes
  * 
  * Versao 8.15.0 (base):
@@ -757,8 +763,9 @@ try {
                             <td style="text-align:right;"><?php echo number_format((int)$d['total_carteiras'], 0, ',', '.'); ?></td>
                             <td style="text-align:center;">
                                 <?php
-                                // Versao 6: Link para PDF na rede
-                                // Formato: Q:\cosep\IIPR\Oficios\{Mes} {Ano}\Oficio Lacres V8.2 - {DD_MM_YYYY}
+                                // v8.14.9.2: Link para PDF na rede com novo padrão de nomenclatura
+                                // Formato: Q:\cosep\IIPR\Ofícios\{Mes} {Ano}\{TIPO}\#{ID}_{tipo}_{dd-mm-yyyy}.pdf
+                                // Exemplos: #26_correios_10-12-2025.pdf ou #34_poupatempo_10-12-2025.pdf
                                 $pdf_link = '';
                                 if (!empty($d['datas_str'])) {
                                     // Extrair primeira data do datas_str (ex: "27/11/2025" ou "27/11/2025,28/11/2025")
@@ -773,10 +780,14 @@ try {
                                         $meses = array('01'=>'Janeiro','02'=>'Fevereiro','03'=>'Marco','04'=>'Abril','05'=>'Maio','06'=>'Junho','07'=>'Julho','08'=>'Agosto','09'=>'Setembro','10'=>'Outubro','11'=>'Novembro','12'=>'Dezembro');
                                         $mes_nome = isset($meses[$mes_num]) ? $meses[$mes_num] : $mes_num;
                                         
-                                        // Montar caminho do arquivo (com extensao .pdf)
+                                        // Determinar tipo e subpasta
+                                        $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
+                                        $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
+                                        
+                                        // Montar caminho do arquivo (novo padrão: #ID_tipo_dd-mm-yyyy.pdf)
                                         $pasta_mes = $mes_nome . ' ' . $ano;
-                                        $nome_arquivo = 'Oficio Lacres V8.2 - ' . $dia . '_' . $mes_num . '_' . $ano . '.pdf';
-                                        $pdf_link = 'file:///Q:/cosep/IIPR/Oficios/' . $pasta_mes . '/' . $nome_arquivo;
+                                        $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
+                                        $pdf_link = 'file:///Q:/cosep/IIPR/Oficios/' . $pasta_mes . '/' . $tipo_upper . '/' . $nome_arquivo;
                                     }
                                 }
                                 ?>
@@ -885,7 +896,7 @@ try {
                                 <?php
                                 if (!empty($i['data_carga']) && $i['data_carga'] !== '0000-00-00') {
                                     $dt = DateTime::createFromFormat('Y-m-d', $i['data_carga']);
-                                    echo $dt ? $dt->format('d/m/Y') : e($i['data_carga']);
+                                    echo $dt ? $dt->format('d-m-Y') : e($i['data_carga']);
                                 } else {
                                     echo '-';
                                 }
@@ -920,14 +931,10 @@ try {
             <?php endif; ?>
             
             <!-- Lotes (Versao 6: conferencia e responsavel) -->
-            <!-- v8.14.9.1: Clarificar tipo de posto + adicionar colunas de lacres -->
+            <!-- v8.14.9.2: ciDespachoLotes SEMPRE é CORREIOS (não usar $despacho_tipo aqui) -->
             <h3 style="font-size:14px; margin:20px 0 10px 0;">
                 Lotes (ciDespachoLotes) 
-                <?php if ($despacho_tipo === 'POUPA TEMPO'): ?>
-                    <span style="background:#17a2b8;color:white;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">POUPA TEMPO</span>
-                <?php elseif ($despacho_tipo === 'CORREIOS'): ?>
-                    <span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">CORREIOS</span>
-                <?php endif; ?>
+                <span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">CORREIOS</span>
             </h3>
             <table>
                 <thead>
@@ -969,7 +976,7 @@ try {
                                 <?php
                                 if (!empty($l['data_carga']) && $l['data_carga'] !== '0000-00-00') {
                                     $dt = DateTime::createFromFormat('Y-m-d', $l['data_carga']);
-                                    echo $dt ? $dt->format('d/m/Y') : e($l['data_carga']);
+                                    echo $dt ? $dt->format('d-m-Y') : e($l['data_carga']);
                                 } else {
                                     echo '-';
                                 }

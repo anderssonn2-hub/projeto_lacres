@@ -164,6 +164,16 @@
 // - TOTAIS: Sempre exibidos em ambos os tipos (postos e carteiras)
 // - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.1)"
 // ==================================================================================
+// v8.14.9.2: UX Aprimorada e PDF Nomeado
+// ==================================================================================
+// - SESSÃO: Auto-restore localStorage DESABILITADO (filtros não trazem valores antigos)
+// - LIMPAR: Função "Limpar Sessão" totalmente funcional (limpa todos inputs + localStorage)
+// - BADGES: ciDespachoLotes sempre mostra "CORREIOS" (correção lógica)
+// - DATAS: Formato padronizado dd-mm-yyyy em todas colunas
+// - PDF: Novo padrão de nomenclatura: #ID_tipo_dd-mm-yyyy.pdf (ex: #26_correios_10-12-2025.pdf)
+// - REDE: Link para PDF aponta para Q:\cosep\IIPR\Ofícios\{Mes Ano}\{TIPO}\#{arquivo}.pdf
+// - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.2)"
+// ==================================================================================
 // v8.15.0: Consulta Produção Funcional para Correios e Poupa Tempo
 // ==================================================================================
 // - INTEGRAÇÃO: consulta_producao.php agora busca corretamente em ambos fluxos
@@ -2777,13 +2787,41 @@ foreach ($regionais_info as $num => $info) {
 
 // Debug - Informações sobre a sessão para ajudar na depuração
 $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
+
+// v8.14.9.2: Definir nome do PDF baseado no tipo de ofício e data
+$nome_pdf_titulo = 'Ofício Lacres';
+$id_despacho_atual = 0;
+$grupo_atual = '';
+$data_atual = date('d-m-Y');
+
+// Tentar obter o grupo do último despacho ativo
+try {
+    $stmt_grupo = $pdo_controle->query("
+        SELECT id, grupo 
+        FROM ciDespachos 
+        WHERE ativo = 1 
+        ORDER BY id DESC 
+        LIMIT 1
+    ");
+    $row_grupo = $stmt_grupo->fetch(PDO::FETCH_ASSOC);
+    if ($row_grupo) {
+        $id_despacho_atual = (int)$row_grupo['id'];
+        $grupo_atual = strtolower(str_replace(' ', '', $row_grupo['grupo'])); // 'correios' ou 'poupatempo'
+        
+        // Novo padrão: #26_correios_10-12-2025.pdf ou #34_poupatempo_10-12-2025.pdf
+        $nome_pdf_titulo = "#" . $id_despacho_atual . "_" . $grupo_atual . "_" . $data_atual;
+    }
+} catch (Exception $e) {
+    // Se falhar, usa padrão antigo
+    $nome_pdf_titulo = 'Ofício Lacres V8.2 - ' . date('d/m/Y');
+}
 ?>
 
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Ofício Lacres V8.2 - <?php echo date('d/m/Y') ?></title>
+    <title><?php echo htmlspecialchars($nome_pdf_titulo, ENT_QUOTES, 'UTF-8'); ?></title>
     <style>
         :root {
             --font-size-base: 12px;
@@ -3801,7 +3839,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v8.14.9.1)
+        <span class="icone">📊</span> Análise de Expedição (v8.14.9.2)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -4614,17 +4652,24 @@ function confirmarGravarEImprimir() {
 // v8.14.6: FUNÇÃO REMOVIDA - segunda modal não é mais necessária
 // Etiquetas salvam automaticamente dentro do handler salvar_oficio_correios
 
-// v8.14.0: Limpar Sessão zera TODOS inputs (incluindo topo: lacre_capital/central/regionais)
+// v8.14.9.2: Limpar Sessão DEFINITIVAMENTE zera TODOS inputs (lacres E etiquetas)
 function confirmarLimparSessao(form) {
-    var msg = "Você está prestes a LIMPAR TODA A SESSÃO deste Ofício.\n\n" +
-              "Isso irá zerar TODOS os inputs de lacre e de etiqueta dos Correios.\n\n" +
+    var msg = "⚠️ ATENÇÃO: LIMPEZA COMPLETA DA SESSÃO ⚠️\n\n" +
+              "Isso irá ZERAR TODOS os inputs:\n" +
+              "✓ Lacres IIPR (Capital, Central, Regionais)\n" +
+              "✓ Lacres Correios\n" +
+              "✓ Etiquetas Correios (código de barras)\n" +
+              "✓ Valores do topo (lacre inicial)\n" +
+              "✓ localStorage (dados salvos no navegador)\n\n" +
+              "Esta ação NÃO PODE SER DESFEITA!\n\n" +
               "Deseja continuar?";
+    
     if (!window.confirm(msg)) {
         return false;
     }
 
     try {
-        // v8.14.0: Zerar inputs DO TOPO (lacre_capital, lacre_central, lacre_regionais)
+        // 1. Zerar inputs DO TOPO (lacre_capital, lacre_central, lacre_regionais)
         var inputTopo = document.getElementById('lacre_capital_input');
         if (inputTopo) { inputTopo.value = ''; }
         inputTopo = document.getElementById('lacre_central_input');
@@ -4632,28 +4677,65 @@ function confirmarLimparSessao(form) {
         inputTopo = document.getElementById('lacre_regionais_input');
         if (inputTopo) { inputTopo.value = ''; }
         
-        // Zerar inputs visuais de lacres e etiquetas (linhas da tabela)
-        var inputs = document.querySelectorAll('input.lacre, input.etiqueta-barras, input.central-correios, input.central-etiqueta');
-        for (var i = 0; i < inputs.length; i++) {
-            inputs[i].value = '';
-            try { inputs[i].removeAttribute('readonly'); } catch (e) {}
+        // 2. Zerar TODOS inputs de lacres (por data-tipo)
+        var lacresIIPR = document.querySelectorAll('input[data-tipo="iipr"]');
+        for (var i = 0; i < lacresIIPR.length; i++) {
+            lacresIIPR[i].value = '';
+            try { lacresIIPR[i].removeAttribute('readonly'); } catch (e) {}
         }
-
-        // Limpar localStorage relacionado ao despacho atual
+        
+        var lacresCorreios = document.querySelectorAll('input[data-tipo="correios"]');
+        for (var j = 0; j < lacresCorreios.length; j++) {
+            lacresCorreios[j].value = '';
+            try { lacresCorreios[j].removeAttribute('readonly'); } catch (e) {}
+        }
+        
+        // 3. Zerar TODAS etiquetas Correios (classe etiqueta-barras)
+        var etiquetas = document.querySelectorAll('input.etiqueta-barras');
+        for (var k = 0; k < etiquetas.length; k++) {
+            etiquetas[k].value = '';
+            try { etiquetas[k].removeAttribute('readonly'); } catch (e) {}
+        }
+        
+        // 4. Zerar inputs antigos (fallback para classes antigas)
+        var inputsAntigos = document.querySelectorAll('input.lacre, input.central-correios, input.central-etiqueta');
+        for (var m = 0; m < inputsAntigos.length; m++) {
+            inputsAntigos[m].value = '';
+        }
+        
+        // 5. Limpar COMPLETAMENTE localStorage (tudo relacionado a ofícios)
         var idDespInput = document.getElementById('id_despacho');
         var idDespacho = idDespInput ? idDespInput.value : '';
-        for (var k = localStorage.length - 1; k >= 0; k--) {
-            var key = localStorage.key(k);
+        
+        // Limpar por padrões conhecidos
+        var padroes = [
+            'oficioCorreios:',
+            'snapshot_correios:',
+            'oficioPT:',
+            'splitVisual:'
+        ];
+        
+        for (var n = localStorage.length - 1; n >= 0; n--) {
+            var key = localStorage.key(n);
             if (!key) continue;
-            if (key.indexOf('oficioCorreios:' + idDespacho + ':') === 0) {
-                localStorage.removeItem(key);
+            
+            for (var p = 0; p < padroes.length; p++) {
+                if (key.indexOf(padroes[p]) === 0) {
+                    localStorage.removeItem(key);
+                    break;
+                }
             }
         }
+        
+        console.log('[LIMPAR SESSÃO] Todos inputs e localStorage limpos!');
+        alert('✅ Sessão limpa com sucesso!\n\nTodos os campos foram zerados.');
+        
     } catch (e) {
-        // ignore
+        console.error('[LIMPAR SESSÃO] Erro:', e);
+        alert('⚠️ Erro ao limpar sessão: ' + e.message);
     }
 
-    // permitir que o form submeta para a action que limpa a sessao
+    // Permitir que o form submeta para limpar sessão no servidor também
     return true;
 }
 
@@ -5067,8 +5149,8 @@ function inicializarMonitoramentoAlteracoes() {
     // Inicializar array de indices visuais (v8.11.1)
     window.splitVisualIndices = window.splitVisualIndices || [];
 
-    // v8.11: Restaurar estado dos inputs de lacres/etiquetas (localStorage)
-    restaurarEstadoEtiquetasCorreios();
+    // v8.14.9.2: NÃO restaurar localStorage automaticamente
+    // restaurarEstadoEtiquetasCorreios(); // DESABILITADO
     
     // Encontrar todos os botoes de gravar
     var btns = document.querySelectorAll('button[onclick*="gravar"], button[onclick*="Gravar"]');
@@ -5358,8 +5440,10 @@ function atualizarIndicadorSnapshot(status) {
 function iniciarAutoSave() {
     console.log('[SNAPSHOT] Iniciando auto-save...');
     
-    // Restaurar snapshot ao carregar
-    carregarSnapshotCorreios();
+    // v8.14.9.2: NÃO restaurar snapshot automaticamente ao carregar
+    // Apenas monitorar mudanças para salvar
+    // Para restaurar, usuário deve clicar em botão "Restaurar Snapshot" (futuro)
+    // carregarSnapshotCorreios(); // DESABILITADO
     
     // Monitorar mudanças e fazer auto-save
     // Buscar inputs por data-tipo e classe
