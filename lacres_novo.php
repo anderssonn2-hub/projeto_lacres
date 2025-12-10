@@ -186,6 +186,15 @@
 //   * Agora: "Criar Novo" gera ID único, "Sobrescrever" atualiza ofício existente
 // - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.3)"
 // ==================================================================================
+// v8.14.9.4: Melhorias na Consulta e Ofício Poupa Tempo
+// ==================================================================================
+// - CONSULTA: Título "Lista de Despachos (Ofícios)" + versão 8.14.9.4 no topo
+// - STATUS: Exibe "Finalizado" ao invés de "Ativo"
+// - PDF: Link sempre visível (nome do arquivo) para debug de caminho
+// - TÍTULOS: Removido "(ciDespachoItens)" e "(ciDespachoLotes)" dos títulos
+// - PT LAYOUT: Tabela com word-wrap para nomes longos (quebra linha ao invés de ultrapassar borda)
+// - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.4)"
+// ==================================================================================
 // v8.15.0: Consulta Produção Funcional para Correios e Poupa Tempo
 // ==================================================================================
 // - INTEGRAÇÃO: consulta_producao.php agora busca corretamente em ambos fluxos
@@ -3928,7 +3937,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v8.14.9.3)
+        <span class="icone">📊</span> Análise de Expedição (v8.14.9.4)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">

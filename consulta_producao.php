@@ -1,6 +1,6 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.14.9.3
+ * consulta_producao.php - Versao 8.14.9.4
  * Sistema de busca avancada de producao de cedulas
  * 
  * Funcionalidades:
@@ -374,7 +374,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao - Versao 8.15.0</title>
+<title>Consulta de Producao de Cedulas - Versao 8.14.9.4</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -610,7 +610,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.15.0</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.14.9.4</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -715,7 +715,7 @@ try {
     <!-- Tab Despachos -->
     <div id="tab-despachos" class="tab-content active">
         <div class="painel">
-            <div class="painel-titulo">Lista de Despachos</div>
+            <div class="painel-titulo">Lista de Despachos (Ofícios)</div>
             <div class="totais">
                 <strong><?php echo count($despachos); ?></strong> despacho(s) encontrado(s)
                 <?php if ($f_etiqueta): ?>| Buscando etiqueta: <strong><?php echo e($f_etiqueta); ?></strong><?php endif; ?>
@@ -759,7 +759,7 @@ try {
                             <td><?php echo e($d['usuario']); ?></td>
                             <td>
                                 <?php if ($d['ativo']): ?>
-                                    <span class="badge badge-ativo">Ativo</span>
+                                    <span class="badge badge-ativo">Finalizado</span>
                                 <?php else: ?>
                                     <span class="badge badge-inativo">Inativo</span>
                                 <?php endif; ?>
@@ -795,11 +795,11 @@ try {
                                     }
                                 }
                                 ?>
+                                <!-- v8.14.9.4: Link SEMPRE visível para debug de caminho -->
                                 <?php if ($pdf_link): ?>
-                                    <!-- v8.14.9.3: Tooltip mostra caminho completo do PDF -->
-                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="<?php echo e($pdf_link); ?>" style="color:#007bff; font-size:18px; text-decoration:none;">&#128196;</a>
+                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="<?php echo e($pdf_link); ?>" style="color:#007bff; font-size:14px; text-decoration:none; word-break:break-all; display:block;"><?php echo htmlspecialchars(basename($pdf_link), ENT_QUOTES, 'UTF-8'); ?></a>
                                 <?php else: ?>
-                                    <span style="color:#999;" title="Sem data para gerar link">-</span>
+                                    <span style="color:#999; font-size:12px;" title="Sem data para gerar link">Sem link</span>
                                 <?php endif; ?>
                             </td>
                             <td class="acoes">
@@ -842,8 +842,9 @@ try {
             <!-- Itens por Posto (ciDespachoItens - usado para Poupa Tempo) -->
             <?php if (!empty($itens)): ?>
             <!-- v8.14.9.1: Adicionar badge indicando Poupa Tempo + mostrar totais -->
+            <!-- v8.14.9.4: Título simplificado (sem ciDespachoItens) -->
             <h3 style="font-size:14px; margin:15px 0 10px 0;">
-                Postos (ciDespachoItens)
+                Postos
                 <?php if ($despacho_tipo === 'POUPA TEMPO'): ?>
                     <span style="background:#17a2b8;color:white;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">POUPA TEMPO</span>
                 <?php endif; ?>
@@ -938,8 +939,9 @@ try {
             <!-- Lotes (Versao 6: conferencia e responsavel) -->
             <!-- v8.14.9.3: Mostrar ciDespachoLotes SOMENTE se houver lotes (evita cabeçalho vazio em PT) -->
             <?php if (!empty($lotes)): ?>
+            <!-- v8.14.9.4: Título simplificado (sem ciDespachoLotes) -->
             <h3 style="font-size:14px; margin:20px 0 10px 0;">
-                Lotes (ciDespachoLotes) 
+                Lotes
                 <span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">CORREIOS</span>
             </h3>
             <table>

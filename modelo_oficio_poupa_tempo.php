@@ -854,18 +854,18 @@ if (document.readyState === 'loading') {
         <div class="oficio-observacao">
           <table style="table-layout:fixed; width:100%;">
             <tr>
-              <th style="min-width:350px; width:55%;">Poupatempo</th>
+              <th style="width:55%; max-width:400px;">Poupatempo</th>
               <th style="width:22%;">Quantidade de CIN's</th>
               <th style="width:23%;">Numero do Lacre</th>
             </tr>
             <tr>
-              <!-- Nome do posto editável como input -->
-              <td style="min-width:350px;">
+              <!-- v8.14.9.4: Nome do posto com word-wrap para quebrar linhas longas -->
+              <td style="width:55%; max-width:400px; word-wrap:break-word; white-space:normal; text-align:left; padding:8px !important;">
                 <input type="text" 
                        name="nome_posto[<?php echo e($codigo3); ?>]" 
                        value="<?php echo e($valorNome); ?>" 
                        class="input-editavel"
-                       style="width:100%; min-width:320px;">
+                       style="width:100%; word-wrap:break-word; white-space:normal;">
               </td>
               <!-- Quantidade de carteiras editável como input -->
               <td style="text-align:right">
@@ -942,12 +942,15 @@ if (document.readyState === 'loading') {
         <div class="oficio-observacao">
           <table style="table-layout:fixed; width:100%;">
             <tr>
-              <th style="min-width:350px; width:55%;">Poupatempo</th>
+              <th style="width:55%; max-width:400px;">Poupatempo</th>
               <th style="width:22%;">Quantidade de CIN's</th>
               <th style="width:23%;">Numero do Lacre</th>
             </tr>
             <tr>
-              <td style="min-width:350px;"><input type="text" name="nome_posto[000]" value="" class="input-editavel" style="width:100%; min-width:320px;" placeholder="Digite o posto"></td>
+              <!-- v8.14.9.4: Nome do posto com word-wrap para quebrar linhas longas -->
+              <td style="width:55%; max-width:400px; word-wrap:break-word; white-space:normal; text-align:left; padding:8px !important;">
+                <input type="text" name="nome_posto[000]" value="" class="input-editavel" style="width:100%; word-wrap:break-word; white-space:normal;" placeholder="Digite o posto">
+              </td>
               <td style="text-align:right"><input type="text" name="quantidade_posto[000]" value="" class="input-editavel" style="text-align:right;" placeholder="0"></td>
               <td style="text-align:right"><input type="text" name="lacre_iipr[000]" value="" class="input-editavel" style="text-align:right;" placeholder="Lacre"></td>
             </tr>
