@@ -195,6 +195,14 @@
 // - PT LAYOUT: Tabela com word-wrap para nomes longos (quebra linha ao invés de ultrapassar borda)
 // - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.4)"
 // ==================================================================================
+// v8.14.9.5: Correções de Título PDF e Layout PT
+// ==================================================================================
+// - TÍTULO PDF: Padrão #ID_tipo_dd-mm-yyyy.pdf restaurado (PT e Correios)
+//   * Exemplo: #81_correios_10-12-2025.pdf ou #82_poupatempo_10-12-2025.pdf
+// - PT TABELA: Largura máxima 650px (não ultrapassa lateral direita)
+// - PT INPUT: Nome do posto com scroll horizontal (visualização completa)
+// - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.5)"
+// ==================================================================================
 // v8.15.0: Consulta Produção Funcional para Correios e Poupa Tempo
 // ==================================================================================
 // - INTEGRAÇÃO: consulta_producao.php agora busca corretamente em ambos fluxos
@@ -3937,7 +3945,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v8.14.9.4)
+        <span class="icone">📊</span> Análise de Expedição (v8.14.9.5)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">

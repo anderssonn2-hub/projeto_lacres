@@ -1,6 +1,6 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.14.9.4
+ * consulta_producao.php - Versao 8.14.9.5
  * Sistema de busca avancada de producao de cedulas
  * 
  * Funcionalidades:
@@ -374,7 +374,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.14.9.4</title>
+<title>Consulta de Producao de Cedulas - Versao 8.14.9.5</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -610,7 +610,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.14.9.4</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.14.9.5</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">

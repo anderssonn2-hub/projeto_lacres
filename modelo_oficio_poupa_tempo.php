@@ -485,7 +485,8 @@ if (!empty($dados_salvos) && $tipo_mensagem === 'sucesso') {
 <title>Comprovante de Entrega - Poupatempo</title>
 <style>
 /* ====== estilos base (mantidos do seu modelo) ====== */
-table{border:1px solid #000;border-collapse:collapse;margin:10px}
+/* v8.14.9.5: Tabela com largura máxima definida para não ultrapassar bordas */
+table{border:1px solid #000;border-collapse:collapse;margin:10px;max-width:650px;width:100%;}
 th,td{border:1px solid #000;padding:8px!important;text-align:center}
 th{background:#f2f2f2}
 body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
@@ -854,18 +855,20 @@ if (document.readyState === 'loading') {
         <div class="oficio-observacao">
           <table style="table-layout:fixed; width:100%;">
             <tr>
-              <th style="width:55%; max-width:400px;">Poupatempo</th>
+              <th style="width:55%; max-width:350px;">Poupatempo</th>
               <th style="width:22%;">Quantidade de CIN's</th>
               <th style="width:23%;">Numero do Lacre</th>
             </tr>
             <tr>
-              <!-- v8.14.9.4: Nome do posto com word-wrap para quebrar linhas longas -->
-              <td style="width:55%; max-width:400px; word-wrap:break-word; white-space:normal; text-align:left; padding:8px !important;">
-                <input type="text" 
-                       name="nome_posto[<?php echo e($codigo3); ?>]" 
-                       value="<?php echo e($valorNome); ?>" 
-                       class="input-editavel"
-                       style="width:100%; word-wrap:break-word; white-space:normal;">
+              <!-- v8.14.9.5: Nome do posto com largura controlada + texto visível -->
+              <td style="width:55%; max-width:350px; text-align:left; padding:4px !important; overflow:visible;">
+                <div style="width:100%; overflow-x:auto; white-space:nowrap;">
+                  <input type="text" 
+                         name="nome_posto[<?php echo e($codigo3); ?>]" 
+                         value="<?php echo e($valorNome); ?>" 
+                         class="input-editavel"
+                         style="width:auto; min-width:300px; max-width:100%; border:none; background:transparent; font-size:11px;">
+                </div>
               </td>
               <!-- Quantidade de carteiras editável como input -->
               <td style="text-align:right">
@@ -940,16 +943,20 @@ if (document.readyState === 'loading') {
 
       <div class="cols100 processo border-1px">
         <div class="oficio-observacao">
-          <table style="table-layout:fixed; width:100%;">
+          <table style="table-layout:fixed; width:100%; max-width:650px;">
             <tr>
-              <th style="width:55%; max-width:400px;">Poupatempo</th>
+              <th style="width:55%; max-width:350px;">Poupatempo</th>
               <th style="width:22%;">Quantidade de CIN's</th>
               <th style="width:23%;">Numero do Lacre</th>
             </tr>
             <tr>
-              <!-- v8.14.9.4: Nome do posto com word-wrap para quebrar linhas longas -->
-              <td style="width:55%; max-width:400px; word-wrap:break-word; white-space:normal; text-align:left; padding:8px !important;">
-                <input type="text" name="nome_posto[000]" value="" class="input-editavel" style="width:100%; word-wrap:break-word; white-space:normal;" placeholder="Digite o posto">
+              <!-- v8.14.9.5: Nome do posto com largura controlada -->
+              <td style="width:55%; max-width:350px; text-align:left; padding:4px !important; overflow:visible;">
+                <div style="width:100%; overflow-x:auto; white-space:nowrap;">
+                  <input type="text" name="nome_posto[000]" value="" class="input-editavel" 
+                         style="width:auto; min-width:300px; max-width:100%; border:none; background:transparent; font-size:11px;" 
+                         placeholder="Digite o posto">
+                </div>
               </td>
               <td style="text-align:right"><input type="text" name="quantidade_posto[000]" value="" class="input-editavel" style="text-align:right;" placeholder="0"></td>
               <td style="text-align:right"><input type="text" name="lacre_iipr[000]" value="" class="input-editavel" style="text-align:right;" placeholder="Lacre"></td>
