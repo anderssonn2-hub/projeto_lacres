@@ -29,6 +29,11 @@
    - Campo usuario (varchar 15) salvo em ciDespachoItens
    - Captura usuario de ciPostosCsv.usuario para cada posto
    - SELECT incluído em queries de exibição (paginas array)
+   
+   v8.15.0: Integração completa com consulta_producao.php
+   - Sistema de consulta funciona para CORREIOS e POUPA TEMPO
+   - Dados gravados em ciDespachoItens são consultáveis
+   - Campo usuario rastreável em todas queries de busca
 */
 
 error_reporting(E_ALL & ~E_NOTICE);

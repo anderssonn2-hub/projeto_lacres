@@ -152,6 +152,26 @@
 // - GARANTIA: "Criar Novo" agora efetivamente cria ofício separado (não sobrescreve)
 // - MODAL: 3 opções (Sobrescrever/Criar Novo/Cancelar) agora presente em ambos fluxos
 // - VERSÃO: Exibida como "Análise de Expedição (v8.14.9)"
+// ==================================================================================
+// v8.14.9.1: Correções e Melhorias de UX
+// ==================================================================================
+// - CORREÇÃO: Variável $responsavel definida ANTES do uso (linha 2166) - elimina warning PHP
+// - IMPRESSÃO: Painel "Análise de Expedição" auto-recolhido antes de imprimir (evita página em branco)
+// - CONSULTA: consulta_producao.php agora mostra detalhes completos para ambos fluxos:
+//   * Poupa Tempo: lote, data carga, responsaveis, conferido, conferido por
+//   * Correios: adiciona colunas Lacre IIPR e Lacre Correios
+// - VISUAL: Badges indicando tipo de posto (POUPA TEMPO / CORREIOS) nos detalhes
+// - TOTAIS: Sempre exibidos em ambos os tipos (postos e carteiras)
+// - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.1)"
+// ==================================================================================
+// v8.15.0: Consulta Produção Funcional para Correios e Poupa Tempo
+// ==================================================================================
+// - INTEGRAÇÃO: consulta_producao.php agora busca corretamente em ambos fluxos
+// - HÍBRIDO: Query usa ciDespachoLotes (Correios) e ciDespachoItens (Poupa Tempo)
+// - FILTROS: Todos filtros funcionam para ambos grupos (lote, posto, etiqueta, usuario)
+// - GARANTIA: Contagem correta de postos e carteiras independente do grupo
+// - VERSÃO: Sistema completo e funcional para ambos fluxos
+// - FOCO: Arquivo consulta_producao.php totalmente operacional
 // - COMPORTAMENTO:
 //   * Botão "Gravar e Imprimir Correios" → grava APENAS em ciDespachos + ciDespachoLotes
 //   * Botão "💾 Salvar Etiquetas Correios" (separado) → continua funcionando (pode gravar onde quiser)
@@ -2153,6 +2173,9 @@ if (!empty($_SESSION['datas_filtro'])) {
 // V7.9: Realizar análise de expedição com nova lógica de data
 $analise_expedicao = analisar_expedicao($pdo_controle, $pdo_servico, $datas_filtro);
 
+// v8.14.9.1: Definir $responsavel ANTES de usar (corrige warning linha 2166)
+$responsavel = isset($_GET['responsavel']) ? $_GET['responsavel'] : 'Responsável Não Informado';
+
 // Parâmetros do formulário
 $lacre_capital = isset($_GET['lacre_capital']) ? (int)$_GET['lacre_capital'] : 1;
 $lacre_central = isset($_GET['lacre_central']) ? (int)$_GET['lacre_central'] : 0;
@@ -2164,7 +2187,6 @@ $_SESSION['ultimo_lacre_central'] = $lacre_central;
 $_SESSION['ultimo_lacre_regionais'] = $lacre_regionais;
 // Persistir responsavel selecionado
 $_SESSION['ultimo_responsavel'] = $responsavel;
-$responsavel = isset($_GET['responsavel']) ? $_GET['responsavel'] : 'Responsável Não Informado';
 $cliente = isset($_GET['cliente']) ? $_GET['cliente'] : 'Cliente Não Informado';
 $data_geracao = date('d/m/Y');
 
@@ -3779,7 +3801,7 @@ $mostrar_debug = isset($_GET['debug']) && $_GET['debug'] === '1';
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v8.14.9)
+        <span class="icone">📊</span> Análise de Expedição (v8.14.9.1)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -5376,6 +5398,14 @@ if (document.readyState === 'loading') {
 
 // Funcao para preparar e imprimir, garantindo que valores do split sejam preservados
 function prepararEImprimir() {
+    // v8.14.9.1: Recolher painel "Análise de Expedição" antes de imprimir
+    // (evita página em branco quando painel está expandido)
+    var painel = document.getElementById('painel-analise');
+    if (painel && painel.className.indexOf('collapsed') === -1) {
+        painel.className = painel.className + ' collapsed';
+        localStorage.setItem('painelAnaliseCollapsed', 'true');
+    }
+    
     // Sincronizar valores dos inputs antes de imprimir
     sincronizarValoresSplit();
     

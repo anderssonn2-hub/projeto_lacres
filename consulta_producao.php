@@ -1,6 +1,6 @@
 <?php
 /**
- * consulta_producao.php - Versao 6
+ * consulta_producao.php - Versao 8.14.9.1
  * Sistema de busca avancada de producao de cedulas
  * 
  * Funcionalidades:
@@ -11,6 +11,21 @@
  * - Estatisticas de producao por dia, mes, usuario
  * - Filtros avancados
  * - Link para PDF na rede
+ * - Suporte completo a CORREIOS e POUPA TEMPO
+ * 
+ * Versao 8.14.9.1 (Dezembro 2025):
+ * - Detalhes Poupa Tempo: lote, data carga, responsaveis, conferido, conferido por
+ * - Detalhes Correios: adiciona colunas Lacre IIPR e Lacre Correios
+ * - Badge visual indicando tipo de posto (POUPA TEMPO / CORREIOS) nos detalhes
+ * - Totais de postos e carteiras visíveis em ambos os tipos
+ * - Query JOIN aprimorada para buscar dados completos de ciDespachoLotes
+ * 
+ * Versao 8.15.0 (base):
+ * - Query hibrida: busca em ciDespachoLotes (Correios) e ciDespachoItens (Poupa Tempo)
+ * - Contagem correta de postos e carteiras para ambos grupos
+ * - Filtros funcionam em ambas tabelas (lote, posto, etiqueta, usuario)
+ * - Campo usuario adicionado em ciDespachoItens (v8.14.9)
+ * - Dropdown de usuarios inclui ciDespachoItens.usuario
  * 
  * Compativel com PHP 5.3.3 e IE8/9
  */
@@ -92,8 +107,7 @@ if (empty($data_fim_sql) && !empty($data_ini_sql)) {
     $data_fim_sql = $data_ini_sql;
 }
 
-// Busca principal - Versao 6: usar subqueries em ciDespachoLotes para contagens
-// Isso funciona tanto para Poupa Tempo quanto para Correios
+// Busca principal - Versao 8.15.0: query hibrida que busca em ciDespachoLotes (Correios) e ciDespachoItens (Poupa Tempo)
 $params = array();
 $sqlLista = "
     SELECT 
@@ -102,8 +116,18 @@ $sqlLista = "
         d.datas_str,
         d.usuario,
         d.ativo,
-        (SELECT COUNT(DISTINCT l2.posto) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) AS num_postos,
-        (SELECT COALESCE(SUM(l2.quantidade),0) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) AS total_carteiras
+        CASE 
+            WHEN d.grupo = 'POUPA TEMPO' THEN 
+                (SELECT COUNT(DISTINCT i.posto) FROM ciDespachoItens i WHERE i.id_despacho = d.id)
+            ELSE 
+                (SELECT COUNT(DISTINCT l2.posto) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id)
+        END AS num_postos,
+        CASE 
+            WHEN d.grupo = 'POUPA TEMPO' THEN 
+                (SELECT COALESCE(SUM(i.quantidade),0) FROM ciDespachoItens i WHERE i.id_despacho = d.id)
+            ELSE 
+                (SELECT COALESCE(SUM(l2.quantidade),0) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id)
+        END AS total_carteiras
     FROM ciDespachos d
 ";
 
@@ -150,36 +174,65 @@ if (!empty($data_ini_sql)) {
     $params[] = $data_fim_sql;
 }
 
-// Filtro por etiqueta correios - Versao 6: busca em ciDespachoLotes
+// Filtro por etiqueta correios - Versao 8.15.0: busca em ambas tabelas
 if ($f_etiqueta !== '') {
-    $sqlLista .= " AND EXISTS (
-        SELECT 1 FROM ciDespachoLotes le 
-        WHERE le.id_despacho = d.id AND le.etiqueta_correios LIKE ?
+    $sqlLista .= " AND (
+        EXISTS (
+            SELECT 1 FROM ciDespachoLotes le 
+            WHERE le.id_despacho = d.id AND le.etiqueta_correios LIKE ?
+        )
+        OR EXISTS (
+            SELECT 1 FROM ciDespachoItens ie
+            WHERE ie.id_despacho = d.id AND ie.etiqueta_correios LIKE ?
+        )
     ) ";
+    $params[] = '%' . $f_etiqueta . '%';
     $params[] = '%' . $f_etiqueta . '%';
 }
 
-// Filtro por lote
+// Filtro por lote - Versao 8.15.0: busca em ambas tabelas
 if ($f_lote !== '') {
-    $sqlLista .= " AND l.lote LIKE ? ";
+    $sqlLista .= " AND (
+        l.lote LIKE ?
+        OR EXISTS (
+            SELECT 1 FROM ciDespachoItens il
+            WHERE il.id_despacho = d.id AND il.lote LIKE ?
+        )
+    ) ";
+    $params[] = '%' . $f_lote . '%';
     $params[] = '%' . $f_lote . '%';
 }
 
-// Filtro por posto - Versao 6: busca em ciDespachoLotes
+// Filtro por posto - Versao 8.15.0: busca em ambas tabelas
 if ($f_posto !== '') {
-    $sqlLista .= " AND EXISTS (
-        SELECT 1 FROM ciDespachoLotes lp 
-        WHERE lp.id_despacho = d.id AND lp.posto LIKE ?
+    $sqlLista .= " AND (
+        EXISTS (
+            SELECT 1 FROM ciDespachoLotes lp 
+            WHERE lp.id_despacho = d.id AND lp.posto LIKE ?
+        )
+        OR EXISTS (
+            SELECT 1 FROM ciDespachoItens ip
+            WHERE ip.id_despacho = d.id AND ip.posto LIKE ?
+        )
     ) ";
+    $params[] = '%' . $f_posto . '%';
     $params[] = '%' . $f_posto . '%';
 }
 
-// Filtro por usuario (Versao 5) - usando EXISTS para evitar duplicacao de contagem
+// Filtro por usuario - Versao 8.15.0: busca em ciDespachos, ciDespachoLotes e ciDespachoItens
 if ($f_usuario !== '') {
-    $sqlLista .= " AND (d.usuario LIKE ? OR EXISTS (
-        SELECT 1 FROM ciDespachoLotes lu 
-        WHERE lu.id_despacho = d.id AND lu.responsaveis LIKE ?
-    )) ";
+    $sqlLista .= " AND (
+        d.usuario LIKE ? 
+        OR EXISTS (
+            SELECT 1 FROM ciDespachoLotes lu 
+            WHERE lu.id_despacho = d.id AND lu.responsaveis LIKE ?
+        )
+        OR EXISTS (
+            SELECT 1 FROM ciDespachoItens iu
+            WHERE iu.id_despacho = d.id AND iu.usuario LIKE ?
+        )
+    ) ";
+    $params[] = '%' . $f_usuario . '%';
     $params[] = '%' . $f_usuario . '%';
     $params[] = '%' . $f_usuario . '%';
 }
@@ -222,18 +275,27 @@ if ($id_despacho > 0) {
     $despacho_tipo = $rowTipo ? $rowTipo['grupo'] : '';
     
     // Buscar itens (ciDespachoItens - usado principalmente para Poupa Tempo)
+    // Versao 8.15.0: Adicionar campo usuario
+    // v8.14.9.1: Adicionar data_carga, responsaveis, conferido via JOIN com ciDespachoLotes
     $stItens = $pdo_controle->prepare("
-        SELECT id, id_despacho, regional, posto, nome_posto, endereco,
-               lote, quantidade, lacre_iipr, lacre_correios, etiqueta_correios
-        FROM ciDespachoItens
-        WHERE id_despacho = ?
-        ORDER BY LPAD(posto,3,'0')
+        SELECT 
+            i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
+            i.lote, i.quantidade, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.usuario,
+            l.data_carga, l.responsaveis,
+            cp.usuario AS conferido_por,
+            CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
+        FROM ciDespachoItens i
+        LEFT JOIN ciDespachoLotes l ON l.id_despacho = i.id_despacho AND l.posto = i.posto
+        LEFT JOIN conferencia_pacotes cp ON cp.nlote = CAST(i.lote AS UNSIGNED) AND cp.conf = 'S'
+        WHERE i.id_despacho = ?
+        ORDER BY LPAD(i.posto,3,'0')
     ");
     $stItens->execute(array($id_despacho));
     $itens = $stItens->fetchAll();
 
     // Versao 6: Cruzamento com conferencia_pacotes para status e responsavel
     // NOTA: Apenas considera conferido se cp.conf = 'S' (status conferido)
+    // v8.14.9.1: Adicionar etiquetaiipr e etiquetacorreios (lacres)
     $stLotes = $pdo_controle->prepare("
         SELECT 
             l.id, 
@@ -244,6 +306,8 @@ if ($id_despacho > 0) {
             l.data_carga, 
             l.responsaveis, 
             l.etiqueta_correios,
+            l.etiquetaiipr,
+            l.etiquetacorreios,
             cp.usuario AS conferido_por,
             cp.lido_em AS conferido_em,
             CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
@@ -256,7 +320,7 @@ if ($id_despacho > 0) {
     $lotes = $stLotes->fetchAll();
 }
 
-// Versao 6: Buscar lista de usuarios para dropdown
+// Versao 8.15.0: Buscar lista de usuarios para dropdown (incluindo ciDespachoItens)
 $usuarios = array();
 try {
     $stUsuarios = $pdo_controle->query("
@@ -264,6 +328,8 @@ try {
             SELECT DISTINCT usuario FROM ciDespachos WHERE usuario IS NOT NULL AND usuario != ''
             UNION
             SELECT DISTINCT responsaveis AS usuario FROM ciDespachoLotes WHERE responsaveis IS NOT NULL AND responsaveis != ''
+            UNION
+            SELECT DISTINCT usuario FROM ciDespachoItens WHERE usuario IS NOT NULL AND usuario != ''
         ) AS u
         ORDER BY usuario
     ");
@@ -297,7 +363,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao - Versao 6</title>
+<title>Consulta de Producao - Versao 8.15.0</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -533,7 +599,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 6</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.15.0</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -759,13 +825,20 @@ try {
             
             <!-- Itens por Posto (ciDespachoItens - usado para Poupa Tempo) -->
             <?php if (!empty($itens)): ?>
-            <h3 style="font-size:14px; margin:15px 0 10px 0;">Postos (ciDespachoItens)</h3>
+            <!-- v8.14.9.1: Adicionar badge indicando Poupa Tempo + mostrar totais -->
+            <h3 style="font-size:14px; margin:15px 0 10px 0;">
+                Postos (ciDespachoItens)
+                <?php if ($despacho_tipo === 'POUPA TEMPO'): ?>
+                    <span style="background:#17a2b8;color:white;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">POUPA TEMPO</span>
+                <?php endif; ?>
+            </h3>
             <?php
             $totalCart = 0;
             foreach ($itens as $i) {
                 $totalCart += (int)$i['quantidade'];
             }
             ?>
+            <!-- v8.14.9.1: Mostrar totais para Poupa Tempo -->
             <div class="totais">
                 Total de postos: <strong><?php echo count($itens); ?></strong> |
                 Total de carteiras: <strong><?php echo number_format($totalCart, 0, ',', '.'); ?></strong>
@@ -774,19 +847,29 @@ try {
                 <thead>
                     <tr>
                         <th>Posto</th>
+                        <th>Lote</th>
                         <th>Nome do Posto</th>
-                        <th>Endereco</th>
                         <th>Quantidade</th>
+                        <th>Data Carga</th>
+                        <th>Responsaveis</th>
                         <th>Lacre IIPR</th>
+                        <?php if ($despacho_tipo !== 'POUPA TEMPO'): ?>
                         <th>Lacre Correios</th>
                         <th>Etiqueta Correios</th>
+                        <?php endif; ?>
+                        <th>Conferido</th>
+                        <th>Conferido Por</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($itens as $i): ?>
                         <?php
                         $item_class = '';
-                        if ($f_etiqueta !== '' && strpos($i['etiqueta_correios'], $f_etiqueta) !== false) {
+                        $is_conferido = (isset($i['conferido']) && $i['conferido'] === 'S');
+                        if ($is_conferido) {
+                            $item_class = 'lote-conferido';
+                        }
+                        if ($f_etiqueta !== '' && isset($i['etiqueta_correios']) && strpos($i['etiqueta_correios'], $f_etiqueta) !== false) {
                             $item_class = 'lote-encontrado';
                         }
                         if ($f_posto !== '' && (strpos($i['posto'], $f_posto) !== false || stripos($i['nome_posto'], $f_posto) !== false)) {
@@ -795,12 +878,33 @@ try {
                         ?>
                         <tr class="<?php echo $item_class; ?>">
                             <td><?php echo e($i['posto']); ?></td>
+                            <td><strong><?php echo e($i['lote']); ?></strong></td>
                             <td><?php echo e($i['nome_posto']); ?></td>
-                            <td><?php echo e($i['endereco']); ?></td>
                             <td style="text-align:right;"><?php echo (int)$i['quantidade']; ?></td>
+                            <td>
+                                <?php
+                                if (!empty($i['data_carga']) && $i['data_carga'] !== '0000-00-00') {
+                                    $dt = DateTime::createFromFormat('Y-m-d', $i['data_carga']);
+                                    echo $dt ? $dt->format('d/m/Y') : e($i['data_carga']);
+                                } else {
+                                    echo '-';
+                                }
+                                ?>
+                            </td>
+                            <td><?php echo e(isset($i['responsaveis']) ? $i['responsaveis'] : '-'); ?></td>
                             <td><?php echo e($i['lacre_iipr']); ?></td>
+                            <?php if ($despacho_tipo !== 'POUPA TEMPO'): ?>
                             <td><?php echo e($i['lacre_correios']); ?></td>
-                            <td><?php echo e($i['etiqueta_correios']); ?></td>
+                            <td style="font-size:10px;"><?php echo e($i['etiqueta_correios']); ?></td>
+                            <?php endif; ?>
+                            <td style="text-align:center;">
+                                <?php if ($is_conferido): ?>
+                                    <span class="badge badge-conferido">Sim</span>
+                                <?php else: ?>
+                                    <span class="badge badge-pendente">Nao</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo e(isset($i['conferido_por']) ? $i['conferido_por'] : '-'); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -816,7 +920,15 @@ try {
             <?php endif; ?>
             
             <!-- Lotes (Versao 6: conferencia e responsavel) -->
-            <h3 style="font-size:14px; margin:20px 0 10px 0;">Lotes (ciDespachoLotes)</h3>
+            <!-- v8.14.9.1: Clarificar tipo de posto + adicionar colunas de lacres -->
+            <h3 style="font-size:14px; margin:20px 0 10px 0;">
+                Lotes (ciDespachoLotes) 
+                <?php if ($despacho_tipo === 'POUPA TEMPO'): ?>
+                    <span style="background:#17a2b8;color:white;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">POUPA TEMPO</span>
+                <?php elseif ($despacho_tipo === 'CORREIOS'): ?>
+                    <span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">CORREIOS</span>
+                <?php endif; ?>
+            </h3>
             <table>
                 <thead>
                     <tr>
@@ -825,6 +937,10 @@ try {
                         <th>Quantidade</th>
                         <th>Data Carga</th>
                         <th>Responsaveis</th>
+                        <?php if ($despacho_tipo === 'CORREIOS'): ?>
+                        <th>Lacre IIPR</th>
+                        <th>Lacre Correios</th>
+                        <?php endif; ?>
                         <th>Etiqueta Correios</th>
                         <th>Conferido</th>
                         <th>Conferido Por</th>
@@ -860,6 +976,10 @@ try {
                                 ?>
                             </td>
                             <td><?php echo e($l['responsaveis']); ?></td>
+                            <?php if ($despacho_tipo === 'CORREIOS'): ?>
+                            <td><?php echo e(isset($l['etiquetaiipr']) ? $l['etiquetaiipr'] : '-'); ?></td>
+                            <td><?php echo e(isset($l['etiquetacorreios']) ? $l['etiquetacorreios'] : '-'); ?></td>
+                            <?php endif; ?>
                             <td style="font-size:10px; max-width:100px; word-break:break-all;"><?php echo e($l['etiqueta_correios']); ?></td>
                             <td style="text-align:center;">
                                 <?php if ($is_conferido): ?>
