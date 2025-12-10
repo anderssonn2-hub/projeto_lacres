@@ -1,6 +1,6 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.14.9.2
+ * consulta_producao.php - Versao 8.14.9.3
  * Sistema de busca avancada de producao de cedulas
  * 
  * Funcionalidades:
@@ -24,6 +24,11 @@
  * - Formato de data padronizado: dd-mm-yyyy (d-m-Y)
  * - PDF Ofício: novo padrão de nomenclatura #ID_tipo_dd-mm-yyyy.pdf
  * - Link PDF aponta para Q:\cosep\IIPR\Ofícios\{Mes Ano}\{TIPO}\#{arquivo}.pdf
+ * 
+ * Versao 8.14.9.3 (Dezembro 2025):
+ * - Cabeçalho Correios oculto quando despacho é Poupa Tempo (tabela ciDespachoLotes só exibida se houver lotes)
+ * - Caminho PDF atualizado: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
+ * - Tooltip mostra caminho completo do PDF ao passar mouse sobre ícone 📄
  * - Query JOIN aprimorada para buscar dados completos de ciDespachoLotes
  * 
  * Versao 8.15.0 (base):
@@ -784,17 +789,17 @@ try {
                                         $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
                                         $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
                                         
-                                        // Montar caminho do arquivo (novo padrão: #ID_tipo_dd-mm-yyyy.pdf)
-                                        $pasta_mes = $mes_nome . ' ' . $ano;
+                                        // v8.14.9.3: Novo padrão de caminho: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
                                         $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
-                                        $pdf_link = 'file:///Q:/cosep/IIPR/Oficios/' . $pasta_mes . '/' . $tipo_upper . '/' . $nome_arquivo;
+                                        $pdf_link = 'file:///Q:/cosep/IIPR/Ofícios/' . $ano . '/' . $mes_nome . '/' . $tipo_upper . '/' . $nome_arquivo;
                                     }
                                 }
                                 ?>
                                 <?php if ($pdf_link): ?>
-                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="Abrir PDF do Oficio" style="color:#007bff; font-size:18px;">&#128196;</a>
+                                    <!-- v8.14.9.3: Tooltip mostra caminho completo do PDF -->
+                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="<?php echo e($pdf_link); ?>" style="color:#007bff; font-size:18px; text-decoration:none;">&#128196;</a>
                                 <?php else: ?>
-                                    <span style="color:#999;">-</span>
+                                    <span style="color:#999;" title="Sem data para gerar link">-</span>
                                 <?php endif; ?>
                             </td>
                             <td class="acoes">
@@ -931,7 +936,8 @@ try {
             <?php endif; ?>
             
             <!-- Lotes (Versao 6: conferencia e responsavel) -->
-            <!-- v8.14.9.2: ciDespachoLotes SEMPRE é CORREIOS (não usar $despacho_tipo aqui) -->
+            <!-- v8.14.9.3: Mostrar ciDespachoLotes SOMENTE se houver lotes (evita cabeçalho vazio em PT) -->
+            <?php if (!empty($lotes)): ?>
             <h3 style="font-size:14px; margin:20px 0 10px 0;">
                 Lotes (ciDespachoLotes) 
                 <span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">CORREIOS</span>
@@ -1042,6 +1048,12 @@ try {
                 <?php endif; ?>
                 </tbody>
             </table>
+            <?php else: ?>
+            <!-- v8.14.9.3: Despacho sem lotes (exemplo: Poupa Tempo que só usa ciDespachoItens) -->
+            <div class="totais" style="background:#f8f9fa; border:1px solid #dee2e6; margin-top:15px;">
+                <em style="color:#6c757d;">Este despacho não possui dados em ciDespachoLotes.</em>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     

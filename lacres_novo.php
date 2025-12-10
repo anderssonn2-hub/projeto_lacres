@@ -174,6 +174,18 @@
 // - REDE: Link para PDF aponta para Q:\cosep\IIPR\Ofícios\{Mes Ano}\{TIPO}\#{arquivo}.pdf
 // - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.2)"
 // ==================================================================================
+// v8.14.9.3: Refinamentos de UX, Correções e Novas Funcionalidades
+// ==================================================================================
+// - DETALHES: Cabeçalho Correios oculto quando despacho é Poupa Tempo (e vice-versa)
+// - SPLIT: Botão SPLIT movido ANTES do nome do posto (compacta linhas)
+// - LIMPAR: Limpar Sessão agora REALMENTE limpa (não carrega lacres do BD após limpar)
+// - PDF: Caminho atualizado: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
+// - LACRES: Exibe último lacre IIPR e Correios usado (ao lado do campo Responsável)
+// - CRIAR NOVO: Botão "Criar Novo" agora REALMENTE cria novo ofício (PT e Correios)
+//   * Antes: "Criar Novo" e "Sobrescrever" faziam a mesma coisa
+//   * Agora: "Criar Novo" gera ID único, "Sobrescrever" atualiza ofício existente
+// - VERSÃO: Exibida como "Análise de Expedição (v8.14.9.3)"
+// ==================================================================================
 // v8.15.0: Consulta Produção Funcional para Correios e Poupa Tempo
 // ==================================================================================
 // - INTEGRAÇÃO: consulta_producao.php agora busca corretamente em ambos fluxos
@@ -382,50 +394,62 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
         }
 
         // 2) Cabeçalho em ciDespachos (UPSERT pelo hash de grupo+datas)
-        // v8.14.9: Verificar modo (sobrescrever ou criar novo)
+        // v8.14.9.3: Verificar modo (sobrescrever ou criar novo) - agora realmente funcional
         $grupo   = 'POUPA TEMPO';
         $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
         $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : 'sobrescrever';
         
-        // v8.14.9: Se modo=novo, adicionar timestamp ao hash para forçar novo registro
+        $id_desp = null;
+        
+        // v8.14.9.3: Se modo=novo, SEMPRE criar novo registro (não buscar existente)
         if ($modoOficio === 'novo') {
-            $hash = sha1($grupo . '|' . $datasStr . '|' . time());
-        } else {
-            $hash = sha1($grupo . '|' . $datasStr);
-        }
-
-        $stFind = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE hash_chave=? LIMIT 1");
-        $stFind->execute(array($hash));
-        $id_desp = $stFind->fetchColumn();
-
-        if ($id_desp) {
-            // Atualiza cabeçalho existente
-            $stUpd = $pdo_controle->prepare("
-                UPDATE ciDespachos
-                   SET usuario   = ?,
-                       grupo     = ?,
-                       datas_str = ?,
-                       ativo     = 1,
-                       obs       = NULL
-                 WHERE id = ?
-            ");
-            $stUpd->execute(array($usuario, $grupo, $datasStr, $id_desp));
-
-            // Limpa itens antigos
-            $stDel = $pdo_controle->prepare("DELETE FROM ciDespachoItens WHERE id_despacho=?");
-            $stDel->execute(array($id_desp));
-
-            // Limpa detalhe de lotes antigo
-            $stDelL = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho=?");
-            $stDelL->execute(array($id_desp));
-        } else {
-            // Cria novo cabeçalho
+            // Criar NOVO ofício (timestamp no hash garante unicidade)
+            $hash = sha1($grupo . '|' . $datasStr . '|' . time() . '|' . mt_rand());
+            
             $st1 = $pdo_controle->prepare("
                 INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs)
                 VALUES (?,?,?,?,1,?)
             ");
             $st1->execute(array($usuario, $grupo, $datasStr, $hash, null));
             $id_desp = $pdo_controle->lastInsertId();
+            
+        } else {
+            // Modo sobrescrever: buscar ofício existente ou criar se não existir
+            $hash = sha1($grupo . '|' . $datasStr);
+            
+            $stFind = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE hash_chave=? LIMIT 1");
+            $stFind->execute(array($hash));
+            $id_desp = $stFind->fetchColumn();
+
+            if ($id_desp) {
+                // Atualiza cabeçalho existente
+                $stUpd = $pdo_controle->prepare("
+                    UPDATE ciDespachos
+                       SET usuario   = ?,
+                           grupo     = ?,
+                           datas_str = ?,
+                           ativo     = 1,
+                           obs       = NULL
+                     WHERE id = ?
+                ");
+                $stUpd->execute(array($usuario, $grupo, $datasStr, $id_desp));
+
+                // Limpa itens antigos
+                $stDel = $pdo_controle->prepare("DELETE FROM ciDespachoItens WHERE id_despacho=?");
+                $stDel->execute(array($id_desp));
+
+                // Limpa detalhe de lotes antigo
+                $stDelL = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho=?");
+                $stDelL->execute(array($id_desp));
+            } else {
+                // Cria novo cabeçalho (primeiro ofício com essas datas)
+                $st1 = $pdo_controle->prepare("
+                    INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs)
+                    VALUES (?,?,?,?,1,?)
+                ");
+                $st1->execute(array($usuario, $grupo, $datasStr, $hash, null));
+                $id_desp = $pdo_controle->lastInsertId();
+            }
         }
 
         // 3) SELECT principal: SOMA por posto (igual ao modelo do ofício)
@@ -710,42 +734,61 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         }
 
         // 2) Cabeçalho em ciDespachos (UPSERT pelo hash de grupo+datas)
+        // v8.14.9.3: Implementar lógica "Criar Novo" vs "Sobrescrever" para Correios
         $grupo   = 'CORREIOS';
         $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
-        $hash    = sha1($grupo . '|' . $datasStr);
-
-        $stFind = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE hash_chave=? LIMIT 1");
-        $stFind->execute(array($hash));
-        $id_desp = $stFind->fetchColumn();
-
-        if ($id_desp) {
-            // Atualiza cabeçalho existente
-            $stUpd = $pdo_controle->prepare("
-                UPDATE ciDespachos
-                   SET usuario   = ?,
-                       grupo     = ?,
-                       datas_str = ?,
-                       ativo     = 1,
-                       obs       = NULL
-                 WHERE id = ?
-            ");
-            $stUpd->execute(array($usuario, $grupo, $datasStr, $id_desp));
-
-            // Limpa itens antigos
-            $stDel = $pdo_controle->prepare("DELETE FROM ciDespachoItens WHERE id_despacho=?");
-            $stDel->execute(array($id_desp));
-
-            // Limpa detalhe de lotes antigo
-            $stDelL = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho=?");
-            $stDelL->execute(array($id_desp));
-        } else {
-            // Cria novo cabeçalho
+        
+        $id_desp = null;
+        
+        // v8.14.9.3: Se modo=novo, SEMPRE criar novo registro (não buscar existente)
+        if ($modoOficio === 'novo') {
+            // Criar NOVO ofício (timestamp no hash garante unicidade)
+            $hash = sha1($grupo . '|' . $datasStr . '|' . time() . '|' . mt_rand());
+            
             $st1 = $pdo_controle->prepare("
                 INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs)
                 VALUES (?,?,?,?,1,?)
             ");
             $st1->execute(array($usuario, $grupo, $datasStr, $hash, null));
             $id_desp = $pdo_controle->lastInsertId();
+            
+        } else {
+            // Modo sobrescrever: buscar ofício existente ou criar se não existir
+            $hash = sha1($grupo . '|' . $datasStr);
+            
+            $stFind = $pdo_controle->prepare("SELECT id FROM ciDespachos WHERE hash_chave=? LIMIT 1");
+            $stFind->execute(array($hash));
+            $id_desp = $stFind->fetchColumn();
+
+            if ($id_desp) {
+                // Atualiza cabeçalho existente
+                $stUpd = $pdo_controle->prepare("
+                    UPDATE ciDespachos
+                       SET usuario   = ?,
+                           grupo     = ?,
+                           datas_str = ?,
+                           ativo     = 1,
+                           obs       = NULL
+                     WHERE id = ?
+                ");
+                $stUpd->execute(array($usuario, $grupo, $datasStr, $id_desp));
+
+                // Limpa itens antigos
+                $stDel = $pdo_controle->prepare("DELETE FROM ciDespachoItens WHERE id_despacho=?");
+                $stDel->execute(array($id_desp));
+
+                // Limpa detalhe de lotes antigo
+                $stDelL = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho=?");
+                $stDelL->execute(array($id_desp));
+            } else {
+                // Cria novo cabeçalho (primeiro ofício com essas datas)
+                $st1 = $pdo_controle->prepare("
+                    INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs)
+                    VALUES (?,?,?,?,1,?)
+                ");
+                $st1->execute(array($usuario, $grupo, $datasStr, $hash, null));
+                $id_desp = $pdo_controle->lastInsertId();
+            }
         }
 
         // 3) Captura os dados enviados pelo formulário
@@ -1721,6 +1764,7 @@ if ((
     $_SERVER['REQUEST_METHOD'] === 'GET' && empty($_GET)) ||
     (isset($_POST['limpar_sessao']))
 ) {
+    // v8.14.9.3: Limpar TODAS as chaves de sessão relacionadas a ofícios
     $_SESSION['etiquetas'] = array();
     $_SESSION['linhas_removidas'] = array();
     $_SESSION['lacres_personalizados'] = array();
@@ -1729,6 +1773,17 @@ if ((
     $_SESSION['datas_filtro'] = array();
     $_SESSION['debug_log'] = array();
     $_SESSION['excluir_regionais_manual'] = array();
+    
+    // v8.14.9.3: Limpar também dados de despachos salvos
+    if (isset($_SESSION['id_despacho_poupa_tempo'])) {
+        unset($_SESSION['id_despacho_poupa_tempo']);
+    }
+    if (isset($_SESSION['id_despacho_correios'])) {
+        unset($_SESSION['id_despacho_correios']);
+    }
+    if (isset($_SESSION['oficios'])) {
+        $_SESSION['oficios'] = array();
+    }
 }
 
 // Salvar datas selecionadas
@@ -2186,6 +2241,35 @@ $analise_expedicao = analisar_expedicao($pdo_controle, $pdo_servico, $datas_filt
 // v8.14.9.1: Definir $responsavel ANTES de usar (corrige warning linha 2166)
 $responsavel = isset($_GET['responsavel']) ? $_GET['responsavel'] : 'Responsável Não Informado';
 
+// v8.14.9.3: Buscar o maior lacre usado (IIPR e Correios) para exibir na tela
+$ultimo_lacre_iipr = 0;
+$ultimo_lacre_correios = 0;
+try {
+    // Buscar maior lacre IIPR
+    $stMaxIIPR = $pdo_controle->query("
+        SELECT MAX(CAST(etiquetaiipr AS UNSIGNED)) as max_iipr 
+        FROM ciDespachoLotes 
+        WHERE etiquetaiipr IS NOT NULL AND etiquetaiipr != ''
+    ");
+    $rowMaxIIPR = $stMaxIIPR->fetch(PDO::FETCH_ASSOC);
+    if ($rowMaxIIPR && $rowMaxIIPR['max_iipr']) {
+        $ultimo_lacre_iipr = (int)$rowMaxIIPR['max_iipr'];
+    }
+    
+    // Buscar maior lacre Correios
+    $stMaxCorreios = $pdo_controle->query("
+        SELECT MAX(CAST(etiquetacorreios AS UNSIGNED)) as max_correios 
+        FROM ciDespachoLotes 
+        WHERE etiquetacorreios IS NOT NULL AND etiquetacorreios != ''
+    ");
+    $rowMaxCorreios = $stMaxCorreios->fetch(PDO::FETCH_ASSOC);
+    if ($rowMaxCorreios && $rowMaxCorreios['max_correios']) {
+        $ultimo_lacre_correios = (int)$rowMaxCorreios['max_correios'];
+    }
+} catch (Exception $e) {
+    // Silenciar erro
+}
+
 // Parâmetros do formulário
 $lacre_capital = isset($_GET['lacre_capital']) ? (int)$_GET['lacre_capital'] : 1;
 $lacre_central = isset($_GET['lacre_central']) ? (int)$_GET['lacre_central'] : 0;
@@ -2505,7 +2589,11 @@ foreach ($dados['REGIONAIS'] as $key => $posto) {
 $dados['REGIONAIS'] = array_values($dados['REGIONAIS']);
 
 // v8.14.2: Carregar lacres do BD do último ofício salvo (para impressão correta)
-// Buscar o último ofício CORREIOS e carregar seus lacres para os arrays $dados
+// v8.14.9.3: NÃO carregar se usuário clicou "Limpar Sessão"
+$acabouDeLimpar = isset($_POST['limpar_sessao']);
+
+// Buscar o último ofício CORREIOS e carregar seus lacres para os arrays $dados (se não foi "Limpar Sessão")
+if (!$acabouDeLimpar) {
 try {
     $stUltimoOficio = $pdo_controle->prepare("
         SELECT id FROM ciDespachos 
@@ -2556,6 +2644,7 @@ try {
 } catch (Exception $e) {
     // Silenciar erro - continuar sem lacres do BD
 }
+} // fim do if (!$acabouDeLimpar)
 
 // Atribuição de lacres
 // Detectar se houve recálculo por lacre (campo hidden no form de filtro)
@@ -3839,7 +3928,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v8.14.9.2)
+        <span class="icone">📊</span> Análise de Expedição (v8.14.9.3)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -4003,6 +4092,12 @@ try {
             <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>" required></label>
             <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo (isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') ? '1' : '0' ?>">
             <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
+            <!-- v8.14.9.3: Exibir último lacre usado -->
+            <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
+                <strong style="color:#1976d2;">Últimos Lacres:</strong><br>
+                <span style="color:#0d47a1;">IIPR: <strong><?php echo number_format($ultimo_lacre_iipr, 0, ',', '.'); ?></strong></span> | 
+                <span style="color:#0d47a1;">Correios: <strong><?php echo number_format($ultimo_lacre_correios, 0, ',', '.'); ?></strong></span>
+            </div>
         </div>
         <div class="alinhado">
             <?php foreach ($datas_expedicao as $data): ?>
@@ -4195,10 +4290,11 @@ try {
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
                     <input type="hidden" name="posto_codigo_correios[]" value="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>">
                     <?php endif; ?>
-                    <?php echo $dado['posto_nome'] ?>
+                    <!-- v8.14.9.3: Botão SPLIT vem ANTES do nome (não depois) -->
                     <?php if ($grupo === 'CENTRAL IIPR'): ?>
-                    <br><button type="button" class="btn-split-aqui no-print" onclick="definirSplitAqui(this)" style="font-size:11px; padding:2px 6px; margin-top:4px;">Split aqui</button>
+                    <button type="button" class="btn-split-aqui no-print" onclick="definirSplitAqui(this)" style="font-size:10px; padding:2px 5px; margin-right:6px; vertical-align:middle;">SPLIT</button>
                     <?php endif; ?>
+                    <?php echo $dado['posto_nome'] ?>
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
                     <input type="hidden" name="nome_posto[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="grupo_posto[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>">
