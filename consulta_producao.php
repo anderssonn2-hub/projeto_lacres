@@ -1,20 +1,19 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.15.0
+ * consulta_producao.php - Versao 8.15.1
  * Sistema de busca avancada de producao de cedulas
  * 
  * 
- * CHANGELOG v8.15.0:
- * - [CORRIGIDO] Data do PDF agora usa datas_str do despacho (não data atual)
- *   - Arquivos salvos com data correta: #86_correios_10-12-2025.pdf
- *   - Fallback removido para evitar data errada
+ * CHANGELOG v8.15.1:
+ * - [CORRIGIDO] Formato de datas na coluna Datas: agora suporta yyyy-mm-dd (Poupa Tempo) e dd/mm/yyyy (Correios)
+ *   - Todas as datas exibidas em dd-mm-yyyy independente do formato original
+ * - [CORRIGIDO] Link do PDF agora usa data correta do datas_str (sem fallback 01-01-2025)
+ *   - Se datas_str vazio ou inválido, não gera link
+ *   - Suporta ambos formatos: yyyy-mm-dd e dd/mm/yyyy
+ * - [CORRIGIDO] Encoding do link: file:///Q:/cosep/IIPR/... (com barra após Q:)
  * - [CORRIGIDO] Data Carga e Responsáveis para Poupa Tempo
- *   - Busca de ciDespachoLotes com subqueries: MIN(data_carga) e GROUP_CONCAT(responsaveis)
- *   - Colunas agora preenchidas corretamente nos detalhes PT
- * - [CORRIGIDO] Coluna Datas formatada como dd-mm-yyyy para todos os tipos
- * - [MELHORADO] Link do PDF mostra apenas #ID (ex: #86) como texto
- *   - Tooltip mostra caminho completo Windows para debug
- *   - Encoding correto: file:///Q:/cosep/IIPR/Of%C3%ADcios/.../%%2386_correios_10-12-2025.pdf
+ *   - Busca direta de ciDespachoLotes (onde dados foram salvos ao criar ofício)
+ *   - Subqueries com MIN(data_carga) e GROUP_CONCAT(responsaveis)
  * 
  * Funcionalidades:
  * - Busca por etiqueta dos correios
@@ -387,7 +386,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.15.0</title>
+<title>Consulta de Producao de Cedulas - Versao 8.15.1</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -623,7 +622,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.15.0</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.15.1</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -770,16 +769,21 @@ try {
                             </td>
                             <td>
                                 <?php 
-                                // v8.15.0: Formatar datas como dd-mm-yyyy (ambos os tipos)
+                                // v8.15.1: Formatar datas como dd-mm-yyyy (suporta yyyy-mm-dd e dd/mm/yyyy)
                                 if (!empty($d['datas_str'])) {
                                     $datas_formatadas = array();
                                     $datas_arr = explode(',', $d['datas_str']);
                                     foreach ($datas_arr as $dt) {
                                         $dt = trim($dt);
-                                        // Se já está em dd/mm/yyyy, converter para dd-mm-yyyy
+                                        // Formato dd/mm/yyyy -> dd-mm-yyyy
                                         if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $dt, $m)) {
                                             $datas_formatadas[] = $m[1] . '-' . $m[2] . '-' . $m[3];
-                                        } else {
+                                        }
+                                        // Formato yyyy-mm-dd -> dd-mm-yyyy
+                                        elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $dt, $m)) {
+                                            $datas_formatadas[] = $m[3] . '-' . $m[2] . '-' . $m[1];
+                                        }
+                                        else {
                                             $datas_formatadas[] = $dt;
                                         }
                                     }
@@ -801,58 +805,65 @@ try {
                             <td style="text-align:right;"><?php echo number_format((int)$d['total_carteiras'], 0, ',', '.'); ?></td>
                             <td style="text-align:center;">
                                 <?php
-                                // v8.15.0: Link com data correta do despacho (datas_str)
+                                // v8.15.1: Link com data CORRETA do datas_str (suporta yyyy-mm-dd e dd/mm/yyyy)
                                 // Formato: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
                                 
-                                $dia = '01';
-                                $mes_num = '01';
-                                $ano = '2025';
+                                $dia = null;
+                                $mes_num = null;
+                                $ano = null;
                                 
-                                // Extrair data REAL do datas_str (OBRIGATÓRIO)
+                                // Extrair data REAL do datas_str
                                 if (!empty($d['datas_str'])) {
                                     $datas_array = explode(',', $d['datas_str']);
                                     $primeira_data = trim($datas_array[0]);
+                                    
+                                    // Formato dd/mm/yyyy
                                     if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $primeira_data, $m)) {
                                         $dia = $m[1];
                                         $mes_num = $m[2];
                                         $ano = $m[3];
                                     }
+                                    // Formato yyyy-mm-dd
+                                    elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $primeira_data, $m)) {
+                                        $ano = $m[1];
+                                        $mes_num = $m[2];
+                                        $dia = $m[3];
+                                    }
                                 }
                                 
-                                // Nome do mes em portugues
-                                $meses = array('01'=>'Janeiro','02'=>'Fevereiro','03'=>'Marco','04'=>'Abril','05'=>'Maio','06'=>'Junho','07'=>'Julho','08'=>'Agosto','09'=>'Setembro','10'=>'Outubro','11'=>'Novembro','12'=>'Dezembro');
-                                $mes_nome = isset($meses[$mes_num]) ? $meses[$mes_num] : $mes_num;
-                                
-                                // Determinar tipo e subpasta
-                                $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
-                                $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
-                                
-                                // v8.15.0: Nome do arquivo (padrão: #ID_tipo_dd-mm-yyyy.pdf)
-                                $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
-                                
-                                // v8.15.0: Caminho completo no Windows
-                                // Q:\cosep\IIPR\Ofícios\2025\Dezembro\CORREIOS\#86_correios_10-12-2025.pdf
-                                $caminho_windows = 'Q:\\cosep\\IIPR\\Ofícios\\' . $ano . '\\' . $mes_nome . '\\' . $tipo_upper . '\\' . $nome_arquivo;
-                                
-                                // v8.15.0: Converter para URL file:/// com encoding correto
-                                // Substituir \\ por /, depois encodar caracteres especiais
-                                $caminho_url = str_replace('\\', '/', $caminho_windows);
-                                $caminho_url = str_replace('Q:/', 'Q:', $caminho_url); // Remover / após Q:
-                                
-                                // Encoding manual para caracteres especiais
-                                $caminho_url = str_replace(' ', '%20', $caminho_url);
-                                $caminho_url = str_replace('í', '%C3%AD', $caminho_url);
-                                $caminho_url = str_replace('#', '%23', $caminho_url);
-                                
-                                $pdf_link = 'file:///' . $caminho_url;
-                                
-                                // ID visual do link
-                                $link_visual = '#' . $d['id'];
+                                // Só gera link se conseguiu extrair data válida
+                                if ($dia && $mes_num && $ano) {
+                                    // Nome do mes em portugues
+                                    $meses = array('01'=>'Janeiro','02'=>'Fevereiro','03'=>'Marco','04'=>'Abril','05'=>'Maio','06'=>'Junho','07'=>'Julho','08'=>'Agosto','09'=>'Setembro','10'=>'Outubro','11'=>'Novembro','12'=>'Dezembro');
+                                    $mes_nome = isset($meses[$mes_num]) ? $meses[$mes_num] : $mes_num;
+                                    
+                                    // Determinar tipo e subpasta
+                                    $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
+                                    $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
+                                    
+                                    // v8.15.1: Nome do arquivo (padrão: #ID_tipo_dd-mm-yyyy.pdf)
+                                    $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
+                                    
+                                    // v8.15.1: Caminho correto Windows (como em propriedades)
+                                    // Q:\cosep\IIPR\Ofícios\2025\Dezembro\CORREIOS\#88_correios_10-12-2025.pdf
+                                    $caminho_windows = 'Q:\\cosep\\IIPR\\Ofícios\\' . $ano . '\\' . $mes_nome . '\\' . $tipo_upper . '\\' . $nome_arquivo;
+                                    
+                                    // v8.15.1: Converter para file:/// URL
+                                    // Usar formato: file:///Q:/cosep/IIPR/Of%C3%ADcios/...
+                                    $pdf_link = 'file:///Q:/cosep/IIPR/Of%C3%ADcios/' . $ano . '/' . $mes_nome . '/' . rawurlencode($tipo_upper) . '/' . rawurlencode($nome_arquivo);
+                                    
+                                    // ID visual do link
+                                    $link_visual = '#' . $d['id'];
+                                    ?>
+                                    <!-- v8.15.1: Link mostra apenas #ID -->
+                                    <a href="<?php echo htmlspecialchars($pdf_link, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:none; font-weight:bold; font-size:14px;">
+                                        <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
+                                    </a>
+                                    <?php
+                                } else {
+                                    echo '<span style="color:#999; font-size:11px;">Sem data</span>';
+                                }
                                 ?>
-                                <!-- v8.15.0: Link mostra apenas #ID -->
-                                <a href="<?php echo e($pdf_link); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:none; font-weight:bold; font-size:14px;">
-                                    <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
-                                </a>
                             </td>
                             <td class="acoes">
                                 <a href="?grupo=<?php echo urlencode($f_grupo); ?>&data_ini=<?php echo urlencode($f_data_ini); ?>&data_fim=<?php echo urlencode($f_data_fim); ?>&etiqueta=<?php echo urlencode($f_etiqueta); ?>&lote=<?php echo urlencode($f_lote); ?>&posto=<?php echo urlencode($f_posto); ?>&id=<?php echo (int)$d['id']; ?>">
