@@ -1,7 +1,17 @@
 <?php
-/* lacres_novo.php — Versão 1.6
-   Patch: liberar etiqueta ao apagar (mover entre inputs)
-   Gerado em 2025-11-07T12:28:56 */
+/* lacres_novo.php — Versão 8.14.9
+ * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v8.14.9 (11/12/2025):
+ * - Sincronizado com consulta_producao.php v8.14.9
+ * - Data do PDF gerada corretamente a partir de datas_str
+ * - Suporte completo para Data Carga e Responsáveis em Poupa Tempo
+ * - Padrão de nomes: #ID_tipo_dd-mm-yyyy.pdf (ex: #86_correios_10-12-2025.pdf)
+ * - Estrutura de pastas: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\
+ * 
+ * Patch histórico: liberar etiqueta ao apagar (mover entre inputs)
+ * Gerado em 2025-11-07T12:28:56
+ */
 
 // MELHORIAS ANTERIORES: v8.7 (fallback 0 para lacres), v8.6 (mapa de lacres), v8.5 (persistência confirmada)
 // v8.8: Corrige captura de lacres e etiquetas dos Correios (HTML + POST + gravação)
