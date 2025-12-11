@@ -1,19 +1,19 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.15.1
+ * consulta_producao.php - Versao 8.15.2
  * Sistema de busca avancada de producao de cedulas
  * 
  * 
- * CHANGELOG v8.15.1:
- * - [CORRIGIDO] Formato de datas na coluna Datas: agora suporta yyyy-mm-dd (Poupa Tempo) e dd/mm/yyyy (Correios)
- *   - Todas as datas exibidas em dd-mm-yyyy independente do formato original
- * - [CORRIGIDO] Link do PDF agora usa data correta do datas_str (sem fallback 01-01-2025)
- *   - Se datas_str vazio ou inválido, não gera link
- *   - Suporta ambos formatos: yyyy-mm-dd e dd/mm/yyyy
- * - [CORRIGIDO] Encoding do link: file:///Q:/cosep/IIPR/... (com barra após Q:)
- * - [CORRIGIDO] Data Carga e Responsáveis para Poupa Tempo
- *   - Busca direta de ciDespachoLotes (onde dados foram salvos ao criar ofício)
- *   - Subqueries com MIN(data_carga) e GROUP_CONCAT(responsaveis)
+ * CHANGELOG v8.15.2:
+ * - [CORRIGIDO] Resumo zerado para Poupa Tempo: agora usa ciDespachoItens quando lotes vazio
+ *   - Total de postos, carteiras e lotes calculados corretamente
+ * - [CORRIGIDO] Data Poupa Tempo na lista: regex melhorada para capturar yyyy-mm-dd
+ *   - Converte 2025-12-10 -> 10-12-2025 corretamente
+ * - [CORRIGIDO] Data Carga e Responsáveis: busca de ciPostosCsv usando número do lote
+ *   - JOIN com ciPostosCsv.lote para trazer dataCarga e usuario
+ * - [CORRIGIDO] Link do PDF: formato file:///Q:cosep/... (sem barra após Q:)
+ *   - Data extraída corretamente de datas_str para cada ofício
+ *   - Link abre corretamente no navegador
  * 
  * Funcionalidades:
  * - Busca por etiqueta dos correios
@@ -298,17 +298,17 @@ if ($id_despacho > 0) {
     $despacho_tipo = $rowTipo ? $rowTipo['grupo'] : '';
     
     // Buscar itens (ciDespachoItens - usado principalmente para Poupa Tempo)
-    // Versao 8.15.0: Adicionar campo usuario e Data Carga/Responsaveis
-    // v8.15.0: Subqueries para Data Carga e Responsaveis
+    // Versao 8.15.2: Buscar Data Carga e Responsaveis de ciPostosCsv via lote
     $stItens = $pdo_controle->prepare("
         SELECT 
             i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
             i.lote, i.quantidade, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.usuario,
-            (SELECT MIN(data_carga) FROM ciDespachoLotes WHERE id_despacho = i.id_despacho AND posto = i.posto) AS data_carga,
-            (SELECT GROUP_CONCAT(DISTINCT responsaveis SEPARATOR ', ') FROM ciDespachoLotes WHERE id_despacho = i.id_despacho AND posto = i.posto AND responsaveis IS NOT NULL AND responsaveis != '') AS responsaveis,
+            csv.dataCarga AS data_carga,
+            csv.usuario AS responsaveis,
             cp.usuario AS conferido_por,
             CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
         FROM ciDespachoItens i
+        LEFT JOIN ciPostosCsv csv ON CAST(csv.lote AS UNSIGNED) = CAST(i.lote AS UNSIGNED) AND LPAD(csv.posto, 3, '0') = LPAD(i.posto, 3, '0')
         LEFT JOIN conferencia_pacotes cp ON cp.nlote = CAST(i.lote AS UNSIGNED) AND cp.conf = 'S'
         WHERE i.id_despacho = ?
         ORDER BY LPAD(i.posto,3,'0')
@@ -386,7 +386,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.15.1</title>
+<title>Consulta de Producao de Cedulas - Versao 8.15.2</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -622,7 +622,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.15.1</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.15.2</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -769,7 +769,7 @@ try {
                             </td>
                             <td>
                                 <?php 
-                                // v8.15.1: Formatar datas como dd-mm-yyyy (suporta yyyy-mm-dd e dd/mm/yyyy)
+                                // v8.15.2: Formatar datas como dd-mm-yyyy (suporta yyyy-mm-dd e dd/mm/yyyy)
                                 if (!empty($d['datas_str'])) {
                                     $datas_formatadas = array();
                                     $datas_arr = explode(',', $d['datas_str']);
@@ -779,12 +779,19 @@ try {
                                         if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $dt, $m)) {
                                             $datas_formatadas[] = $m[1] . '-' . $m[2] . '-' . $m[3];
                                         }
-                                        // Formato yyyy-mm-dd -> dd-mm-yyyy
+                                        // Formato yyyy-mm-dd -> dd-mm-yyyy (Poupa Tempo)
                                         elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $dt, $m)) {
                                             $datas_formatadas[] = $m[3] . '-' . $m[2] . '-' . $m[1];
                                         }
+                                        // Fallback: tenta converter qualquer formato
                                         else {
-                                            $datas_formatadas[] = $dt;
+                                            // Tentar strtotime como último recurso
+                                            $timestamp = strtotime($dt);
+                                            if ($timestamp !== false) {
+                                                $datas_formatadas[] = date('d-m-Y', $timestamp);
+                                            } else {
+                                                $datas_formatadas[] = $dt;
+                                            }
                                         }
                                     }
                                     echo htmlspecialchars(implode(', ', $datas_formatadas), ENT_QUOTES, 'UTF-8');
@@ -844,18 +851,17 @@ try {
                                     // v8.15.1: Nome do arquivo (padrão: #ID_tipo_dd-mm-yyyy.pdf)
                                     $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
                                     
-                                    // v8.15.1: Caminho correto Windows (como em propriedades)
+                                    // v8.15.2: Caminho correto Windows
                                     // Q:\cosep\IIPR\Ofícios\2025\Dezembro\CORREIOS\#88_correios_10-12-2025.pdf
                                     $caminho_windows = 'Q:\\cosep\\IIPR\\Ofícios\\' . $ano . '\\' . $mes_nome . '\\' . $tipo_upper . '\\' . $nome_arquivo;
                                     
-                                    // v8.15.1: Converter para file:/// URL
-                                    // Usar formato: file:///Q:/cosep/IIPR/Of%C3%ADcios/...
-                                    $pdf_link = 'file:///Q:/cosep/IIPR/Of%C3%ADcios/' . $ano . '/' . $mes_nome . '/' . rawurlencode($tipo_upper) . '/' . rawurlencode($nome_arquivo);
+                                    // v8.15.2: Converter para file:/// URL (formato: file:///Q:cosep/...)
+                                    $pdf_link = 'file:///Q:cosep/IIPR/Of%C3%ADcios/' . $ano . '/' . $mes_nome . '/' . rawurlencode($tipo_upper) . '/' . rawurlencode($nome_arquivo);
                                     
                                     // ID visual do link
                                     $link_visual = '#' . $d['id'];
                                     ?>
-                                    <!-- v8.15.1: Link mostra apenas #ID -->
+                                    <!-- v8.15.2: Link mostra apenas #ID -->
                                     <a href="<?php echo htmlspecialchars($pdf_link, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:none; font-weight:bold; font-size:14px;">
                                         <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
                                     </a>
@@ -882,24 +888,41 @@ try {
         <div class="painel">
             <div class="painel-titulo">Detalhes do Despacho #<?php echo (int)$id_despacho; ?></div>
             
-            <!-- Versao 6: Mostrar resumo baseado em ciDespachoLotes (funciona para CORREIOS e POUPA TEMPO) -->
+            <!-- Versao 8.15.2: Resumo funciona para ambos (usa lotes ou itens conforme tipo) -->
             <?php
             $totalPostosLotes = 0;
             $totalCarteirasLotes = 0;
             $postosUnicos = array();
-            foreach ($lotes as $l) {
-                $totalCarteirasLotes += (int)$l['quantidade'];
-                if (!isset($postosUnicos[$l['posto']])) {
-                    $postosUnicos[$l['posto']] = true;
-                    $totalPostosLotes++;
+            $totalLotes = 0;
+            
+            // Para Poupa Tempo, usa ciDespachoItens
+            if ($despacho_tipo === 'POUPA TEMPO' && !empty($itens)) {
+                foreach ($itens as $i) {
+                    $totalCarteirasLotes += (int)$i['quantidade'];
+                    if (!isset($postosUnicos[$i['posto']])) {
+                        $postosUnicos[$i['posto']] = true;
+                        $totalPostosLotes++;
+                    }
                 }
+                $totalLotes = count($itens);
+            }
+            // Para Correios, usa ciDespachoLotes
+            else {
+                foreach ($lotes as $l) {
+                    $totalCarteirasLotes += (int)$l['quantidade'];
+                    if (!isset($postosUnicos[$l['posto']])) {
+                        $postosUnicos[$l['posto']] = true;
+                        $totalPostosLotes++;
+                    }
+                }
+                $totalLotes = count($lotes);
             }
             ?>
             <div class="totais" style="background:#d4edda; border:1px solid #28a745;">
                 <strong style="color:#155724;">Resumo do Despacho:</strong>
                 Total de postos: <strong><?php echo $totalPostosLotes; ?></strong> |
                 Total de carteiras: <strong><?php echo number_format($totalCarteirasLotes, 0, ',', '.'); ?></strong> |
-                Total de lotes: <strong><?php echo count($lotes); ?></strong>
+                Total de lotes: <strong><?php echo $totalLotes; ?></strong>
             </div>
             
             <!-- Itens por Posto (ciDespachoItens - usado para Poupa Tempo) -->
