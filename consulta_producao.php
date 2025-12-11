@@ -1,8 +1,16 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.15.3
+ * consulta_producao.php - Versao 8.15.4
  * Sistema de busca avancada de producao de cedulas
  * 
+ * 
+ * CHANGELOG v8.15.4:
+ * - [CORRIGIDO] Link para PDF agora usa criado_at em vez de datas_str
+ *   - Nome do arquivo gerado é baseado em criado_at (data de criação do ofício)
+ *   - Exemplo: 92_poupatempo_11-12-2025.pdf (11-12 = data criado_at)
+ *   - Antes: usava primeira data de datas_str (08-12), causando links quebrados
+ * - [ADICIONADO] Campo criado_at incluído na SELECT principal
+ * - [MELHORIA] Extração de data via regex de criado_at (yyyy-mm-dd hh:mm:ss)
  * 
  * CHANGELOG v8.15.3:
  * - [ALTERADO] Formato de nome de arquivos: removido # do início
@@ -136,6 +144,7 @@ $sqlLista = "
         d.id,
         d.grupo,
         d.datas_str,
+        d.criado_at,
         d.usuario,
         d.ativo,
         CASE 
@@ -811,26 +820,18 @@ try {
                             <td style="text-align:right;"><?php echo number_format((int)$d['total_carteiras'], 0, ',', '.'); ?></td>
                             <td style="text-align:center;">
                                 <?php
-                                // v8.15.1: Link com data CORRETA do datas_str (suporta yyyy-mm-dd e dd/mm/yyyy)
-                                // Formato: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
+                                // v8.15.3: Link com data de criado_at (data de criação do ofício)
+                                // Nome do arquivo usa criado_at (não datas_str)
+                                // Formato: Q:\cosep\IIPR\Oficios\{Ano}\{Mes}\{tipo}\ID_tipo_dd-mm-yyyy.pdf
                                 
                                 $dia = null;
                                 $mes_num = null;
                                 $ano = null;
                                 
-                                // Extrair data REAL do datas_str
-                                if (!empty($d['datas_str'])) {
-                                    $datas_array = explode(',', $d['datas_str']);
-                                    $primeira_data = trim($datas_array[0]);
-                                    
-                                    // Formato dd/mm/yyyy
-                                    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $primeira_data, $m)) {
-                                        $dia = $m[1];
-                                        $mes_num = $m[2];
-                                        $ano = $m[3];
-                                    }
-                                    // Formato yyyy-mm-dd
-                                    elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $primeira_data, $m)) {
+                                // Extrair data de criado_at (formato: 2025-12-10 15:12:30)
+                                if (!empty($d['criado_at'])) {
+                                    // Formato yyyy-mm-dd hh:mm:ss ou yyyy-mm-dd
+                                    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $d['criado_at'], $m)) {
                                         $ano = $m[1];
                                         $mes_num = $m[2];
                                         $dia = $m[3];
