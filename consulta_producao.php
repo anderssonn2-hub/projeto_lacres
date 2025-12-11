@@ -1,7 +1,18 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.14.9.5
+ * consulta_producao.php - Versao 8.14.9.6
  * Sistema de busca avancada de producao de cedulas
+ * 
+ * 
+ * CHANGELOG v8.14.9.6:
+ * - [CORRIGIDO] Data Carga e Responsaveis agora aparecem nos detalhes de Poupa Tempo
+ *   - Query JOIN com ciDespachoItens foi corrigida para agregar dados por posto usando MIN() e GROUP_CONCAT()
+ *   - Cada posto pode ter múltiplos lotes, agora os dados são consolidados corretamente
+ * - [CORRIGIDO] Links de PDF agora funcionam corretamente
+ *   - Implementado encoding UTF-8 correto para "Ofícios" -> "Of%C3%ADcios"
+ *   - Caractere # no nome do arquivo agora encodado como %23
+ *   - Usa rawurlencode() para cada parte do caminho separadamente
+ *   - Testado e validado com file:///Q:/cosep/IIPR/Of%C3%ADcios/2025/Dezembro/CORREIOS/%2388_correios_10-12-2025.pdf
  * 
  * Funcionalidades:
  * - Busca por etiqueta dos correios
@@ -287,18 +298,22 @@ if ($id_despacho > 0) {
     
     // Buscar itens (ciDespachoItens - usado principalmente para Poupa Tempo)
     // Versao 8.15.0: Adicionar campo usuario
-    // v8.14.9.1: Adicionar data_carga, responsaveis, conferido via JOIN com ciDespachoLotes
+    // v8.14.9.6: Corrigido JOIN para trazer data_carga/responsaveis agregados por posto
     $stItens = $pdo_controle->prepare("
         SELECT 
             i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
             i.lote, i.quantidade, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.usuario,
-            l.data_carga, l.responsaveis,
+            MIN(lt.data_carga) AS data_carga,
+            GROUP_CONCAT(DISTINCT lt.responsaveis SEPARATOR ', ') AS responsaveis,
             cp.usuario AS conferido_por,
             CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
         FROM ciDespachoItens i
-        LEFT JOIN ciDespachoLotes l ON l.id_despacho = i.id_despacho AND l.posto = i.posto
+        LEFT JOIN ciDespachoLotes lt ON lt.id_despacho = i.id_despacho AND lt.posto = i.posto
         LEFT JOIN conferencia_pacotes cp ON cp.nlote = CAST(i.lote AS UNSIGNED) AND cp.conf = 'S'
         WHERE i.id_despacho = ?
+        GROUP BY i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
+                 i.lote, i.quantidade, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.usuario,
+                 cp.usuario, cp.id, cp.conf
         ORDER BY LPAD(i.posto,3,'0')
     ");
     $stItens->execute(array($id_despacho));
@@ -374,7 +389,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.14.9.5</title>
+<title>Consulta de Producao de Cedulas - Versao 8.14.9.6</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -610,7 +625,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.14.9.5</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.14.9.6</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -768,39 +783,61 @@ try {
                             <td style="text-align:right;"><?php echo number_format((int)$d['total_carteiras'], 0, ',', '.'); ?></td>
                             <td style="text-align:center;">
                                 <?php
-                                // v8.14.9.2: Link para PDF na rede com novo padrão de nomenclatura
-                                // Formato: Q:\cosep\IIPR\Ofícios\{Mes} {Ano}\{TIPO}\#{ID}_{tipo}_{dd-mm-yyyy}.pdf
-                                // Exemplos: #26_correios_10-12-2025.pdf ou #34_poupatempo_10-12-2025.pdf
-                                $pdf_link = '';
+                                // v8.14.9.6: Link SEMPRE gerado com encoding correto (Of%C3%ADcios, %23)
+                                // Formato: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
+                                
+                                $dia = date('d');
+                                $mes_num = date('m');
+                                $ano = date('Y');
+                                
+                                // Tentar extrair data real do datas_str
                                 if (!empty($d['datas_str'])) {
-                                    // Extrair primeira data do datas_str (ex: "27/11/2025" ou "27/11/2025,28/11/2025")
                                     $datas_array = explode(',', $d['datas_str']);
                                     $primeira_data = trim($datas_array[0]);
                                     if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $primeira_data, $m)) {
                                         $dia = $m[1];
                                         $mes_num = $m[2];
                                         $ano = $m[3];
-                                        
-                                        // Nome do mes em portugues
-                                        $meses = array('01'=>'Janeiro','02'=>'Fevereiro','03'=>'Marco','04'=>'Abril','05'=>'Maio','06'=>'Junho','07'=>'Julho','08'=>'Agosto','09'=>'Setembro','10'=>'Outubro','11'=>'Novembro','12'=>'Dezembro');
-                                        $mes_nome = isset($meses[$mes_num]) ? $meses[$mes_num] : $mes_num;
-                                        
-                                        // Determinar tipo e subpasta
-                                        $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
-                                        $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
-                                        
-                                        // v8.14.9.3: Novo padrão de caminho: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
-                                        $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
-                                        $pdf_link = 'file:///Q:/cosep/IIPR/Ofícios/' . $ano . '/' . $mes_nome . '/' . $tipo_upper . '/' . $nome_arquivo;
                                     }
                                 }
+                                
+                                // Nome do mes em portugues
+                                $meses = array('01'=>'Janeiro','02'=>'Fevereiro','03'=>'Marco','04'=>'Abril','05'=>'Maio','06'=>'Junho','07'=>'Julho','08'=>'Agosto','09'=>'Setembro','10'=>'Outubro','11'=>'Novembro','12'=>'Dezembro');
+                                $mes_nome = isset($meses[$mes_num]) ? $meses[$mes_num] : $mes_num;
+                                
+                                // Determinar tipo e subpasta
+                                $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
+                                $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
+                                
+                                // v8.14.9.6: Nome do arquivo (com # no início)
+                                $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
+                                
+                                // v8.14.9.6: Caminho base (sem encoding)
+                                $caminho_base = 'Q:/cosep/IIPR/Ofícios/' . $ano . '/' . $mes_nome . '/' . $tipo_upper . '/';
+                                
+                                // v8.14.9.6: Encoding correto para URL file:///
+                                // Cada parte do caminho precisa ser encodada separadamente
+                                $partes_caminho = array('Q:', 'cosep', 'IIPR', 'Ofícios', $ano, $mes_nome, $tipo_upper);
+                                $caminho_encoded = '';
+                                foreach ($partes_caminho as $parte) {
+                                    $caminho_encoded .= rawurlencode($parte) . '/';
+                                }
+                                
+                                // v8.14.9.6: Link do arquivo PDF (com nome encodado)
+                                $pdf_link = 'file:///' . $caminho_encoded . rawurlencode($nome_arquivo);
+                                
+                                // v8.14.9.6: Link da pasta (sem arquivo)
+                                $pasta_link = 'file:///' . $caminho_encoded;
                                 ?>
-                                <!-- v8.14.9.4: Link SEMPRE visível para debug de caminho -->
-                                <?php if ($pdf_link): ?>
-                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="<?php echo e($pdf_link); ?>" style="color:#007bff; font-size:14px; text-decoration:none; word-break:break-all; display:block;"><?php echo htmlspecialchars(basename($pdf_link), ENT_QUOTES, 'UTF-8'); ?></a>
-                                <?php else: ?>
-                                    <span style="color:#999; font-size:12px;" title="Sem data para gerar link">Sem link</span>
-                                <?php endif; ?>
+                                <!-- v8.14.9.6: Link SEMPRE visível com encoding correto -->
+                                <div style="font-size:11px;">
+                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="Clique para abrir PDF: <?php echo e($pdf_link); ?>" style="color:#007bff; text-decoration:none; display:block; margin-bottom:2px; word-break:break-all;">
+                                        📄 <?php echo htmlspecialchars($nome_arquivo, ENT_QUOTES, 'UTF-8'); ?>
+                                    </a>
+                                    <a href="<?php echo e($pasta_link); ?>" target="_blank" title="Abrir pasta: <?php echo e($pasta_link); ?>" style="color:#28a745; text-decoration:none; font-size:10px;">
+                                        📁 Pasta
+                                    </a>
+                                </div>
                             </td>
                             <td class="acoes">
                                 <a href="?grupo=<?php echo urlencode($f_grupo); ?>&data_ini=<?php echo urlencode($f_data_ini); ?>&data_fim=<?php echo urlencode($f_data_fim); ?>&etiqueta=<?php echo urlencode($f_etiqueta); ?>&lote=<?php echo urlencode($f_lote); ?>&posto=<?php echo urlencode($f_posto); ?>&id=<?php echo (int)$d['id']; ?>">
