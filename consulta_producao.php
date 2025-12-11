@@ -1,10 +1,10 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.14.9
+ * consulta_producao.php - Versao 8.15.0
  * Sistema de busca avancada de producao de cedulas
  * 
  * 
- * CHANGELOG v8.14.9:
+ * CHANGELOG v8.15.0:
  * - [CORRIGIDO] Data do PDF agora usa datas_str do despacho (não data atual)
  *   - Arquivos salvos com data correta: #86_correios_10-12-2025.pdf
  *   - Fallback removido para evitar data errada
@@ -299,8 +299,8 @@ if ($id_despacho > 0) {
     $despacho_tipo = $rowTipo ? $rowTipo['grupo'] : '';
     
     // Buscar itens (ciDespachoItens - usado principalmente para Poupa Tempo)
-    // Versao 8.15.0: Adicionar campo usuario
-    // v8.14.9: JOIN com ciDespachoLotes para Data Carga e Responsaveis
+    // Versao 8.15.0: Adicionar campo usuario e Data Carga/Responsaveis
+    // v8.15.0: Subqueries para Data Carga e Responsaveis
     $stItens = $pdo_controle->prepare("
         SELECT 
             i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
@@ -387,7 +387,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.14.9</title>
+<title>Consulta de Producao de Cedulas - Versao 8.15.0</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -623,7 +623,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.14.9</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.15.0</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -770,7 +770,7 @@ try {
                             </td>
                             <td>
                                 <?php 
-                                // v8.14.9: Formatar datas como dd-mm-yyyy (ambos os tipos)
+                                // v8.15.0: Formatar datas como dd-mm-yyyy (ambos os tipos)
                                 if (!empty($d['datas_str'])) {
                                     $datas_formatadas = array();
                                     $datas_arr = explode(',', $d['datas_str']);
@@ -801,7 +801,7 @@ try {
                             <td style="text-align:right;"><?php echo number_format((int)$d['total_carteiras'], 0, ',', '.'); ?></td>
                             <td style="text-align:center;">
                                 <?php
-                                // v8.14.9: Link com data correta do despacho (datas_str)
+                                // v8.15.0: Link com data correta do despacho (datas_str)
                                 // Formato: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
                                 
                                 $dia = '01';
@@ -827,14 +827,14 @@ try {
                                 $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
                                 $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
                                 
-                                // v8.14.9: Nome do arquivo (padrão: #ID_tipo_dd-mm-yyyy.pdf)
+                                // v8.15.0: Nome do arquivo (padrão: #ID_tipo_dd-mm-yyyy.pdf)
                                 $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
                                 
-                                // v8.14.9: Caminho completo no Windows
+                                // v8.15.0: Caminho completo no Windows
                                 // Q:\cosep\IIPR\Ofícios\2025\Dezembro\CORREIOS\#86_correios_10-12-2025.pdf
                                 $caminho_windows = 'Q:\\cosep\\IIPR\\Ofícios\\' . $ano . '\\' . $mes_nome . '\\' . $tipo_upper . '\\' . $nome_arquivo;
                                 
-                                // v8.14.9: Converter para URL file:/// com encoding correto
+                                // v8.15.0: Converter para URL file:/// com encoding correto
                                 // Substituir \\ por /, depois encodar caracteres especiais
                                 $caminho_url = str_replace('\\', '/', $caminho_windows);
                                 $caminho_url = str_replace('Q:/', 'Q:', $caminho_url); // Remover / após Q:
@@ -849,7 +849,7 @@ try {
                                 // ID visual do link
                                 $link_visual = '#' . $d['id'];
                                 ?>
-                                <!-- v8.14.9: Link mostra apenas #ID -->
+                                <!-- v8.15.0: Link mostra apenas #ID -->
                                 <a href="<?php echo e($pdf_link); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:none; font-weight:bold; font-size:14px;">
                                     <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
                                 </a>

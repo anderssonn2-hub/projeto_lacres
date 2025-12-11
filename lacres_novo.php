@@ -1,9 +1,9 @@
 <?php
-/* lacres_novo.php — Versão 8.14.9
+/* lacres_novo.php — Versão 8.15.0
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
  * 
- * CHANGELOG v8.14.9 (11/12/2025):
- * - Sincronizado com consulta_producao.php v8.14.9
+ * CHANGELOG v8.15.0 (11/12/2025):
+ * - Sincronizado com consulta_producao.php v8.15.0
  * - Data do PDF gerada corretamente a partir de datas_str
  * - Suporte completo para Data Carga e Responsáveis em Poupa Tempo
  * - Padrão de nomes: #ID_tipo_dd-mm-yyyy.pdf (ex: #86_correios_10-12-2025.pdf)
