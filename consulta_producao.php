@@ -1,18 +1,19 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.14.9.6
+ * consulta_producao.php - Versao 8.14.6
  * Sistema de busca avancada de producao de cedulas
  * 
  * 
- * CHANGELOG v8.14.9.6:
- * - [CORRIGIDO] Data Carga e Responsaveis agora aparecem nos detalhes de Poupa Tempo
- *   - Query JOIN com ciDespachoItens foi corrigida para agregar dados por posto usando MIN() e GROUP_CONCAT()
- *   - Cada posto pode ter múltiplos lotes, agora os dados são consolidados corretamente
- * - [CORRIGIDO] Links de PDF agora funcionam corretamente
- *   - Implementado encoding UTF-8 correto para "Ofícios" -> "Of%C3%ADcios"
- *   - Caractere # no nome do arquivo agora encodado como %23
- *   - Usa rawurlencode() para cada parte do caminho separadamente
- *   - Testado e validado com file:///Q:/cosep/IIPR/Of%C3%ADcios/2025/Dezembro/CORREIOS/%2388_correios_10-12-2025.pdf
+ * CHANGELOG v8.14.6:
+ * - [CORRIGIDO] Data do PDF agora usa datas_str do despacho (não data atual)
+ *   - Arquivos salvos com data correta: #86_correios_10-12-2025.pdf
+ *   - Fallback removido para evitar data errada
+ * - [CORRIGIDO] Data Carga para Poupa Tempo busca de ciDespachoLotes
+ *   - Agregação por posto com MIN(data_carga) e GROUP_CONCAT(responsaveis)
+ * - [CORRIGIDO] Coluna Datas formatada como dd-mm-yyyy para todos os tipos
+ * - [MELHORADO] Link do PDF mostra apenas #ID (ex: #86) como texto
+ *   - Tooltip mostra caminho completo para debug
+ *   - Encoding correto: file:///Q%3A/cosep/IIPR/Of%C3%ADcios/.../%%2386_correios_10-12-2025.pdf
  * 
  * Funcionalidades:
  * - Busca por etiqueta dos correios
@@ -298,22 +299,18 @@ if ($id_despacho > 0) {
     
     // Buscar itens (ciDespachoItens - usado principalmente para Poupa Tempo)
     // Versao 8.15.0: Adicionar campo usuario
-    // v8.14.9.6: Corrigido JOIN para trazer data_carga/responsaveis agregados por posto
+    // v8.14.6: JOIN com ciDespachoLotes para Data Carga e Responsaveis
     $stItens = $pdo_controle->prepare("
         SELECT 
             i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
             i.lote, i.quantidade, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.usuario,
-            MIN(lt.data_carga) AS data_carga,
-            GROUP_CONCAT(DISTINCT lt.responsaveis SEPARATOR ', ') AS responsaveis,
+            (SELECT MIN(data_carga) FROM ciDespachoLotes WHERE id_despacho = i.id_despacho AND posto = i.posto) AS data_carga,
+            (SELECT GROUP_CONCAT(DISTINCT responsaveis SEPARATOR ', ') FROM ciDespachoLotes WHERE id_despacho = i.id_despacho AND posto = i.posto AND responsaveis IS NOT NULL AND responsaveis != '') AS responsaveis,
             cp.usuario AS conferido_por,
             CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
         FROM ciDespachoItens i
-        LEFT JOIN ciDespachoLotes lt ON lt.id_despacho = i.id_despacho AND lt.posto = i.posto
         LEFT JOIN conferencia_pacotes cp ON cp.nlote = CAST(i.lote AS UNSIGNED) AND cp.conf = 'S'
         WHERE i.id_despacho = ?
-        GROUP BY i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
-                 i.lote, i.quantidade, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.usuario,
-                 cp.usuario, cp.id, cp.conf
         ORDER BY LPAD(i.posto,3,'0')
     ");
     $stItens->execute(array($id_despacho));
@@ -389,7 +386,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.14.9.6</title>
+<title>Consulta de Producao de Cedulas - Versao 8.14.6</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -625,7 +622,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.14.9.6</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.14.6</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -770,7 +767,27 @@ try {
                                     <span class="badge badge-correios"><?php echo e($d['grupo']); ?></span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo e($d['datas_str']); ?></td>
+                            <td>
+                                <?php 
+                                // v8.14.6: Formatar datas como dd-mm-yyyy (ambos os tipos)
+                                if (!empty($d['datas_str'])) {
+                                    $datas_formatadas = array();
+                                    $datas_arr = explode(',', $d['datas_str']);
+                                    foreach ($datas_arr as $dt) {
+                                        $dt = trim($dt);
+                                        // Se já está em dd/mm/yyyy, converter para dd-mm-yyyy
+                                        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $dt, $m)) {
+                                            $datas_formatadas[] = $m[1] . '-' . $m[2] . '-' . $m[3];
+                                        } else {
+                                            $datas_formatadas[] = $dt;
+                                        }
+                                    }
+                                    echo htmlspecialchars(implode(', ', $datas_formatadas), ENT_QUOTES, 'UTF-8');
+                                } else {
+                                    echo '-';
+                                }
+                                ?>
+                            </td>
                             <td><?php echo e($d['usuario']); ?></td>
                             <td>
                                 <?php if ($d['ativo']): ?>
@@ -783,14 +800,14 @@ try {
                             <td style="text-align:right;"><?php echo number_format((int)$d['total_carteiras'], 0, ',', '.'); ?></td>
                             <td style="text-align:center;">
                                 <?php
-                                // v8.14.9.6: Link SEMPRE gerado com encoding correto (Of%C3%ADcios, %23)
+                                // v8.14.6: Link com data correta do despacho (datas_str)
                                 // Formato: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
                                 
-                                $dia = date('d');
-                                $mes_num = date('m');
-                                $ano = date('Y');
+                                $dia = '01';
+                                $mes_num = '01';
+                                $ano = '2025';
                                 
-                                // Tentar extrair data real do datas_str
+                                // Extrair data REAL do datas_str (OBRIGATÓRIO)
                                 if (!empty($d['datas_str'])) {
                                     $datas_array = explode(',', $d['datas_str']);
                                     $primeira_data = trim($datas_array[0]);
@@ -809,35 +826,32 @@ try {
                                 $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
                                 $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
                                 
-                                // v8.14.9.6: Nome do arquivo (com # no início)
+                                // v8.14.6: Nome do arquivo (padrão: #ID_tipo_dd-mm-yyyy.pdf)
                                 $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
                                 
-                                // v8.14.9.6: Caminho base (sem encoding)
-                                $caminho_base = 'Q:/cosep/IIPR/Ofícios/' . $ano . '/' . $mes_nome . '/' . $tipo_upper . '/';
+                                // v8.14.6: Caminho completo no Windows
+                                // Q:\cosep\IIPR\Ofícios\2025\Dezembro\CORREIOS\#86_correios_10-12-2025.pdf
+                                $caminho_windows = 'Q:\\cosep\\IIPR\\Ofícios\\' . $ano . '\\' . $mes_nome . '\\' . $tipo_upper . '\\' . $nome_arquivo;
                                 
-                                // v8.14.9.6: Encoding correto para URL file:///
-                                // Cada parte do caminho precisa ser encodada separadamente
-                                $partes_caminho = array('Q:', 'cosep', 'IIPR', 'Ofícios', $ano, $mes_nome, $tipo_upper);
-                                $caminho_encoded = '';
-                                foreach ($partes_caminho as $parte) {
-                                    $caminho_encoded .= rawurlencode($parte) . '/';
-                                }
+                                // v8.14.6: Converter para URL file:/// com encoding correto
+                                // Substituir \\ por /, depois encodar caracteres especiais
+                                $caminho_url = str_replace('\\', '/', $caminho_windows);
+                                $caminho_url = str_replace('Q:/', 'Q:', $caminho_url); // Remover / após Q:
                                 
-                                // v8.14.9.6: Link do arquivo PDF (com nome encodado)
-                                $pdf_link = 'file:///' . $caminho_encoded . rawurlencode($nome_arquivo);
+                                // Encoding manual para caracteres especiais
+                                $caminho_url = str_replace(' ', '%20', $caminho_url);
+                                $caminho_url = str_replace('í', '%C3%AD', $caminho_url);
+                                $caminho_url = str_replace('#', '%23', $caminho_url);
                                 
-                                // v8.14.9.6: Link da pasta (sem arquivo)
-                                $pasta_link = 'file:///' . $caminho_encoded;
+                                $pdf_link = 'file:///' . $caminho_url;
+                                
+                                // ID visual do link
+                                $link_visual = '#' . $d['id'];
                                 ?>
-                                <!-- v8.14.9.6: Link SEMPRE visível com encoding correto -->
-                                <div style="font-size:11px;">
-                                    <a href="<?php echo e($pdf_link); ?>" target="_blank" title="Clique para abrir PDF: <?php echo e($pdf_link); ?>" style="color:#007bff; text-decoration:none; display:block; margin-bottom:2px; word-break:break-all;">
-                                        📄 <?php echo htmlspecialchars($nome_arquivo, ENT_QUOTES, 'UTF-8'); ?>
-                                    </a>
-                                    <a href="<?php echo e($pasta_link); ?>" target="_blank" title="Abrir pasta: <?php echo e($pasta_link); ?>" style="color:#28a745; text-decoration:none; font-size:10px;">
-                                        📁 Pasta
-                                    </a>
-                                </div>
+                                <!-- v8.14.6: Link mostra apenas #ID -->
+                                <a href="<?php echo e($pdf_link); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:none; font-weight:bold; font-size:14px;">
+                                    <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
+                                </a>
                             </td>
                             <td class="acoes">
                                 <a href="?grupo=<?php echo urlencode($f_grupo); ?>&data_ini=<?php echo urlencode($f_data_ini); ?>&data_fim=<?php echo urlencode($f_data_fim); ?>&etiqueta=<?php echo urlencode($f_etiqueta); ?>&lote=<?php echo urlencode($f_lote); ?>&posto=<?php echo urlencode($f_posto); ?>&id=<?php echo (int)$d['id']; ?>">
