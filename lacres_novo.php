@@ -1,6 +1,12 @@
 <?php
-/* lacres_novo.php — Versão 8.15.3
+/* lacres_novo.php — Versão 8.15.5
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v8.15.5 (11/12/2025):
+ * - Sincronizado com consulta_producao.php v8.15.5
+ * - Confirmado: Arquivos salvos SEM # no início (ex: 96_correios_11-12-2025.pdf)
+ * - Confirmado: Estrutura de pastas lowercase (correios, poupatempo)
+ * - Confirmado: Links file:/// funcionando corretamente
  * 
  * CHANGELOG v8.15.3 (11/12/2025):
  * - Sincronizado com consulta_producao.php v8.15.3

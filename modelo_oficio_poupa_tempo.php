@@ -8,6 +8,12 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v8.15.5: Melhorias de layout e centralização
+   - [CORRIGIDO] Margem centralizada (margin:20px auto) para folha A4
+   - [CORRIGIDO] Nome de posto longo agora quebra linha (white-space:normal, word-wrap:break-word)
+   - [CORRIGIDO] Input de nome do posto com overflow-wrap:break-word
+   - [CONFIRMADO] Arquivo salvo SEM # no nome (formato: 90_poupatempo_11-12-2025.pdf)
+   
    v8.15.3: Layout melhorado + estrutura de pastas/arquivos atualizada
    - CSS reformulado baseado em modelo antigo com layout superior
    - Removido max-width:650px que causava overflow de tabelas
@@ -913,14 +919,14 @@ if (document.readyState === 'loading') {
               <th style="width:23%;">Numero do Lacre</th>
             </tr>
             <tr>
-              <!-- v8.14.9.5: Nome do posto com largura controlada + texto visível -->
-              <td style="width:55%; max-width:350px; text-align:left; padding:4px !important; overflow:visible;">
-                <div style="width:100%; overflow-x:auto; white-space:nowrap;">
+              <!-- v8.15.5: Nome do posto com quebra de linha automática -->
+              <td style="width:55%; max-width:350px; text-align:left; padding:4px !important;">
+                <div style="width:100%; word-wrap:break-word; overflow-wrap:break-word; white-space:normal;">
                   <input type="text" 
                          name="nome_posto[<?php echo e($codigo3); ?>]" 
                          value="<?php echo e($valorNome); ?>" 
                          class="input-editavel"
-                         style="width:auto; min-width:300px; max-width:100%; border:none; background:transparent; font-size:11px;">
+                         style="width:100%; border:none; background:transparent; font-size:11px; word-wrap:break-word; overflow-wrap:break-word; white-space:normal;">
                 </div>
               </td>
               <!-- Quantidade de carteiras editável como input -->

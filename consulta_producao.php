@@ -1,8 +1,13 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.15.4
+ * consulta_producao.php - Versao 8.15.5
  * Sistema de busca avancada de producao de cedulas
  * 
+ * 
+ * CHANGELOG v8.15.5:
+ * - [CORRIGIDO] Link #ID agora é clicável e abre em nova janela
+ * - [CONFIRMADO] Arquivos salvos SEM # no início (formato: 96_correios_11-12-2025.pdf)
+ * - [CONFIRMADO] Link file:/// funcionando corretamente
  * 
  * CHANGELOG v8.15.4:
  * - [CORRIGIDO] Link para PDF agora usa criado_at em vez de datas_str
@@ -862,8 +867,8 @@ try {
                                     // ID visual do link
                                     $link_visual = '#' . $d['id'];
                                     ?>
-                                    <!-- v8.15.3: Link mostra apenas #ID -->
-                                    <a href="<?php echo htmlspecialchars($pdf_link, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:none; font-weight:bold; font-size:14px;">
+                                    <!-- v8.15.5: Link clicável abre em nova janela -->
+                                    <a href="<?php echo htmlspecialchars($pdf_link, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:underline; font-weight:bold; font-size:14px; cursor:pointer;">
                                         <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
                                     </a>
                                     <?php
