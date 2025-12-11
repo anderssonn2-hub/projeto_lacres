@@ -1,19 +1,18 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.15.2
+ * consulta_producao.php - Versao 8.15.3
  * Sistema de busca avancada de producao de cedulas
  * 
  * 
- * CHANGELOG v8.15.2:
- * - [CORRIGIDO] Resumo zerado para Poupa Tempo: agora usa ciDespachoItens quando lotes vazio
- *   - Total de postos, carteiras e lotes calculados corretamente
- * - [CORRIGIDO] Data Poupa Tempo na lista: regex melhorada para capturar yyyy-mm-dd
- *   - Converte 2025-12-10 -> 10-12-2025 corretamente
- * - [CORRIGIDO] Data Carga e Responsáveis: busca de ciPostosCsv usando número do lote
- *   - JOIN com ciPostosCsv.lote para trazer dataCarga e usuario
- * - [CORRIGIDO] Link do PDF: formato file:///Q:cosep/... (sem barra após Q:)
- *   - Data extraída corretamente de datas_str para cada ofício
- *   - Link abre corretamente no navegador
+ * CHANGELOG v8.15.3:
+ * - [ALTERADO] Formato de nome de arquivos: removido # do início
+ *   - Correios: 88_correios_11-12-2025.pdf (antes: #88_correios_11-12-2025.pdf)
+ *   - Poupa Tempo: 89_poupatempo_11-12-2025.pdf (antes: #89_poupatempo_11-12-2025.pdf)
+ * - [ALTERADO] Estrutura de pastas em lowercase
+ *   - Q:\cosep\IIPR\Oficios\2025\Dezembro\correios\ (antes: CORREIOS)
+ *   - Q:\cosep\IIPR\Oficios\2025\Dezembro\poupatempo\ (antes: POUPA TEMPO)
+ * - [CORRIGIDO] Links atualizados para nova estrutura
+ *   - file:///Q:cosep/IIPR/Oficios/.../correios/88_correios_11-12-2025.pdf
  * 
  * Funcionalidades:
  * - Busca por etiqueta dos correios
@@ -386,7 +385,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.15.2</title>
+<title>Consulta de Producao de Cedulas - Versao 8.15.3</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -622,7 +621,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.15.2</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.15.3</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -844,24 +843,25 @@ try {
                                     $meses = array('01'=>'Janeiro','02'=>'Fevereiro','03'=>'Marco','04'=>'Abril','05'=>'Maio','06'=>'Junho','07'=>'Julho','08'=>'Agosto','09'=>'Setembro','10'=>'Outubro','11'=>'Novembro','12'=>'Dezembro');
                                     $mes_nome = isset($meses[$mes_num]) ? $meses[$mes_num] : $mes_num;
                                     
-                                    // Determinar tipo e subpasta
-                                    $tipo_upper = $d['grupo'] === 'POUPA TEMPO' ? 'POUPA TEMPO' : 'CORREIOS';
+                                    // v8.15.3: Determinar tipo em lowercase para pasta
+                                    $tipo_pasta = $d['grupo'] === 'POUPA TEMPO' ? 'poupatempo' : 'correios';
                                     $tipo_lower = strtolower(str_replace(' ', '', $d['grupo'])); // 'correios' ou 'poupatempo'
                                     
-                                    // v8.15.1: Nome do arquivo (padrão: #ID_tipo_dd-mm-yyyy.pdf)
-                                    $nome_arquivo = '#' . $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
+                                    // v8.15.3: Nome do arquivo SEM # (padrão: ID_tipo_dd-mm-yyyy.pdf)
+                                    $nome_arquivo = $d['id'] . '_' . $tipo_lower . '_' . $dia . '-' . $mes_num . '-' . $ano . '.pdf';
                                     
-                                    // v8.15.2: Caminho correto Windows
-                                    // Q:\cosep\IIPR\Ofícios\2025\Dezembro\CORREIOS\#88_correios_10-12-2025.pdf
-                                    $caminho_windows = 'Q:\\cosep\\IIPR\\Ofícios\\' . $ano . '\\' . $mes_nome . '\\' . $tipo_upper . '\\' . $nome_arquivo;
+                                    // v8.15.3: Caminho correto Windows (lowercase, sem #)
+                                    // Q:\cosep\IIPR\Oficios\2025\Dezembro\correios\88_correios_11-12-2025.pdf
+                                    $caminho_windows = 'Q:\\cosep\\IIPR\\Oficios\\' . $ano . '\\' . $mes_nome . '\\' . $tipo_pasta . '\\' . $nome_arquivo;
                                     
-                                    // v8.15.2: Converter para file:/// URL (formato: file:///Q:cosep/...)
-                                    $pdf_link = 'file:///Q:cosep/IIPR/Of%C3%ADcios/' . $ano . '/' . $mes_nome . '/' . rawurlencode($tipo_upper) . '/' . rawurlencode($nome_arquivo);
+                                    // v8.15.3: Converter para file:/// URL (lowercase, sem #)
+                                    // file:///Q:cosep/IIPR/Oficios/2025/Dezembro/correios/88_correios_11-12-2025.pdf
+                                    $pdf_link = 'file:///Q:cosep/IIPR/Oficios/' . $ano . '/' . $mes_nome . '/' . $tipo_pasta . '/' . rawurlencode($nome_arquivo);
                                     
                                     // ID visual do link
                                     $link_visual = '#' . $d['id'];
                                     ?>
-                                    <!-- v8.15.2: Link mostra apenas #ID -->
+                                    <!-- v8.15.3: Link mostra apenas #ID -->
                                     <a href="<?php echo htmlspecialchars($pdf_link, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:none; font-weight:bold; font-size:14px;">
                                         <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
                                     </a>

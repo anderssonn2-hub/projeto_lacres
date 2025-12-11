@@ -1,13 +1,12 @@
 <?php
-/* lacres_novo.php — Versão 8.15.2
+/* lacres_novo.php — Versão 8.15.3
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
  * 
- * CHANGELOG v8.15.2 (11/12/2025):
- * - Sincronizado com consulta_producao.php v8.15.2
- * - Data do PDF gerada corretamente a partir de datas_str (suporta yyyy-mm-dd e dd/mm/yyyy)
- * - Data Carga e Responsáveis buscados de ciPostosCsv via lote
- * - Padrão de nomes: #ID_tipo_dd-mm-yyyy.pdf (ex: #88_correios_10-12-2025.pdf)
- * - Estrutura de pastas: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\
+ * CHANGELOG v8.15.3 (11/12/2025):
+ * - Sincronizado com consulta_producao.php v8.15.3
+ * - Formato de arquivo SEM # no início: 88_correios_11-12-2025.pdf
+ * - Estrutura de pastas em lowercase: correios, poupatempo
+ * - Caminho: Q:\cosep\IIPR\Oficios\{Ano}\{Mes}\{tipo}\
  * 
  * Patch histórico: liberar etiqueta ao apagar (mover entre inputs)
  * Gerado em 2025-11-07T12:28:56

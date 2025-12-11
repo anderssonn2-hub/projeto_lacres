@@ -8,21 +8,21 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v8.14.3: Confirmação com 3 opções (Sobrescrever/Criar Novo/Cancelar)
-   - Modal customizado ao clicar "Gravar Dados" ou "Gravar e Imprimir"
-   - Modo sobrescrever: apaga itens/lotes do último ofício antes de gravar
-   - Modo novo: cria novo ofício com número incrementado
-   - Campo modo_oficio enviado via POST para o handler
+   v8.15.3: Layout melhorado + estrutura de pastas/arquivos atualizada
+   - CSS reformulado baseado em modelo antigo com layout superior
+   - Removido max-width:650px que causava overflow de tabelas
+   - Padding aumentado de 10mm para 20mm (melhor espaçamento)
+   - Adicionado word-wrap:break-word para nomes longos de postos
+   - Print media queries melhorados (altura calc(297mm - 16mm))
+   - Filename sem #: 88_poupatempo_11-12-2025.pdf (antes #88_poupatempo...)
+   - Pasta lowercase: poupatempo (antes POUPA TEMPO)
+   - Estrutura: Q:\cosep\IIPR\Oficios\2025\Dezembro\poupatempo\
+   - Integração completa com consulta_producao.php v8.15.3
    
-   v8.14.4: Gravação completa de lotes PT
-   - Campo lote agora salvo em ciDespachoItens (antes vazio)
-   - SELECT usa GROUP_CONCAT para capturar todos os lotes do posto
-   - Compatibilidade com pesquisas por lote no BD
-   
-   v8.14.5: Modal confirmação + botões pulsantes + correção FK
-   - Modal 3 opções (Sobrescrever/Novo/Cancelar) ao clicar "Gravar e Imprimir"
-   - Botões pulsam quando há dados não salvos na tela
-   - Correção erro FK: garantir id_despacho existe antes de INSERT em ciDespachoItens
+   v8.15.0: Integração completa com consulta_producao.php
+   - Sistema de consulta funciona para CORREIOS e POUPA TEMPO
+   - Dados gravados em ciDespachoItens são consultáveis
+   - Campo usuario rastreável em todas queries de busca
    
    v8.14.9: "Criar Novo" corrigido + campo usuario
    - "Criar Novo" agora cria ofício separado (hash com timestamp)
@@ -30,10 +30,21 @@
    - Captura usuario de ciPostosCsv.usuario para cada posto
    - SELECT incluído em queries de exibição (paginas array)
    
-   v8.15.0: Integração completa com consulta_producao.php
-   - Sistema de consulta funciona para CORREIOS e POUPA TEMPO
-   - Dados gravados em ciDespachoItens são consultáveis
-   - Campo usuario rastreável em todas queries de busca
+   v8.14.5: Modal confirmação + botões pulsantes + correção FK
+   - Modal 3 opções (Sobrescrever/Novo/Cancelar) ao clicar "Gravar e Imprimir"
+   - Botões pulsam quando há dados não salvos na tela
+   - Correção erro FK: garantir id_despacho existe antes de INSERT em ciDespachoItens
+   
+   v8.14.4: Gravação completa de lotes PT
+   - Campo lote agora salvo em ciDespachoItens (antes vazio)
+   - SELECT usa GROUP_CONCAT para capturar todos os lotes do posto
+   - Compatibilidade com pesquisas por lote no BD
+   
+   v8.14.3: Confirmação com 3 opções (Sobrescrever/Criar Novo/Cancelar)
+   - Modal customizado ao clicar "Gravar Dados" ou "Gravar e Imprimir"
+   - Modo sobrescrever: apaga itens/lotes do último ofício antes de gravar
+   - Modo novo: cria novo ofício com número incrementado
+   - Campo modo_oficio enviado via POST para o handler
 */
 
 error_reporting(E_ALL & ~E_NOTICE);
@@ -482,14 +493,23 @@ if (!empty($dados_salvos) && $tipo_mensagem === 'sucesso') {
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Comprovante de Entrega - Poupatempo</title>
+<?php
+// v8.15.3: Título do PDF sem # no início (formato: ID_poupatempo_dd-mm-yyyy)
+$titulo_pdf = 'Comprovante de Entrega - Poupatempo';
+if (isset($id_despacho_post) && $id_despacho_post > 0) {
+    $data_titulo = date('d-m-Y');
+    $titulo_pdf = $id_despacho_post . '_poupatempo_' . $data_titulo;
+}
+?>
+<title><?php echo htmlspecialchars($titulo_pdf, ENT_QUOTES, 'UTF-8'); ?></title>
 <style>
-/* ====== estilos base (mantidos do seu modelo) ====== */
-/* v8.14.9.5: Tabela com largura máxima definida para não ultrapassar bordas */
-table{border:1px solid #000;border-collapse:collapse;margin:10px;max-width:650px;width:100%;}
+/* ====== v8.15.3: Layout melhorado - baseado em modelo antigo ====== */
+table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%;}
 th,td{border:1px solid #000;padding:8px!important;text-align:center}
 th{background:#f2f2f2}
 body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
+
+/* Controles na tela (não imprime) */
 .controles-pagina{width:800px;margin:20px auto;padding:15px;background:#fff;border:1px dashed #ccc;text-align:center}
 .controles-pagina button{padding:10px 20px;font-size:16px;background:#007bff;color:#fff;border:none;border-radius:5px;cursor:pointer;margin:5px}
 .controles-pagina button:hover{background:#0056b3}
@@ -498,22 +518,73 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-.folha-a4-oficio{width:210mm;min-height:297mm;margin:20px auto;padding:20mm;background:#fff;box-shadow:0 0 10px rgba(0,0,0,.1);box-sizing:border-box;display:flex;page-break-after:always}
+/* Folha A4 */
+.folha-a4-oficio{
+    width:210mm;
+    min-height:297mm;
+    margin:20px auto;
+    padding:20mm;
+    background:#fff;
+    box-shadow:0 0 10px rgba(0,0,0,.1);
+    box-sizing:border-box;
+    display:flex;
+    page-break-after:always;
+}
 .folha-a4-oficio:last-of-type{page-break-after:auto}
-.oficio{width:100%;display:flex;flex-direction:column;min-height:calc(297mm - 40mm)}
+
+/* Estrutura do ofício */
+.oficio{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    min-height:calc(297mm - 40mm);
+}
 .oficio *{box-sizing:border-box}
+
+/* Classes de layout */
 .cols100{width:100%;margin-bottom:10px}
-.cols65{width:65%}.cols50{width:50%}.cols25{width:25%}
-.fleft{float:left}.fright{float:right}
-.center{text-align:center}.left{text-align:left}
-.border-1px{border:1px solid #000}.margin2px{margin:2px}.p5{padding:5px}
+.cols65{width:65%}
+.cols50{width:50%}
+.cols25{width:25%}
+.fleft{float:left}
+.fright{float:right}
+.center{text-align:center}
+.left{text-align:left}
+.border-1px{border:1px solid #000}
+.margin2px{margin:2px}
+.p5{padding:5px}
 .nometit{font-weight:bold}
-.processo{flex-grow:1;display:flex;flex-direction:column}
-.oficio-observacao{height:100%;display:flex;flex-direction:column}
+
+/* Área de processo (elástica) */
+.processo{
+    flex-grow:1;
+    display:flex;
+    flex-direction:column;
+}
+.oficio-observacao{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+}
+
+/* Títulos */
 .oficio h3,.oficio h4{margin:5px 0}
+
+/* Clear floats */
 .cols100:after{content:"";display:table;clear:both}
 
-/* Estilos para inputs editáveis */
+/* Campos editáveis */
+[contenteditable="true"]{
+    outline:2px dashed transparent;
+    transition:background-color .3s;
+    min-height:1.2em;
+    padding:2px;
+    word-wrap:break-word;
+    overflow-wrap:break-word;
+}
+[contenteditable="true"]:hover{background:#ffffcc;cursor:text}
+
+/* Inputs editáveis */
 .input-editavel{
     border:none;
     border-bottom:1px solid #000;
@@ -522,86 +593,68 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     font-size:inherit;
     padding:2px 4px;
     width:100%;
+    word-wrap:break-word;
+    overflow-wrap:break-word;
 }
 .input-editavel:focus{
     outline:2px dashed #007bff;
     background:#ffffcc;
 }
 
-/* borda externa com outline para não "vazar" */
+/* Moldura */
 .moldura{outline:1px solid #000;padding:8px}
 
-/* classe auxiliar para esconder na impressão */
-.nao-imprimir{}
+/* Modal de confirmação */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9998;display:none}
+.modal-box{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:25px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;max-width:500px;text-align:center}
+.modal-box h3{margin-top:0;color:#333}
+.modal-box p{margin:15px 0;color:#666;line-height:1.6}
+.modal-box button{padding:12px 24px;margin:8px;font-size:14px;border:none;border-radius:5px;cursor:pointer;transition:all 0.3s}
+.modal-box .btn-primary{background:#007bff;color:white}
+.modal-box .btn-primary:hover{background:#0056b3}
+.modal-box .btn-success{background:#28a745;color:white}
+.modal-box .btn-success:hover{background:#1e7e34}
+.modal-box .btn-secondary{background:#6c757d;color:white}
+.modal-box .btn-secondary:hover{background:#545b62}
 
-/* v8.14.5: Animação de pulsar para botões com dados não salvos */
-@keyframes pulsar {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 5px rgba(255, 193, 7, 0.5); }
-  50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(255, 193, 7, 0.8); }
-}
-.btn-nao-salvo {
-  animation: pulsar 2s ease-in-out infinite;
-  border: 2px solid #ffc107 !important;
-}
+/* Animação de pulsar para botões não salvos */
+@keyframes pulsar{0%,100%{transform:scale(1);box-shadow:0 0 0 rgba(40,167,69,0.7)}50%{transform:scale(1.05);box-shadow:0 0 15px rgba(40,167,69,0.9)}}
+.btn-nao-salvo{animation:pulsar 2s infinite}
 
-/* Mensagens de status */
-.mensagem-status{
-    padding:10px 20px;
-    margin:10px 0;
-    border-radius:5px;
-    font-weight:bold;
-}
-.mensagem-sucesso{
-    background:#d4edda;
-    color:#155724;
-    border:1px solid #c3e6cb;
-}
-.mensagem-erro{
-    background:#f8d7da;
-    color:#721c24;
-    border:1px solid #f5c6cb;
-}
+/* Classe para ocultar na impressão */
+.nao-imprimir{display:block}
 
 @media print{
-  /* limpa a página */
-  body{background:#fff;margin:0;padding:0}
-  .controles-pagina,
-  .nao-imprimir{display:none}
-
-  /* inputs aparecem como texto normal na impressão */
-  .input-editavel{
-    border:none!important;
-    border-bottom:none!important;
-    background:transparent!important;
-  }
-
-  /* 1) a folha ocupa exatamente 1 página */
-  .folha-a4-oficio{
-    width:210mm;
-    margin:0;
-    padding:8mm;
-    box-shadow:none;
-    display:block;
-    break-after: page;
-    min-height:auto;
-  }
-
-  /* 2) altura útil da área interna = 297mm - (padding topo+base) */
-  .oficio{
-    display:flex;
-    flex-direction:column;
-    height: calc(297mm - 16mm);
-  }
-
-  /* mantém o miolo elástico */
-  .processo{ flex:1 }
-
-  /* 3) não deixar os dois últimos blocos quebrarem */
-  .oficio .cols100.border-1px.p5:nth-last-of-type(2),
-  .oficio .cols100.border-1px.p5:last-of-type{
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
+    body{background:#fff;margin:0;padding:0}
+    .controles-pagina,.nao-imprimir{display:none !important}
+    
+    .folha-a4-oficio{
+        width:210mm;
+        margin:0;
+        padding:8mm;
+        box-shadow:none;
+        display:block;
+        break-after:page;
+        min-height:auto;
+    }
+    
+    .oficio{
+        display:flex;
+        flex-direction:column;
+        height:calc(297mm - 16mm);
+    }
+    
+    .processo{flex:1}
+    
+    /* Evitar quebra nos últimos blocos */
+    .oficio .cols100.border-1px.p5:nth-last-of-type(2),
+    .oficio .cols100.border-1px.p5:last-of-type{
+        page-break-inside:avoid;
+        break-inside:avoid;
+    }
+    
+    /* Garantir que tabelas não quebrem */
+    table{page-break-inside:avoid}
 }
 </style>
 <script type="text/javascript">
