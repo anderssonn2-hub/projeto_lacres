@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — Versão 8.15.9
+/* lacres_novo.php — Versão 8.16.0
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v8.16.0 (12/12/2025):
+ * - [ALTERADO] Formato do número do ofício no cabeçalho Correios: "Nº #101" (com # antes do ID)
+ * - Posicionamento mantido no canto direito do quadro CLIENTE/SISTEMA/SETOR
+ * - Poupa Tempo permanece inalterado (não exibe número no cabeçalho)
  * 
  * CHANGELOG v8.15.9 (12/12/2025):
  * - [NOVO] Adicionado número do ofício (Nº ID) no canto direito do cabeçalho dos Correios
@@ -3701,7 +3706,7 @@ try {
             .quadro-logo {line-height: 1.0; border: 1px solid black !important; padding: 12px !important; margin-bottom: 15px !important; box-sizing: border-box !important; }
             .info-cliente {line-height: 1.0; border: 1px solid black !important; padding: 10px !important; margin-bottom: 0px !important; box-sizing: border-box !important; position: relative !important; }
             
-            /* v8.15.9: Número do ofício no canto direito */
+            /* v8.16.0: Número do ofício no canto direito (formato: Nº #ID) */
             .numero-oficio {
                 position: absolute !important;
                 top: 10px !important;
@@ -4289,7 +4294,7 @@ try {
     <p><strong>SISTEMA: </strong>SIV --<strong>SETOR: </strong>EXPEDIÇÃO</p>
     <?php if (isset($_SESSION['id_despacho_correios']) && $_SESSION['id_despacho_correios'] > 0): ?>
     <div class="numero-oficio">
-        Nº <?php echo (int)$_SESSION['id_despacho_correios']; ?>
+        Nº #<?php echo (int)$_SESSION['id_despacho_correios']; ?>
     </div>
     <?php endif; ?>
 </div>

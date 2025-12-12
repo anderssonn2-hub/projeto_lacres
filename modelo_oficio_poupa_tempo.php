@@ -8,6 +8,11 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v8.16.0: Sincronização com lacres_novo.php v8.16.0
+   - [SINCRONIZADO] Versão alinhada com sistema principal
+   - Poupa Tempo permanece inalterado (não exibe número no cabeçalho)
+   - Ofício Correios agora usa formato "Nº #ID" (alteração em lacres_novo.php)
+   
    v8.15.7: Ajustes finais de layout para não encostar nas bordas
    - [CORRIGIDO] Margem da folha A4: padding de 10mm (antes 15mm, resolve problema de encostar na borda)
    - [CORRIGIDO] Nome do posto: fonte 14px (antes 13px), muito mais legível

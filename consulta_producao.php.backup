@@ -1,20 +1,12 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.16.1
+ * consulta_producao.php - Versao 8.16.0
  * Sistema de busca avancada de producao de cedulas
  * 
- * CHANGELOG v8.16.1:
- * - [NOVO] Aba Estatisticas expandida com múltiplos painéis de dados
- *   * Produção de Carteiras por Dia (últimos 30 dias)
- *   * Produção por Usuário (ranking de produtividade com top 20)
- *   * Postos com Maior Demanda (últimos 30 dias, top 20)
- *   * Distribuição por Tipo (Correios vs Poupa Tempo)
- *   * Estatísticas Resumidas (totais, médias, picos)
- * - [ADICIONADO] Queries otimizadas com GROUP BY e agregações
- * - [MELHORADO] Apresentação visual com múltiplas tabelas e cards
- * 
  * CHANGELOG v8.16.0:
- * - [ALTERADO] Formato do número do ofício no cabeçalho Correios: "Nº #101"
+ * - [SINCRONIZADO] Versão alinhada com lacres_novo.php v8.16.0
+ * - Ofício Correios agora exibe "Nº #ID" no cabeçalho (com #)
+ * - Poupa Tempo permanece inalterado
  * 
  * CHANGELOG v8.15.8:
  * - [CORRIGIDO] Layout dos filtros restaurado (display table horizontal)
@@ -241,64 +233,6 @@ $despachos = $stmtLista->fetchAll();
 
 // Buscar conferencia de pacotes
 $conferidos = array();
-$stmtLista = $pdo_controle->prepare($sqlLista);
-$stmtLista->execute($params);
-$despachos = $stmtLista->fetchAll();
-
-// ===== v8.16.1: QUERIES DE ESTATÍSTICAS COMPLETAS =====
-$estatisticas = array();
-$stats_usuario = array();
-$stats_postos = array();
-$stats_tipo = array();
-$stats_resumo = array('total_oficios' => 0, 'total_carteiras' => 0, 'media_diaria' => 0, 'pico_dia' => 0);
-
-// 1) Produção por dia (últimos 30 dias)
-try {
-    $sqlEstat = "SELECT DATE(d.criado_at) AS data_producao, COUNT(DISTINCT d.id) AS total_oficios, COALESCE(SUM(CASE WHEN d.grupo = 'POUPA TEMPO' THEN (SELECT COALESCE(SUM(i.quantidade),0) FROM ciDespachoItens i WHERE i.id_despacho = d.id) ELSE (SELECT COALESCE(SUM(l2.quantidade),0) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) END), 0) AS total_carteiras, COALESCE(SUM(CASE WHEN d.grupo = 'CORREIOS' THEN (SELECT COUNT(DISTINCT l3.lote) FROM ciDespachoLotes l3 WHERE l3.id_despacho = d.id) ELSE 0 END), 0) AS total_lotes, COALESCE(SUM(CASE WHEN d.grupo = 'POUPA TEMPO' THEN (SELECT COUNT(DISTINCT i2.posto) FROM ciDespachoItens i2 WHERE i2.id_despacho = d.id) ELSE (SELECT COUNT(DISTINCT l4.posto) FROM ciDespachoLotes l4 WHERE l4.id_despacho = d.id) END), 0) AS total_postos FROM ciDespachos d WHERE DATE(d.criado_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY DATE(d.criado_at) ORDER BY data_producao DESC";
-    $stmtEstat = $pdo_controle->prepare($sqlEstat);
-    $stmtEstat->execute();
-    $estatisticas = $stmtEstat->fetchAll();
-} catch (Exception $ex) { $estatisticas = array(); }
-
-// 2) Produção por usuário
-try {
-    $sqlUsuario = "SELECT COALESCE(d.usuario, 'Sem usuario') AS usuario, COUNT(DISTINCT d.id) AS total_oficios, COALESCE(SUM(CASE WHEN d.grupo = 'POUPA TEMPO' THEN (SELECT COALESCE(SUM(i.quantidade),0) FROM ciDespachoItens i WHERE i.id_despacho = d.id) ELSE (SELECT COALESCE(SUM(l2.quantidade),0) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) END), 0) AS total_carteiras FROM ciDespachos d WHERE DATE(d.criado_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY d.usuario ORDER BY total_carteiras DESC LIMIT 20";
-    $stmtUsuario = $pdo_controle->prepare($sqlUsuario);
-    $stmtUsuario->execute();
-    $stats_usuario = $stmtUsuario->fetchAll();
-} catch (Exception $ex) { $stats_usuario = array(); }
-
-// 3) Postos com maior demanda
-try {
-    $sqlPostos = "SELECT LPAD(COALESCE(l.posto, i.posto), 3, '0') AS codigo_posto, COUNT(DISTINCT COALESCE(l.id_despacho, i.id_despacho)) AS total_oficio, COALESCE(SUM(COALESCE(l.quantidade, i.quantidade)), 0) AS total_carteiras FROM (SELECT id_despacho, posto, quantidade FROM ciDespachoLotes WHERE id_despacho IN (SELECT id FROM ciDespachos WHERE DATE(criado_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) UNION ALL SELECT id_despacho, posto, quantidade FROM ciDespachoItens WHERE id_despacho IN (SELECT id FROM ciDespachos WHERE DATE(criado_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY))) AS combined_data LEFT JOIN ciDespachoLotes l ON combined_data.id_despacho = l.id_despacho AND combined_data.posto = l.posto LEFT JOIN ciDespachoItens i ON combined_data.id_despacho = i.id_despacho AND combined_data.posto = i.posto GROUP BY COALESCE(l.posto, i.posto) ORDER BY total_carteiras DESC LIMIT 20";
-    $stmtPostos = $pdo_controle->prepare($sqlPostos);
-    $stmtPostos->execute();
-    $stats_postos = $stmtPostos->fetchAll();
-} catch (Exception $ex) { $stats_postos = array(); }
-
-// 4) Distribuição por tipo
-try {
-    $sqlTipo = "SELECT d.grupo, COUNT(DISTINCT d.id) AS total_oficios, COALESCE(SUM(CASE WHEN d.grupo = 'POUPA TEMPO' THEN (SELECT COALESCE(SUM(i.quantidade),0) FROM ciDespachoItens i WHERE i.id_despacho = d.id) ELSE (SELECT COALESCE(SUM(l2.quantidade),0) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) END), 0) AS total_carteiras FROM ciDespachos d WHERE DATE(d.criado_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY d.grupo";
-    $stmtTipo = $pdo_controle->prepare($sqlTipo);
-    $stmtTipo->execute();
-    $stats_tipo = $stmtTipo->fetchAll();
-} catch (Exception $ex) { $stats_tipo = array(); }
-
-// 5) Totais resumidos
-try {
-    $sqlResumo = "SELECT COUNT(DISTINCT d.id) AS total_oficios, COALESCE(SUM(CASE WHEN d.grupo = 'POUPA TEMPO' THEN (SELECT COALESCE(SUM(i.quantidade),0) FROM ciDespachoItens i WHERE i.id_despacho = d.id) ELSE (SELECT COALESCE(SUM(l2.quantidade),0) FROM ciDespachoLotes l2 WHERE l2.id_despacho = d.id) END), 0) AS total_carteiras FROM ciDespachos d WHERE DATE(d.criado_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)";
-    $stmtResumo = $pdo_controle->prepare($sqlResumo);
-    $stmtResumo->execute();
-    $row = $stmtResumo->fetch();
-    if ($row) {
-        $stats_resumo['total_oficios'] = (int)$row['total_oficios'];
-        $stats_resumo['total_carteiras'] = (int)$row['total_carteiras'];
-        $dias_com_producao = count($estatisticas);
-        $stats_resumo['media_diaria'] = $dias_com_producao > 0 ? (int)($stats_resumo['total_carteiras'] / $dias_com_producao) : 0;
-        if (!empty($estatisticas)) $stats_resumo['pico_dia'] = (int)$estatisticas[0]['total_carteiras'];
-    }
-} catch (Exception $ex) {}
-
 try {
     // Placeholder para busca de conferência
 } catch (Exception $ex) {
@@ -809,31 +743,6 @@ try {
         
         <!-- Detalhes do Despacho -->
         <?php if ($id_despacho > 0): ?>
-        <?php
-            // v8.16.1: Carregar tipo e dados do despacho selecionado
-            $despacho_tipo = '';
-            $itens = array();
-            $lotes = array();
-            try {
-                $stmtTipo = $pdo_controle->prepare("SELECT grupo FROM ciDespachos WHERE id = ? LIMIT 1");
-                $stmtTipo->execute(array($id_despacho));
-                $rowTipo = $stmtTipo->fetch();
-                if ($rowTipo && isset($rowTipo['grupo'])) {
-                    $despacho_tipo = $rowTipo['grupo'];
-                }
-                if ($despacho_tipo === 'POUPA TEMPO') {
-                    $stmtItens = $pdo_controle->prepare("SELECT i.posto, i.lote, i.quantidade, i.usuario, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.conferido, i.conferido_por, p.nome AS nome_posto, l.data_carga, l.responsaveis FROM ciDespachoItens i LEFT JOIN ciPostosCsv p ON p.codigo = i.posto LEFT JOIN ciDespachoLotes l ON l.id_despacho = i.id_despacho AND l.posto = i.posto AND l.lote = i.lote WHERE i.id_despacho = ? ORDER BY i.posto, i.lote");
-                    $stmtItens->execute(array($id_despacho));
-                    $itens = $stmtItens->fetchAll();
-                } else {
-                    $stmtLotes = $pdo_controle->prepare("SELECT l.posto, l.lote, l.quantidade, l.data_carga, l.responsaveis, l.etiquetaiipr, l.etiquetacorreios, l.etiqueta_correios, l.conferido, l.conferido_por FROM ciDespachoLotes l WHERE l.id_despacho = ? ORDER BY l.posto, CAST(l.lote AS UNSIGNED)");
-                    $stmtLotes->execute(array($id_despacho));
-                    $lotes = $stmtLotes->fetchAll();
-                }
-            } catch (Exception $e) {
-                // Falha silenciosa para não quebrar a página
-            }
-        ?>
         <div class="painel">
             <div class="painel-titulo">Detalhes do Despacho #<?php echo (int)$id_despacho; ?></div>
             
@@ -857,18 +766,14 @@ try {
             }
             // Para Correios, usa ciDespachoLotes
             else {
-                if (!empty($lotes)) {
-                    foreach ($lotes as $l) {
-                        $totalCarteirasLotes += (int)$l['quantidade'];
-                        if (!isset($postosUnicos[$l['posto']])) {
-                            $postosUnicos[$l['posto']] = true;
-                            $totalPostosLotes++;
-                        }
+                foreach ($lotes as $l) {
+                    $totalCarteirasLotes += (int)$l['quantidade'];
+                    if (!isset($postosUnicos[$l['posto']])) {
+                        $postosUnicos[$l['posto']] = true;
+                        $totalPostosLotes++;
                     }
-                    $totalLotes = count($lotes);
-                } else {
-                    $totalLotes = 0;
                 }
+                $totalLotes = count($lotes);
             }
             ?>
             <div class="totais" style="background:#d4edda; border:1px solid #28a745;">
@@ -1054,34 +959,8 @@ try {
     
     <!-- Tab Estatisticas -->
     <div id="tab-estatisticas" class="tab-content">
-        <!-- Painel: Resumo 30 dias -->
-        <?php if (!empty($estatisticas)): ?>
         <div class="painel">
-            <div class="painel-titulo">Resumo dos Últimos 30 Dias</div>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-valor"><?php echo number_format($stats_resumo['total_carteiras'], 0, ',', '.'); ?></div>
-                    <div class="stat-label">Carteiras Produzidas</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-valor"><?php echo number_format($stats_resumo['total_oficios'], 0, ',', '.'); ?></div>
-                    <div class="stat-label">Ofícios</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-valor"><?php echo number_format($stats_resumo['media_diaria'], 0, ',', '.'); ?></div>
-                    <div class="stat-label">Média Diária</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-valor"><?php echo number_format($stats_resumo['pico_dia'], 0, ',', '.'); ?></div>
-                    <div class="stat-label">Pico (Dia)</div>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Painel: Produção por Dia -->
-        <div class="painel">
-            <div class="painel-titulo">Produção por Dia (Últimos 30 dias)</div>
+            <div class="painel-titulo">Producao de Carteiras por Dia (Ultimos 30 dias)</div>
             <table>
                 <thead>
                     <tr>
@@ -1093,7 +972,7 @@ try {
                 </thead>
                 <tbody>
                 <?php if (empty($estatisticas)): ?>
-                    <tr><td colspan="4">Nenhuma estatística disponível.</td></tr>
+                    <tr><td colspan="4">Nenhuma estatistica disponivel.</td></tr>
                 <?php else: ?>
                     <?php foreach ($estatisticas as $est): ?>
                         <tr>
@@ -1115,87 +994,12 @@ try {
                 <?php endif; ?>
                 </tbody>
             </table>
-        </div>
-
-        <!-- Painel: Produção por Usuário -->
-        <div class="painel">
-            <div class="painel-titulo">Produção por Usuário (Últimos 30 dias)</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Usuário</th>
-                        <th>Ofícios</th>
-                        <th>Carteiras</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php if (empty($stats_usuario)): ?>
-                    <tr><td colspan="3">Nenhum dado disponível para usuários.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($stats_usuario as $u): ?>
-                        <tr>
-                            <td><?php echo e($u['usuario']); ?></td>
-                            <td style="text-align:center;">&nbsp;<?php echo (int)$u['total_oficios']; ?></td>
-                            <td style="text-align:right; font-weight:bold; color:#007bff;">&nbsp;<?php echo number_format((int)$u['total_carteiras'], 0, ',', '.'); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Painel: Postos com Maior Demanda -->
-        <div class="painel">
-            <div class="painel-titulo">Postos com Maior Demanda (Últimos 30 dias)</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Posto</th>
-                        <th>Ofícios</th>
-                        <th>Carteiras</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php if (empty($stats_postos)): ?>
-                    <tr><td colspan="3">Nenhum dado disponível para postos.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($stats_postos as $p): ?>
-                        <tr>
-                            <td><?php echo e($p['codigo_posto']); ?></td>
-                            <td style="text-align:center;">&nbsp;<?php echo (int)$p['total_oficio']; ?></td>
-                            <td style="text-align:right; font-weight:bold; color:#007bff;">&nbsp;<?php echo number_format((int)$p['total_carteiras'], 0, ',', '.'); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Painel: Distribuição por Tipo -->
-        <div class="painel">
-            <div class="painel-titulo">Distribuição por Tipo (Últimos 30 dias)</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Tipo</th>
-                        <th>Ofícios</th>
-                        <th>Carteiras</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php if (empty($stats_tipo)): ?>
-                    <tr><td colspan="3">Nenhum dado disponível para tipos.</td></tr>
-                <?php else: ?>
-                    <?php foreach ($stats_tipo as $t): ?>
-                        <tr>
-                            <td><?php echo e($t['grupo']); ?></td>
-                            <td style="text-align:center;">&nbsp;<?php echo (int)$t['total_oficios']; ?></td>
-                            <td style="text-align:right; font-weight:bold; color:#007bff;">&nbsp;<?php echo number_format((int)$t['total_carteiras'], 0, ',', '.'); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-                </tbody>
-            </table>
+            <?php else: ?>
+            <!-- v8.14.9.3: Despacho sem lotes (exemplo: Poupa Tempo que só usa ciDespachoItens) -->
+            <div class="totais" style="background:#f8f9fa; border:1px solid #dee2e6; margin-top:15px;">
+                <em style="color:#6c757d;">Este despacho não possui dados em ciDespachoLotes.</em>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     
