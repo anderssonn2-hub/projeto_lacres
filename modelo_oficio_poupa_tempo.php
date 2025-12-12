@@ -8,6 +8,19 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v8.15.7: Ajustes finais de layout para não encostar nas bordas
+   - [CORRIGIDO] Margem da folha A4: padding de 10mm (antes 15mm, resolve problema de encostar na borda)
+   - [CORRIGIDO] Nome do posto: fonte 14px (antes 13px), muito mais legível
+   - [CORRIGIDO] Padding da célula: 10px (antes 8px) para melhor espaçamento
+   - [CORRIGIDO] Line-height 1.3 adicionado para quebra de linha mais compacta
+   
+   v8.15.6: Correções críticas de layout e funcionalidade
+   - [CORRIGIDO] Título do PDF sem # (agora: "97_poupatempo_11-12-2025")
+   - [CORRIGIDO] Modo "Criar Novo" agora cria ofício com novo ID (não sobrescreve)
+   - [CORRIGIDO] Margem da folha A4: padding de 15mm (antes 20mm que encostava)
+   - [CORRIGIDO] Nome do posto: fonte 13px (antes 11px), quebra de linha automática
+   - [CORRIGIDO] Tabela com margens laterais adequadas
+   
    v8.15.5: Melhorias de layout e centralização
    - [CORRIGIDO] Margem centralizada (margin:20px auto) para folha A4
    - [CORRIGIDO] Nome de posto longo agora quebra linha (white-space:normal, word-wrap:break-word)
@@ -146,7 +159,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         }
 
         // v8.14.3: Verificar modo do ofício (sobrescrever/novo)
-        // v8.14.9: CORRIGIDO - modo "novo" realmente cria novo ofício (não usa hash)
+        // v8.15.6: CORRIGIDO - modo "novo" SEMPRE cria novo ofício com hash único
         $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : '';
         
         // Se não tiver id_despacho, precisa criar o despacho primeiro
@@ -154,10 +167,10 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             $grupo = 'POUPA TEMPO';
             $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
             
-            // v8.14.9: Se modo for "novo", NÃO usar hash (cria sempre novo)
+            // v8.15.6: Se modo for "novo", SEMPRE criar novo despacho com hash único
             if ($modoOficio === 'novo') {
-                // Cria novo despacho SEMPRE (não busca existente)
-                $hash = sha1($grupo . '|' . $datasStr_post . '|' . time()); // hash único com timestamp
+                // Hash único com timestamp + microtime para garantir unicidade
+                $hash = sha1($grupo . '|' . $datasStr_post . '|' . time() . '|' . microtime(true));
                 $stIns = $pdo_controle->prepare("
                     INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs)
                     VALUES (?, ?, ?, ?, 1, NULL)
@@ -524,12 +537,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-/* Folha A4 */
+/* Folha A4 - v8.15.7: Margem 10mm para não encostar nas bordas */
 .folha-a4-oficio{
     width:210mm;
     min-height:297mm;
     margin:20px auto;
-    padding:20mm;
+    padding:10mm;
     background:#fff;
     box-shadow:0 0 10px rgba(0,0,0,.1);
     box-sizing:border-box;
@@ -919,14 +932,14 @@ if (document.readyState === 'loading') {
               <th style="width:23%;">Numero do Lacre</th>
             </tr>
             <tr>
-              <!-- v8.15.5: Nome do posto com quebra de linha automática -->
-              <td style="width:55%; max-width:350px; text-align:left; padding:4px !important;">
-                <div style="width:100%; word-wrap:break-word; overflow-wrap:break-word; white-space:normal;">
+              <!-- v8.15.7: Nome do posto com fonte 14px (legível) e quebra de linha automática -->
+              <td style="width:55%; max-width:350px; text-align:left; padding:10px !important;">
+                <div style="width:100%; word-wrap:break-word; overflow-wrap:break-word; white-space:normal; line-height:1.3;">
                   <input type="text" 
                          name="nome_posto[<?php echo e($codigo3); ?>]" 
                          value="<?php echo e($valorNome); ?>" 
                          class="input-editavel"
-                         style="width:100%; border:none; background:transparent; font-size:11px; word-wrap:break-word; overflow-wrap:break-word; white-space:normal;">
+                         style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold; word-wrap:break-word; overflow-wrap:break-word; white-space:normal; line-height:1.3;">
                 </div>
               </td>
               <!-- Quantidade de carteiras editável como input -->

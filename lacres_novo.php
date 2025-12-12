@@ -1,6 +1,16 @@
 <?php
-/* lacres_novo.php — Versão 8.15.5
+/* lacres_novo.php — Versão 8.15.7
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v8.15.7 (11/12/2025):
+ * - [CORRIGIDO] Nome do PDF sem # (agora: 97_correios_11-12-2025.pdf ao invés de #97_correios...)
+ * - Sincronizado com consulta_producao.php v8.15.7 e modelo_oficio_poupa_tempo.php v8.15.7
+ * 
+ * CHANGELOG v8.15.6 (11/12/2025):
+ * - Sincronizado com consulta_producao.php v8.15.6 e modelo_oficio_poupa_tempo.php v8.15.6
+ * - Confirmado: Arquivos salvos SEM # no início (ex: 97_correios_11-12-2025.pdf)
+ * - Modo "Criar Novo" corrigido: agora SEMPRE cria novo ofício com novo ID
+ * - Layout melhorado: margem 15mm, fonte 13px no nome do posto
  * 
  * CHANGELOG v8.15.5 (11/12/2025):
  * - Sincronizado com consulta_producao.php v8.15.5
@@ -2929,8 +2939,8 @@ try {
         $id_despacho_atual = (int)$row_grupo['id'];
         $grupo_atual = strtolower(str_replace(' ', '', $row_grupo['grupo'])); // 'correios' ou 'poupatempo'
         
-        // Novo padrão: #26_correios_10-12-2025.pdf ou #34_poupatempo_10-12-2025.pdf
-        $nome_pdf_titulo = "#" . $id_despacho_atual . "_" . $grupo_atual . "_" . $data_atual;
+        // v8.15.7: Novo padrão SEM #: ID_tipo_dd-mm-yyyy.pdf (ex: 26_correios_10-12-2025.pdf)
+        $nome_pdf_titulo = $id_despacho_atual . "_" . $grupo_atual . "_" . $data_atual;
     }
 } catch (Exception $e) {
     // Se falhar, usa padrão antigo

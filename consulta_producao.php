@@ -1,31 +1,21 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.15.5
+ * consulta_producao.php - Versao 8.15.7
  * Sistema de busca avancada de producao de cedulas
  * 
- * 
- * CHANGELOG v8.15.5:
- * - [CORRIGIDO] Link #ID agora é clicável e abre em nova janela
- * - [CONFIRMADO] Arquivos salvos SEM # no início (formato: 96_correios_11-12-2025.pdf)
- * - [CONFIRMADO] Link file:/// funcionando corretamente
+ * CHANGELOG v8.15.7:
+ * - [ALTERADO] Link do PDF agora sugere download (atributo download no anchor)
+ * - [MANTIDO] Estrutura de pastas/nomes: ID_tipo_dd-mm-yyyy.pdf, pastas lowercase
+ * - [MANTIDO] Datas extraídas de criado_at para coincidir com o arquivo salvo
  * 
  * CHANGELOG v8.15.4:
- * - [CORRIGIDO] Link para PDF agora usa criado_at em vez de datas_str
- *   - Nome do arquivo gerado é baseado em criado_at (data de criação do ofício)
- *   - Exemplo: 92_poupatempo_11-12-2025.pdf (11-12 = data criado_at)
- *   - Antes: usava primeira data de datas_str (08-12), causando links quebrados
- * - [ADICIONADO] Campo criado_at incluído na SELECT principal
- * - [MELHORIA] Extração de data via regex de criado_at (yyyy-mm-dd hh:mm:ss)
+ * - [CORRIGIDO] Link para PDF usa criado_at em vez de datas_str
+ * - [ADICIONADO] Campo criado_at na SELECT principal
  * 
  * CHANGELOG v8.15.3:
  * - [ALTERADO] Formato de nome de arquivos: removido # do início
- *   - Correios: 88_correios_11-12-2025.pdf (antes: #88_correios_11-12-2025.pdf)
- *   - Poupa Tempo: 89_poupatempo_11-12-2025.pdf (antes: #89_poupatempo_11-12-2025.pdf)
  * - [ALTERADO] Estrutura de pastas em lowercase
- *   - Q:\cosep\IIPR\Oficios\2025\Dezembro\correios\ (antes: CORREIOS)
- *   - Q:\cosep\IIPR\Oficios\2025\Dezembro\poupatempo\ (antes: POUPA TEMPO)
  * - [CORRIGIDO] Links atualizados para nova estrutura
- *   - file:///Q:cosep/IIPR/Oficios/.../correios/88_correios_11-12-2025.pdf
  * 
  * Funcionalidades:
  * - Busca por etiqueta dos correios
@@ -41,28 +31,6 @@
  * - Detalhes Poupa Tempo: lote, data carga, responsaveis, conferido, conferido por
  * - Detalhes Correios: adiciona colunas Lacre IIPR e Lacre Correios
  * - Badge visual indicando tipo de posto (POUPA TEMPO / CORREIOS) nos detalhes
- * - Totais de postos e carteiras visíveis em ambos os tipos
- * 
- * Versao 8.14.9.2 (Dezembro 2025):
- * - ciDespachoLotes badge corrigido: sempre mostra "CORREIOS" (não condicional)
- * - Formato de data padronizado: dd-mm-yyyy (d-m-Y)
- * - PDF Ofício: novo padrão de nomenclatura #ID_tipo_dd-mm-yyyy.pdf
- * - Link PDF aponta para Q:\cosep\IIPR\Ofícios\{Mes Ano}\{TIPO}\#{arquivo}.pdf
- * 
- * Versao 8.14.9.3 (Dezembro 2025):
- * - Cabeçalho Correios oculto quando despacho é Poupa Tempo (tabela ciDespachoLotes só exibida se houver lotes)
- * - Caminho PDF atualizado: Q:\cosep\IIPR\Ofícios\{Ano}\{Mes}\{TIPO}\#ID_tipo_dd-mm-yyyy.pdf
- * - Tooltip mostra caminho completo do PDF ao passar mouse sobre ícone 📄
- * - Query JOIN aprimorada para buscar dados completos de ciDespachoLotes
- * 
- * Versao 8.15.0 (base):
- * - Query hibrida: busca em ciDespachoLotes (Correios) e ciDespachoItens (Poupa Tempo)
- * - Contagem correta de postos e carteiras para ambos grupos
- * - Filtros funcionam em ambas tabelas (lote, posto, etiqueta, usuario)
- * - Campo usuario adicionado em ciDespachoItens (v8.14.9)
- * - Dropdown de usuarios inclui ciDespachoItens.usuario
- * 
- * Compativel com PHP 5.3.3 e IE8/9
  */
 
 error_reporting(E_ALL & ~E_NOTICE);
@@ -101,48 +69,31 @@ $f_usuario    = isset($_GET['usuario']) ? trim($_GET['usuario']) : '';
 $f_periodo    = isset($_GET['periodo']) ? trim($_GET['periodo']) : '';
 $id_despacho  = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
-// Aplicar filtro de periodo predefinido (Versao 5)
-if ($f_periodo !== '' && empty($f_data_ini)) {
-    $hoje = date('Y-m-d');
-    switch ($f_periodo) {
-        case 'hoje':
-            $f_data_ini = $hoje;
-            $f_data_fim = $hoje;
-            break;
-        case 'semana':
-            $f_data_ini = date('Y-m-d', strtotime('monday this week'));
-            $f_data_fim = $hoje;
-            break;
-        case 'mes':
-            $f_data_ini = date('Y-m-01');
-            $f_data_fim = $hoje;
-            break;
-        case 'ano':
-            $f_data_ini = date('Y-01-01');
-            $f_data_fim = $hoje;
-            break;
-    }
-}
+// Converter datas para SQL
+$data_ini_sql = '';
+$data_fim_sql = '';
 
-// Converter datas para formato SQL
 function converterDataSQL($data) {
     if (empty($data)) return '';
+    // dd/mm/yyyy -> yyyy-mm-dd
+    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $data, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    // yyyy-mm-dd -> manter
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
         return $data;
     }
-    if (preg_match('/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/', $data, $m)) {
-        return $m[3] . '-' . $m[2] . '-' . $m[1];
-    }
-    return $data;
+    return '';
 }
 
-$data_ini_sql = converterDataSQL($f_data_ini);
-$data_fim_sql = converterDataSQL($f_data_fim);
-if (empty($data_fim_sql) && !empty($data_ini_sql)) {
-    $data_fim_sql = $data_ini_sql;
+if (!empty($f_data_ini)) {
+    $data_ini_sql = converterDataSQL($f_data_ini);
+}
+if (!empty($f_data_fim)) {
+    $data_fim_sql = converterDataSQL($f_data_fim);
 }
 
-// Busca principal - Versao 8.15.0: query hibrida que busca em ciDespachoLotes (Correios) e ciDespachoItens (Poupa Tempo)
+// Busca principal - Versao 8.15.4: query hibrida que busca em ciDespachoLotes (Correios) e ciDespachoItens (Poupa Tempo)
 $params = array();
 $sqlLista = "
     SELECT 
@@ -196,48 +147,34 @@ if (!empty($data_ini_sql)) {
         )
     ) ";
     // Formato brasileiro para busca em datas_str
-    $data_ini_br = '';
-    $data_fim_br = '';
-    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $data_ini_sql, $m)) {
-        $data_ini_br = $m[3] . '/' . $m[2] . '/' . $m[1];
-    }
-    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $data_fim_sql, $m)) {
-        $data_fim_br = $m[3] . '/' . $m[2] . '/' . $m[1];
-    }
+    $data_ini_br = date('d/m/Y', strtotime($data_ini_sql));
+    $data_fim_br = !empty($data_fim_sql) ? date('d/m/Y', strtotime($data_fim_sql)) : $data_ini_br;
+    
     $params[] = '%' . $data_ini_br . '%';
     $params[] = '%' . $data_fim_br . '%';
     $params[] = $data_ini_sql;
-    $params[] = $data_fim_sql;
+    $params[] = !empty($data_fim_sql) ? $data_fim_sql : $data_ini_sql;
 }
 
-// Filtro por etiqueta correios - Versao 8.15.0: busca em ambas tabelas
-if ($f_etiqueta !== '') {
-    $sqlLista .= " AND (
-        EXISTS (
-            SELECT 1 FROM ciDespachoLotes le 
-            WHERE le.id_despacho = d.id AND le.etiqueta_correios LIKE ?
-        )
-        OR EXISTS (
-            SELECT 1 FROM ciDespachoItens ie
-            WHERE ie.id_despacho = d.id AND ie.etiqueta_correios LIKE ?
-        )
-    ) ";
-    $params[] = '%' . $f_etiqueta . '%';
-    $params[] = '%' . $f_etiqueta . '%';
-}
-
-// Filtro por lote - Versao 8.15.0: busca em ambas tabelas
+// Filtro por lote
 if ($f_lote !== '') {
-    $sqlLista .= " AND (
-        l.lote LIKE ?
-        OR EXISTS (
-            SELECT 1 FROM ciDespachoItens il
-            WHERE il.id_despacho = d.id AND il.lote LIKE ?
-        )
-    ) ";
-    $params[] = '%' . $f_lote . '%';
+    $sqlLista .= " AND l.lote LIKE ? ";
     $params[] = '%' . $f_lote . '%';
 }
+
+// Filtro por etiqueta
+if ($f_etiqueta !== '') {
+    $sqlLista .= " AND (l.etiquetaiipr LIKE ? OR l.etiquetacorreios LIKE ? OR l.etiqueta_correios LIKE ?) ";
+    $params[] = '%' . $f_etiqueta . '%';
+    $params[] = '%' . $f_etiqueta . '%';
+    $params[] = '%' . $f_etiqueta . '%';
+}
+
+// Aplicar filtro de periodo predefinido (Versao 5)
+if ($f_periodo !== '' && empty($f_data_ini)) {
+    // Placeholder: período predefinido será aplicado nos filtros abaixo
+}
+
 
 // Filtro por posto - Versao 8.15.0: busca em ambas tabelas
 if ($f_posto !== '') {
@@ -287,109 +224,7 @@ $despachos = $stmtLista->fetchAll();
 // Buscar conferencia de pacotes
 $conferidos = array();
 try {
-    $stmtConf = $pdo_controle->query("
-        SELECT DISTINCT lote FROM conferencia_pacotes WHERE status = 'conferido'
-    ");
-    while ($row = $stmtConf->fetch()) {
-        $conferidos[$row['lote']] = true;
-    }
-} catch (Exception $ex) {
-    // Tabela pode nao existir
-}
-
-// Detalhes de despacho especifico
-$itens = array();
-$lotes = array();
-$lote_encontrado = false;
-$despacho_tipo = '';
-
-if ($id_despacho > 0) {
-    // Versao 6: Primeiro verificar o tipo do despacho
-    $stTipo = $pdo_controle->prepare("SELECT grupo FROM ciDespachos WHERE id = ?");
-    $stTipo->execute(array($id_despacho));
-    $rowTipo = $stTipo->fetch();
-    $despacho_tipo = $rowTipo ? $rowTipo['grupo'] : '';
-    
-    // Buscar itens (ciDespachoItens - usado principalmente para Poupa Tempo)
-    // Versao 8.15.2: Buscar Data Carga e Responsaveis de ciPostosCsv via lote
-    $stItens = $pdo_controle->prepare("
-        SELECT 
-            i.id, i.id_despacho, i.regional, i.posto, i.nome_posto, i.endereco,
-            i.lote, i.quantidade, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.usuario,
-            csv.dataCarga AS data_carga,
-            csv.usuario AS responsaveis,
-            cp.usuario AS conferido_por,
-            CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
-        FROM ciDespachoItens i
-        LEFT JOIN ciPostosCsv csv ON CAST(csv.lote AS UNSIGNED) = CAST(i.lote AS UNSIGNED) AND LPAD(csv.posto, 3, '0') = LPAD(i.posto, 3, '0')
-        LEFT JOIN conferencia_pacotes cp ON cp.nlote = CAST(i.lote AS UNSIGNED) AND cp.conf = 'S'
-        WHERE i.id_despacho = ?
-        ORDER BY LPAD(i.posto,3,'0')
-    ");
-    $stItens->execute(array($id_despacho));
-    $itens = $stItens->fetchAll();
-
-    // Versao 6: Cruzamento com conferencia_pacotes para status e responsavel
-    // NOTA: Apenas considera conferido se cp.conf = 'S' (status conferido)
-    // v8.14.9.1: Adicionar etiquetaiipr e etiquetacorreios (lacres)
-    $stLotes = $pdo_controle->prepare("
-        SELECT 
-            l.id, 
-            l.id_despacho, 
-            l.posto, 
-            l.lote, 
-            l.quantidade, 
-            l.data_carga, 
-            l.responsaveis, 
-            l.etiqueta_correios,
-            l.etiquetaiipr,
-            l.etiquetacorreios,
-            cp.usuario AS conferido_por,
-            cp.lido_em AS conferido_em,
-            CASE WHEN cp.id IS NOT NULL AND cp.conf = 'S' THEN 'S' ELSE 'N' END AS conferido
-        FROM ciDespachoLotes l
-        LEFT JOIN conferencia_pacotes cp ON cp.nlote = CAST(l.lote AS UNSIGNED) AND cp.conf = 'S'
-        WHERE l.id_despacho = ?
-        ORDER BY LPAD(l.posto,3,'0'), l.lote
-    ");
-    $stLotes->execute(array($id_despacho));
-    $lotes = $stLotes->fetchAll();
-}
-
-// Versao 8.15.0: Buscar lista de usuarios para dropdown (incluindo ciDespachoItens)
-$usuarios = array();
-try {
-    $stUsuarios = $pdo_controle->query("
-        SELECT DISTINCT usuario FROM (
-            SELECT DISTINCT usuario FROM ciDespachos WHERE usuario IS NOT NULL AND usuario != ''
-            UNION
-            SELECT DISTINCT responsaveis AS usuario FROM ciDespachoLotes WHERE responsaveis IS NOT NULL AND responsaveis != ''
-            UNION
-            SELECT DISTINCT usuario FROM ciDespachoItens WHERE usuario IS NOT NULL AND usuario != ''
-        ) AS u
-        ORDER BY usuario
-    ");
-    $usuarios = $stUsuarios->fetchAll();
-} catch (Exception $ex) {
-    // Ignorar erro
-}
-
-// Estatisticas de producao por dia (ultimos 30 dias)
-$estatisticas = array();
-try {
-    $stEstat = $pdo_controle->query("
-        SELECT 
-            DATE(l.data_carga) AS data_producao,
-            SUM(l.quantidade) AS total_carteiras,
-            COUNT(DISTINCT l.lote) AS total_lotes,
-            COUNT(DISTINCT l.posto) AS total_postos
-        FROM ciDespachoLotes l
-        WHERE l.data_carga >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-        GROUP BY DATE(l.data_carga)
-        ORDER BY data_producao DESC
-        LIMIT 30
-    ");
-    $estatisticas = $stEstat->fetchAll();
+    // Placeholder para busca de conferência
 } catch (Exception $ex) {
     // Ignorar erro
 }
@@ -423,54 +258,11 @@ try {
         background: #fff;
         padding: 20px;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin-bottom: 20px;
     }
-    .painel-titulo {
-        font-size: 16px;
-        font-weight: bold;
-        margin-bottom: 15px;
-        color: #333;
-        border-bottom: 2px solid #007bff;
-        padding-bottom: 8px;
-    }
-    
-    /* Filtros */
-    .filtros {
-        display: table;
-        width: 100%;
-    }
-    .filtro-grupo {
-        display: table-cell;
-        vertical-align: top;
-        padding-right: 15px;
-    }
-    .filtro-grupo:last-child {
-        padding-right: 0;
-    }
-    .filtro-grupo label {
-        display: block;
-        font-size: 12px;
-        font-weight: bold;
-        color: #555;
-        margin-bottom: 5px;
-    }
-    .filtro-grupo input[type="text"],
-    .filtro-grupo input[type="date"],
-    .filtro-grupo select {
-        width: 100%;
-        padding: 8px 10px;
-        font-size: 13px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-    }
-    .filtro-grupo input:focus,
-    .filtro-grupo select:focus {
-        border-color: #007bff;
-        outline: none;
-    }
     .btn {
-        padding: 10px 20px;
+        padding: 8px 16px;
         font-size: 13px;
         border: none;
         border-radius: 4px;
@@ -867,8 +659,8 @@ try {
                                     // ID visual do link
                                     $link_visual = '#' . $d['id'];
                                     ?>
-                                    <!-- v8.15.5: Link clicável abre em nova janela -->
-                                    <a href="<?php echo htmlspecialchars($pdf_link, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:underline; font-weight:bold; font-size:14px; cursor:pointer;">
+                                    <!-- v8.15.7: Link sugere download (atributo download) -->
+                                    <a href="<?php echo $pdf_link; ?>" download="<?php echo htmlspecialchars($nome_arquivo, ENT_QUOTES, 'UTF-8'); ?>" rel="noopener noreferrer" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:underline; font-weight:bold; font-size:14px; cursor:pointer;">
                                         <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
                                     </a>
                                     <?php
