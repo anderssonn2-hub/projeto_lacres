@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — Versão 8.15.7
+/* lacres_novo.php — Versão 8.15.9
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v8.15.9 (12/12/2025):
+ * - [NOVO] Adicionado número do ofício (Nº ID) no canto direito do cabeçalho dos Correios
+ * - Formato: "Nº 101" exibido ao lado do quadro CLIENTE/SISTEMA/SETOR
+ * - Número aparece tanto na impressão quanto na visualização em tela
  * 
  * CHANGELOG v8.15.7 (11/12/2025):
  * - [CORRIGIDO] Nome do PDF sem # (agora: 97_correios_11-12-2025.pdf ao invés de #97_correios...)
@@ -832,6 +837,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $id_desp = $pdo_controle->lastInsertId();
             }
         }
+        
+        // v8.15.9: Salvar ID do despacho na sessão para exibir número do ofício
+        $_SESSION['id_despacho_correios'] = (int)$id_desp;
 
         // 3) Captura os dados enviados pelo formulário
         // VERSAO 3: Normaliza TODAS as chaves para formato "041" (3 digitos com zeros)
@@ -3691,7 +3699,21 @@ try {
             
             /* Garantir que o logo fique bem formatado */
             .quadro-logo {line-height: 1.0; border: 1px solid black !important; padding: 12px !important; margin-bottom: 15px !important; box-sizing: border-box !important; }
-            .info-cliente {line-height: 1.0; border: 1px solid black !important; padding: 10px !important; margin-bottom: 0px !important; box-sizing: border-box !important; }
+            .info-cliente {line-height: 1.0; border: 1px solid black !important; padding: 10px !important; margin-bottom: 0px !important; box-sizing: border-box !important; position: relative !important; }
+            
+            /* v8.15.9: Número do ofício no canto direito */
+            .numero-oficio {
+                position: absolute !important;
+                top: 10px !important;
+                right: 10px !important;
+                padding: 8px 15px !important;
+                border: 2px solid #000 !important;
+                background-color: #fff !important;
+                font-size: 16px !important;
+                font-weight: bold !important;
+                text-align: center !important;
+                min-width: 80px !important;
+            }
             
             /* Reset de tamanho de fonte para impressão */
             body {
@@ -4265,6 +4287,11 @@ try {
     <p><strong>CLIENTE:</strong> CORREIO - <strong>END.</strong>R: JOÃO NEGRÃO, 1251 - CENTRO - CURITIBA PARANÁ</p>
     </p>
     <p><strong>SISTEMA: </strong>SIV --<strong>SETOR: </strong>EXPEDIÇÃO</p>
+    <?php if (isset($_SESSION['id_despacho_correios']) && $_SESSION['id_despacho_correios'] > 0): ?>
+    <div class="numero-oficio">
+        Nº <?php echo (int)$_SESSION['id_despacho_correios']; ?>
+    </div>
+    <?php endif; ?>
 </div>
 
 <div class="quadro quadro-adicionar">
