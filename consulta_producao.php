@@ -1050,7 +1050,8 @@ try {
             </table>
         </div>
         <?php endif; ?>
-    </div>
+        </div>
+    <?php endif; ?>
     
     <!-- Tab Estatisticas -->
     <div id="tab-estatisticas" class="tab-content">
