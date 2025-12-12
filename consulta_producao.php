@@ -3,8 +3,9 @@
  * consulta_producao.php - Versao 8.15.7
  * Sistema de busca avancada de producao de cedulas
  * 
- * CHANGELOG v8.15.7:
- * - [ALTERADO] Link do PDF agora sugere download (atributo download no anchor)
+ * 
+ * CHANGELOG v8.15.5:
+ * - [CORRIGIDO] Link #ID clicável abre em nova aba
  * - [MANTIDO] Estrutura de pastas/nomes: ID_tipo_dd-mm-yyyy.pdf, pastas lowercase
  * - [MANTIDO] Datas extraídas de criado_at para coincidir com o arquivo salvo
  * 
@@ -234,7 +235,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.15.3</title>
+<title>Consulta de Producao de Cedulas - Versao 8.15.7</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -427,7 +428,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.15.3</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.15.7</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -654,13 +655,20 @@ try {
                                     
                                     // v8.15.3: Converter para file:/// URL (lowercase, sem #)
                                     // file:///Q:cosep/IIPR/Oficios/2025/Dezembro/correios/88_correios_11-12-2025.pdf
-                                    $pdf_link = 'file:///Q:cosep/IIPR/Oficios/' . $ano . '/' . $mes_nome . '/' . $tipo_pasta . '/' . rawurlencode($nome_arquivo);
+                                    // v8.15.7: Correção de local de salvamento para CORREIOS e POUPA TEMPO
+                                    if ($tipo_pasta === 'correios') {
+                                        $pdf_link = '/var/www/dipro/controle/cioficios/correios/' . rawurlencode($nome_arquivo);
+                                    } elseif ($tipo_pasta === 'poupatempo') {
+                                        $pdf_link = '/var/www/dipro/controle/cioficios/poupatempo/' . rawurlencode($nome_arquivo);
+                                    } else {
+                                        $pdf_link = 'file:///Q:cosep/IIPR/Oficios/' . $ano . '/' . $mes_nome . '/' . $tipo_pasta . '/' . rawurlencode($nome_arquivo);
+                                    }
                                     
                                     // ID visual do link
                                     $link_visual = '#' . $d['id'];
                                     ?>
-                                    <!-- v8.15.7: Link sugere download (atributo download) -->
-                                    <a href="<?php echo $pdf_link; ?>" download="<?php echo htmlspecialchars($nome_arquivo, ENT_QUOTES, 'UTF-8'); ?>" rel="noopener noreferrer" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:underline; font-weight:bold; font-size:14px; cursor:pointer;">
+                                    <!-- v8.15.5: Link abre em nova aba -->
+                                    <a href="<?php echo htmlspecialchars($pdf_link, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo htmlspecialchars($caminho_windows, ENT_QUOTES, 'UTF-8'); ?>" style="color:#007bff; text-decoration:underline; font-weight:bold; font-size:14px; cursor:pointer;">
                                         <?php echo htmlspecialchars($link_visual, ENT_QUOTES, 'UTF-8'); ?>
                                     </a>
                                     <?php
