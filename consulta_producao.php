@@ -1,8 +1,12 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.15.7
+ * consulta_producao.php - Versao 8.15.8
  * Sistema de busca avancada de producao de cedulas
  * 
+ * CHANGELOG v8.15.8:
+ * - [CORRIGIDO] Layout dos filtros restaurado (display table horizontal)
+ * - [ALTERADO] Links para Correios e Poupatempo apontam para /var/www/dipro/controle/cioficios/
+ * - [MANTIDO] Datas extraídas de criado_at para coincidir com o arquivo salvo
  * 
  * CHANGELOG v8.15.5:
  * - [CORRIGIDO] Link #ID clicável abre em nova aba
@@ -235,7 +239,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.15.7</title>
+<title>Consulta de Producao de Cedulas - Versao 8.15.8</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -262,8 +266,51 @@ try {
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin-bottom: 20px;
     }
+    .painel-titulo {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 15px;
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 8px;
+    }
+    
+    /* Filtros */
+    .filtros {
+        display: table;
+        width: 100%;
+    }
+    .filtro-grupo {
+        display: table-cell;
+        vertical-align: top;
+        padding-right: 15px;
+    }
+    .filtro-grupo:last-child {
+        padding-right: 0;
+    }
+    .filtro-grupo label {
+        display: block;
+        font-size: 12px;
+        font-weight: bold;
+        color: #555;
+        margin-bottom: 5px;
+    }
+    .filtro-grupo input[type="text"],
+    .filtro-grupo input[type="date"],
+    .filtro-grupo select {
+        width: 100%;
+        padding: 8px 10px;
+        font-size: 13px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .filtro-grupo input:focus,
+    .filtro-grupo select:focus {
+        border-color: #007bff;
+        outline: none;
+    }
     .btn {
-        padding: 8px 16px;
+        padding: 10px 20px;
         font-size: 13px;
         border: none;
         border-radius: 4px;
@@ -428,7 +475,7 @@ try {
 <body>
 
 <div class="container">
-    <h1>Consulta de Producao de Cedulas - Versao 8.15.7</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 8.15.8</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
