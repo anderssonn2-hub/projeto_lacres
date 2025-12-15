@@ -88,105 +88,122 @@ try {
         }
     }
 
-    // Mapa de postos Poupa Tempo (para alerta sonoro)
-    $stmtPt = $pdo->query("SELECT LPAD(posto,3,'0') AS posto FROM ciRegionais WHERE LOWER(REPLACE(entrega,' ','')) LIKE 'poupatempo%'");
-    while ($r = $stmtPt->fetch(PDO::FETCH_ASSOC)) {
-        $poupaTempoPostos[] = $r['posto'];
+    // Mapa de postos Poupa Tempo (para alerta sonoro) - COM LIMITE
+    $poupaTempoPostos = array();
+    try {
+        $stmtPt = $pdo->query("SELECT LPAD(posto,3,'0') AS posto FROM ciRegionais WHERE LOWER(REPLACE(entrega,' ','')) LIKE 'poupatempo%' LIMIT 100");
+        while ($r = $stmtPt->fetch(PDO::FETCH_ASSOC)) {
+            $poupaTempoPostos[] = $r['posto'];
+        }
+    } catch (Exception $e) {
+        // Silent fail - continua sem Poupa Tempo
     }
 
-    // Busca conferências já realizadas
+    // Busca conferências já realizadas - COM ÍNDICE (rápido)
     $conferencias_realizadas = array();
-    $stmtConf = $pdo->query("SELECT DISTINCT nlote FROM conferencia_pacotes WHERE conf=1");
-    while ($row = $stmtConf->fetch(PDO::FETCH_ASSOC)) {
-        $conferencias_realizadas[] = $row['nlote'];
+    try {
+        $stmtConf = $pdo->query("SELECT nlote FROM conferencia_pacotes WHERE conf=1 LIMIT 10000");
+        while ($row = $stmtConf->fetch(PDO::FETCH_ASSOC)) {
+            $conferencias_realizadas[$row['nlote']] = true;
+        }
+    } catch (Exception $e) {
+        // Silent fail
     }
 
     // Se não há filtro de datas especificado, usa filtro padrão (postos não conferidos)
     if (empty($datas_filtro)) {
         $usar_filtro_padrao = true;
         
-        // Busca datas que têm postos NÃO conferidos
-        $stmtDatasPendentes = $pdo->query(
-            "SELECT DISTINCT DATE_FORMAT(p.dataCarga, '%d-%m-%Y') as data
-             FROM ciPostosCsv p
-             LEFT JOIN conferencia_pacotes c ON p.lote = c.nlote AND c.conf = 1
-             WHERE c.nlote IS NULL AND p.dataCarga IS NOT NULL
-             ORDER BY p.dataCarga DESC
-             LIMIT 5"
+        // SIMPLIFICADO: Busca apenas últimas datas (evita LEFT JOIN lento)
+        $stmtUltimas = $pdo->query(
+            "SELECT DISTINCT DATE_FORMAT(dataCarga, '%d-%m-%Y') as data
+             FROM ciPostosCsv
+             WHERE dataCarga IS NOT NULL
+             ORDER BY dataCarga DESC
+             LIMIT 3"
         );
         
-        while ($row = $stmtDatasPendentes->fetch(PDO::FETCH_ASSOC)) {
+        while ($row = $stmtUltimas->fetch(PDO::FETCH_ASSOC)) {
             $datas_filtro[] = $row['data'];
         }
-        
-        // Se não há postos não conferidos, busca últimos dias conferidos
-        if (empty($datas_filtro)) {
-            $stmtUltimas = $pdo->query(
-                "SELECT DISTINCT DATE_FORMAT(p.dataCarga, '%d-%m-%Y') as data
-                 FROM ciPostosCsv p
-                 WHERE p.dataCarga IS NOT NULL
-                 ORDER BY p.dataCarga DESC
-                 LIMIT 5"
-            );
-            
-            while ($row = $stmtUltimas->fetch(PDO::FETCH_ASSOC)) {
-                $datas_filtro[] = $row['data'];
-            }
-        }
     }
 
-    // Busca todas as datas disponíveis para o seletor
-    $stmtTodasDatas = $pdo->query("SELECT DISTINCT DATE_FORMAT(dataCarga, '%d-%m-%Y') as data FROM ciPostosCsv WHERE dataCarga IS NOT NULL ORDER BY dataCarga DESC");
+    // Busca todas as datas disponíveis para o seletor (OTIMIZADO)
+    $stmtTodasDatas = $pdo->query(
+        "SELECT DISTINCT DATE_FORMAT(dataCarga, '%d-%m-%Y') as data 
+         FROM ciPostosCsv 
+         WHERE dataCarga IS NOT NULL 
+         ORDER BY dataCarga DESC 
+         LIMIT 15"
+    );
+    
+    $datas_expedicao = array();
     while ($row = $stmtTodasDatas->fetch(PDO::FETCH_ASSOC)) {
-        if (!in_array($row['data'], $datas_expedicao)) {
-            $datas_expedicao[] = $row['data'];
-        }
+        $datas_expedicao[] = $row['data'];
     }
 
-    // Busca dados dos postos
-    $stmt = $pdo->query("SELECT lote, posto, regional, quantidade, dataCarga FROM ciPostosCsv ORDER BY regional, lote, posto");
-
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        if (empty($row['dataCarga'])) continue;
-
-        $data_original = $row['dataCarga'];
-        $data_formatada = date('d-m-Y', strtotime($data_original));
-
-        // Filtra pela data selecionada
-        if (!in_array($data_formatada, $datas_filtro)) {
-            continue;
+    // Busca dados dos postos - OTIMIZADO COM FILTRO SQL
+    $dataSqlArray = array();
+    foreach ($datas_filtro as $dataFormatada) {
+        // Converte d-m-Y para Y-m-d
+        $partes = explode('-', $dataFormatada);
+        if (count($partes) == 3) {
+            $dataSql = $partes[2] . '-' . $partes[1] . '-' . $partes[0];
+            $dataSqlArray[] = $dataSql;
         }
+    }
+    
+    if (!empty($dataSqlArray)) {
+        $placeholders = implode(',', array_fill(0, count($dataSqlArray), '?'));
+        $sqlPosios = "SELECT lote, posto, regional, quantidade, dataCarga 
+                      FROM ciPostosCsv 
+                      WHERE DATE(dataCarga) IN ($placeholders)
+                      ORDER BY regional, lote, posto
+                      LIMIT 5000";
+        
+        $stmtPosios = $pdo->prepare($sqlPosios);
+        $stmtPosios->execute($dataSqlArray);
+        
+        while ($row = $stmtPosios->fetch(PDO::FETCH_ASSOC)) {
+            if (empty($row['dataCarga'])) continue;
 
-        $lote = $row['lote'];
-        $posto = $row['posto']; // Mantém como número para comparação
-        $posto_str = str_pad($posto, 3, '0', STR_PAD_LEFT);
-        $regional = $row['regional']; // Mantém como número
-        $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
-        $quantidade = str_pad($row['quantidade'], 5, '0', STR_PAD_LEFT);
+            $data_original = $row['dataCarga'];
+            $data_formatada = date('d-m-Y', strtotime($data_original));
 
-        $nome_posto = "$posto_str - Posto $posto_str";
-        $isPoupaTempo = in_array($posto_str, $poupaTempoPostos) ? '1' : '0';
-        $codigo_barras = $lote . $regional_str . $posto_str . $quantidade;
-        $conferido = in_array($lote, $conferencias_realizadas) ? 1 : 0;
+            $lote = $row['lote'];
+            $posto = $row['posto'];
+            $posto_str = str_pad($posto, 3, '0', STR_PAD_LEFT);
+            $regional = $row['regional'];
+            $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
+            $quantidade = str_pad($row['quantidade'], 5, '0', STR_PAD_LEFT);
 
-        // Classifica por regional
-        if (!isset($regionais_data[$regional])) {
-            $regionais_data[$regional] = array();
+            $nome_posto = "$posto_str - Posto $posto_str";
+            $isPoupaTempo = in_array($posto_str, $poupaTempoPostos) ? '1' : '0';
+            $codigo_barras = $lote . $regional_str . $posto_str . $quantidade;
+            $conferido = isset($conferencias_realizadas[$lote]) ? 1 : 0;
+
+            // Classifica por regional
+            if (!isset($regionais_data[$regional])) {
+                $regionais_data[$regional] = array();
+            }
+
+            $regionais_data[$regional][] = array(
+                'regional_str' => $regional_str,
+                'lote' => $lote,
+                'posto' => $posto_str,
+                'nome_posto' => $nome_posto,
+                'data_expedicao' => $data_formatada,
+                'quantidade' => ltrim($quantidade, '0'),
+                'codigo_barras' => $codigo_barras,
+                'isPoupaTempo' => $isPoupaTempo,
+                'conferido' => $conferido
+            );
+
+            $total_codigos++;
+            
+            // Limita a 5000 registros
+            if ($total_codigos >= 5000) break;
         }
-
-        $regionais_data[$regional][] = array(
-            'regional_str' => $regional_str,
-            'lote' => $lote,
-            'posto' => $posto_str,
-            'nome_posto' => $nome_posto,
-            'data_expedicao' => $data_formatada,
-            'quantidade' => ltrim($quantidade, '0'),
-            'codigo_barras' => $codigo_barras,
-            'isPoupaTempo' => $isPoupaTempo,
-            'conferido' => $conferido
-        );
-
-        $total_codigos++;
     }
 
     sort($datas_expedicao);
