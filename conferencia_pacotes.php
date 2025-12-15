@@ -1,27 +1,22 @@
 <?php
-/* conferencia_pacotes.php — v8.16.5
- * Retorna ao modelo original com radio button pré-selecionado + auto-save
- * Mantém todas as funcionalidades:
- * 1) Radio button auto-selecionado salva automaticamente enquanto marca pacotes
- * 2) Desmarcar o radio = não salva mais
- * 3) Exclui conferências por data (input dd-mm-yyyy)
- * 4) Segregação correta de postos:
- *    - Postos Poupa Tempo aparecem PRIMEIRO com rótulo
- *    - Depois Posto(s) da Capital (regional 0)
- *    - Depois Central IIPR (regional 999)
- *    - Depois demais regionais
- * 5) Informação de pacotes: "N pacotes no total / M conferidos"
- * 6) Melhorias de som mantidas (v8.16.3+):
- *    - Som conclusão garantido para 1 pacote
- *    - Alerta Poupa Tempo específico
+/* conferencia_pacotes.php — v8.16.6
+ * Melhorias em relação v8.16.5:
+ * 1) Carregamento inteligente: postos NÃO conferidos ou últimos dias se todos conferidos
+ * 2) Melhor seletor de datas com checkboxes
+ * 3) Total de pacotes visível na tela
+ * 4) Segregação CORRETA de regionais (1, 0, 999, demais)
+ * 5) Sem sobrecarga de dados na tela
+ * 6) Mantém: radio button auto-save, sons, excluir por data
  */
 
 // Inicializa as variáveis
 $total_codigos = 0;
+$datas_postos_nao_conferidos = array();
 $datas_expedicao = array();
 $regionais_data = array();
 $datas_filtro = isset($_GET['datas']) ? $_GET['datas'] : array();
 $poupaTempoPostos = array();
+$usar_filtro_padrao = false; // Flag para usar filtro padrão
 
 // Conexão com o banco de dados
 $host = '10.15.61.169';
@@ -106,6 +101,48 @@ try {
         $conferencias_realizadas[] = $row['nlote'];
     }
 
+    // Se não há filtro de datas especificado, usa filtro padrão (postos não conferidos)
+    if (empty($datas_filtro)) {
+        $usar_filtro_padrao = true;
+        
+        // Busca datas que têm postos NÃO conferidos
+        $stmtDatasPendentes = $pdo->query(
+            "SELECT DISTINCT DATE_FORMAT(p.dataCarga, '%d-%m-%Y') as data
+             FROM ciPostosCsv p
+             LEFT JOIN conferencia_pacotes c ON p.lote = c.nlote AND c.conf = 1
+             WHERE c.nlote IS NULL AND p.dataCarga IS NOT NULL
+             ORDER BY p.dataCarga DESC
+             LIMIT 5"
+        );
+        
+        while ($row = $stmtDatasPendentes->fetch(PDO::FETCH_ASSOC)) {
+            $datas_filtro[] = $row['data'];
+        }
+        
+        // Se não há postos não conferidos, busca últimos dias conferidos
+        if (empty($datas_filtro)) {
+            $stmtUltimas = $pdo->query(
+                "SELECT DISTINCT DATE_FORMAT(p.dataCarga, '%d-%m-%Y') as data
+                 FROM ciPostosCsv p
+                 WHERE p.dataCarga IS NOT NULL
+                 ORDER BY p.dataCarga DESC
+                 LIMIT 5"
+            );
+            
+            while ($row = $stmtUltimas->fetch(PDO::FETCH_ASSOC)) {
+                $datas_filtro[] = $row['data'];
+            }
+        }
+    }
+
+    // Busca todas as datas disponíveis para o seletor
+    $stmtTodasDatas = $pdo->query("SELECT DISTINCT DATE_FORMAT(dataCarga, '%d-%m-%Y') as data FROM ciPostosCsv WHERE dataCarga IS NOT NULL ORDER BY dataCarga DESC");
+    while ($row = $stmtTodasDatas->fetch(PDO::FETCH_ASSOC)) {
+        if (!in_array($row['data'], $datas_expedicao)) {
+            $datas_expedicao[] = $row['data'];
+        }
+    }
+
     // Busca dados dos postos
     $stmt = $pdo->query("SELECT lote, posto, regional, quantidade, dataCarga FROM ciPostosCsv ORDER BY regional, lote, posto");
 
@@ -115,23 +152,22 @@ try {
         $data_original = $row['dataCarga'];
         $data_formatada = date('d-m-Y', strtotime($data_original));
 
-        if (!in_array($data_formatada, $datas_expedicao)) {
-            $datas_expedicao[] = $data_formatada;
-        }
-
-        if (!empty($datas_filtro) && !in_array($data_formatada, $datas_filtro)) {
+        // Filtra pela data selecionada
+        if (!in_array($data_formatada, $datas_filtro)) {
             continue;
         }
 
         $lote = $row['lote'];
-        $posto = str_pad($row['posto'], 3, '0', STR_PAD_LEFT);
+        $posto = $row['posto']; // Mantém como número para comparação
+        $posto_str = str_pad($posto, 3, '0', STR_PAD_LEFT);
         $regional = $row['regional']; // Mantém como número
         $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
         $quantidade = str_pad($row['quantidade'], 5, '0', STR_PAD_LEFT);
 
-        $nome_posto = "$posto - Posto $posto";
-        $isPoupaTempo = in_array($posto, $poupaTempoPostos) ? '1' : '0';
-        $codigo_barras = $lote . $regional_str . $posto . $quantidade;
+        $nome_posto = "$posto_str - Posto $posto_str";
+        $isPoupaTempo = in_array($posto_str, $poupaTempoPostos) ? '1' : '0';
+        $codigo_barras = $lote . $regional_str . $posto_str . $quantidade;
+        $conferido = in_array($lote, $conferencias_realizadas) ? 1 : 0;
 
         // Classifica por regional
         if (!isset($regionais_data[$regional])) {
@@ -141,13 +177,13 @@ try {
         $regionais_data[$regional][] = array(
             'regional_str' => $regional_str,
             'lote' => $lote,
-            'posto' => $posto,
+            'posto' => $posto_str,
             'nome_posto' => $nome_posto,
             'data_expedicao' => $data_formatada,
             'quantidade' => ltrim($quantidade, '0'),
             'codigo_barras' => $codigo_barras,
             'isPoupaTempo' => $isPoupaTempo,
-            'conferido' => in_array($lote, $conferencias_realizadas) ? 1 : 0
+            'conferido' => $conferido
         );
 
         $total_codigos++;
@@ -164,18 +200,64 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes - v8.16.5</title>
+    <title>Conferência de Pacotes - v8.16.6</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         table { border-collapse: collapse; width: 100%; margin-top: 20px; }
         th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
         th { background-color: #f0f0f0; }
         .confirmado { background-color: #c6ffc6; }
-        .filtro-datas { margin-bottom: 20px; }
-        .filtro-datas form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-        .filtro-datas label { margin-right: 10px; }
-        .filtro-datas input[type="text"] { padding: 5px 10px; }
-        .filtro-datas input[type="submit"] { padding: 5px 15px; cursor: pointer; }
+        
+        .filtro-datas {
+            background-color: #f9f9f9;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .filtro-datas h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .datas-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .datas-checkboxes label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        .datas-checkboxes input[type="checkbox"] {
+            margin-right: 8px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .filtro-botoes {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .filtro-botoes input[type="submit"] {
+            padding: 8px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .filtro-botoes input[type="submit"]:hover {
+            background-color: #0056b3;
+        }
         
         .excluir-data-form {
             background-color: #fff3cd;
@@ -250,21 +332,31 @@ try {
     </style>
 </head>
 <body>
-    <h1>Conferência de Pacotes - v8.16.5</h1>
+    <h1>Conferência de Pacotes - v8.16.6</h1>
 
-    <!-- Filtro de Datas -->
+    <!-- Filtro de Datas com Checkboxes -->
     <div class="filtro-datas">
         <form method="GET">
-            <label for="datas">Filtrar por data(s):</label>
-            <select name="datas[]" multiple size="5">
+            <h3>Selecione data(s) para filtrar:</h3>
+            <div class="datas-checkboxes">
                 <?php foreach ($datas_expedicao as $data): ?>
-                    <option value="<?php echo $data; ?>" <?php echo (in_array($data, $datas_filtro) ? 'selected' : ''); ?>>
+                    <label>
+                        <input type="checkbox" name="datas[]" value="<?php echo $data; ?>" 
+                            <?php echo (in_array($data, $datas_filtro) ? 'checked' : ''); ?>>
                         <?php echo $data; ?>
-                    </option>
+                    </label>
                 <?php endforeach; ?>
-            </select>
-            <input type="submit" value="Filtrar">
+            </div>
+            <div class="filtro-botoes">
+                <input type="submit" value="Aplicar Filtro">
+                <input type="button" value="Limpar Filtro" onclick="document.querySelectorAll('.datas-checkboxes input').forEach(cb => cb.checked = false);">
+            </div>
         </form>
+    </div>
+
+    <!-- Total de Pacotes -->
+    <div style="margin-bottom: 20px; padding: 10px; background-color: #e8f4f8; border-left: 4px solid #2196F3; border-radius: 4px;">
+        <strong>Total de pacotes exibidos: <?php echo $total_codigos; ?></strong>
     </div>
 
     <!-- Excluir Conferências por Data -->
@@ -292,213 +384,156 @@ try {
     <!-- Tabelas por Regional -->
     <div id="tabelas">
     <?php
-        // Reordena regionais: Postos Poupa Tempo primeiro, depois Capital (0), depois Central IIPR (999), depois demais
-        $order = array();
+        // Segregação CORRETA: 1) Poupa Tempo, 2) Regional 1, 3) Capital (0), 4) Central IIPR (999), 5) Demais Regionais
         
-        // Primeiro, postos Poupa Tempo
+        // 1. POSTOS POUPA TEMPO (de qualquer regional)
+        $postos_pt_todos = array();
         foreach ($regionais_data as $regional => $postos) {
-            $tem_poupa_tempo = false;
             foreach ($postos as $p) {
                 if ($p['isPoupaTempo'] == '1') {
-                    $tem_poupa_tempo = true;
-                    break;
+                    $postos_pt_todos[] = $p;
                 }
             }
-            if ($tem_poupa_tempo) {
-                $order['PT_' . $regional] = $regional; // Poupa Tempo da regional específica
+        }
+        
+        if (!empty($postos_pt_todos)) {
+            $total_pt = count($postos_pt_todos);
+            $conferidos_pt = count(array_filter($postos_pt_todos, function($p) { return $p['conferido']; }));
+            
+            echo "<h2>Postos Poupa Tempo ($total_pt pacotes no total / $conferidos_pt conferidos) <span class='poupa-tempo-label'>POUPA TEMPO</span></h2>";
+            echo '<table>';
+            echo '<thead><tr>';
+            echo '<th>Salvar</th><th>Regional</th><th>Lote</th><th>Posto</th><th>Data</th><th>Qtd</th><th>Código</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($postos_pt_todos as $post) {
+                $classe = $post['conferido'] ? 'confirmado' : '';
+                $checked = $post['conferido'] ? 'checked' : '';
+                echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='1' class='$classe'>";
+                echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
+                echo "<td>{$post['regional_str']}</td><td>{$post['lote']}</td><td>{$post['posto']}</td>";
+                echo "<td>{$post['data_expedicao']}</td><td>{$post['quantidade']}</td><td>{$post['codigo_barras']}</td>";
+                echo '</tr>';
+            }
+            echo '</tbody></table>';
+        }
+        
+        // 2. REGIONAL 1
+        if (isset($regionais_data[1])) {
+            $postos_r1 = array_filter($regionais_data[1], function($p) {
+                return $p['isPoupaTempo'] != '1';
+            });
+            
+            if (!empty($postos_r1)) {
+                $total_r1 = count($postos_r1);
+                $conferidos_r1 = count(array_filter($postos_r1, function($p) { return $p['conferido']; }));
+                
+                echo "<h2>001 - Regional 001 ($total_r1 pacotes no total / $conferidos_r1 conferidos)</h2>";
+                echo '<table>';
+                echo '<thead><tr>';
+                echo '<th>Salvar</th><th>Regional</th><th>Lote</th><th>Posto</th><th>Data</th><th>Qtd</th><th>Código</th>';
+                echo '</tr></thead><tbody>';
+                
+                foreach ($postos_r1 as $post) {
+                    $classe = $post['conferido'] ? 'confirmado' : '';
+                    $checked = $post['conferido'] ? 'checked' : '';
+                    echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='0' class='$classe'>";
+                    echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
+                    echo "<td>{$post['regional_str']}</td><td>{$post['lote']}</td><td>{$post['posto']}</td>";
+                    echo "<td>{$post['data_expedicao']}</td><td>{$post['quantidade']}</td><td>{$post['codigo_barras']}</td>";
+                    echo '</tr>';
+                }
+                echo '</tbody></table>';
             }
         }
         
-        // Capital (regional 0)
+        // 3. CAPITAL (Regional 0)
         if (isset($regionais_data[0])) {
-            $order['CAPITAL'] = 0;
-        }
-        
-        // Central IIPR (regional 999)
-        if (isset($regionais_data[999])) {
-            $order['CENTRAL'] = 999;
-        }
-        
-        // Demais regionais
-        foreach (array_keys($regionais_data) as $regional) {
-            if ($regional != 0 && $regional != 999) {
-                $order['REG_' . $regional] = $regional;
+            $postos_capital = array_filter($regionais_data[0], function($p) {
+                return $p['isPoupaTempo'] != '1';
+            });
+            
+            if (!empty($postos_capital)) {
+                $total_capital = count($postos_capital);
+                $conferidos_capital = count(array_filter($postos_capital, function($p) { return $p['conferido']; }));
+                
+                echo "<h2>Posto(s) da Capital ($total_capital pacotes no total / $conferidos_capital conferidos)</h2>";
+                echo '<table>';
+                echo '<thead><tr>';
+                echo '<th>Salvar</th><th>Regional</th><th>Lote</th><th>Posto</th><th>Data</th><th>Qtd</th><th>Código</th>';
+                echo '</tr></thead><tbody>';
+                
+                foreach ($postos_capital as $post) {
+                    $classe = $post['conferido'] ? 'confirmado' : '';
+                    $checked = $post['conferido'] ? 'checked' : '';
+                    echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='0' class='$classe'>";
+                    echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
+                    echo "<td>{$post['regional_str']}</td><td>{$post['lote']}</td><td>{$post['posto']}</td>";
+                    echo "<td>{$post['data_expedicao']}</td><td>{$post['quantidade']}</td><td>{$post['codigo_barras']}</td>";
+                    echo '</tr>';
+                }
+                echo '</tbody></table>';
             }
         }
         
-        // Processa cada grupo
-        foreach ($order as $key => $regional) {
-            if ($regional === 0) {
-                // Capital - postos não-Poupa Tempo
-                $postos_capital = array_filter($regionais_data[0], function($p) {
+        // 4. CENTRAL IIPR (Regional 999)
+        if (isset($regionais_data[999])) {
+            $total_central = count($regionais_data[999]);
+            $conferidos_central = count(array_filter($regionais_data[999], function($p) { return $p['conferido']; }));
+            
+            echo "<h2>Central IIPR ($total_central pacotes no total / $conferidos_central conferidos)</h2>";
+            echo '<table>';
+            echo '<thead><tr>';
+            echo '<th>Salvar</th><th>Regional</th><th>Lote</th><th>Posto</th><th>Data</th><th>Qtd</th><th>Código</th>';
+            echo '</tr></thead><tbody>';
+            
+            foreach ($regionais_data[999] as $post) {
+                $classe = $post['conferido'] ? 'confirmado' : '';
+                $checked = $post['conferido'] ? 'checked' : '';
+                echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='0' class='$classe'>";
+                echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
+                echo "<td>{$post['regional_str']}</td><td>{$post['lote']}</td><td>{$post['posto']}</td>";
+                echo "<td>{$post['data_expedicao']}</td><td>{$post['quantidade']}</td><td>{$post['codigo_barras']}</td>";
+                echo '</tr>';
+            }
+            echo '</tbody></table>';
+        }
+        
+        // 5. DEMAIS REGIONAIS (2, 3, 4, 5, etc) - sem Poupa Tempo e sem 1, 0, 999
+        foreach (array_keys($regionais_data) as $regional) {
+            if ($regional != 0 && $regional != 1 && $regional != 999) {
+                $postos_reg = array_filter($regionais_data[$regional], function($p) {
                     return $p['isPoupaTempo'] != '1';
                 });
                 
-                if (!empty($postos_capital)) {
-                    $total_capital = count($postos_capital);
-                    $conferidos_capital = count(array_filter($postos_capital, function($p) { return $p['conferido']; }));
-                    
-                    echo "<h2>Posto(s) da Capital ($total_capital pacotes no total / $conferidos_capital conferidos)</h2>";
-                    echo '<table>';
-                    echo '<thead>';
-                    echo '<tr>';
-                    echo '<th>Salvar</th>';
-                    echo '<th>Regional</th>';
-                    echo '<th>Número do Lote</th>';
-                    echo '<th>Número e Nome do Posto</th>';
-                    echo '<th>Data Expedição</th>';
-                    echo '<th>Quantidade</th>';
-                    echo '<th>Código de Barras</th>';
-                    echo '</tr>';
-                    echo '</thead>';
-                    echo '<tbody>';
-                    
-                    foreach ($postos_capital as $post) {
-                        $classe = $post['conferido'] ? 'confirmado' : '';
-                        $checked = $post['conferido'] ? 'checked' : '';
-                        echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='{$post['isPoupaTempo']}' class='$classe'>";
-                        echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
-                        echo "<td>{$post['regional_str']}</td>";
-                        echo "<td>{$post['lote']}</td>";
-                        echo "<td>{$post['nome_posto']}</td>";
-                        echo "<td>{$post['data_expedicao']}</td>";
-                        echo "<td>{$post['quantidade']}</td>";
-                        echo "<td>{$post['codigo_barras']}</td>";
-                        echo '</tr>';
-                    }
-                    
-                    echo '</tbody>';
-                    echo '</table>';
-                }
-            } elseif ($regional === 999) {
-                // Central IIPR - todos os postos
-                if (!empty($regionais_data[999])) {
-                    $total_central = count($regionais_data[999]);
-                    $conferidos_central = count(array_filter($regionais_data[999], function($p) { return $p['conferido']; }));
-                    
-                    echo "<h2>Central IIPR ($total_central pacotes no total / $conferidos_central conferidos)</h2>";
-                    echo '<table>';
-                    echo '<thead>';
-                    echo '<tr>';
-                    echo '<th>Salvar</th>';
-                    echo '<th>Regional</th>';
-                    echo '<th>Número do Lote</th>';
-                    echo '<th>Número e Nome do Posto</th>';
-                    echo '<th>Data Expedição</th>';
-                    echo '<th>Quantidade</th>';
-                    echo '<th>Código de Barras</th>';
-                    echo '</tr>';
-                    echo '</thead>';
-                    echo '<tbody>';
-                    
-                    foreach ($regionais_data[999] as $post) {
-                        $classe = $post['conferido'] ? 'confirmado' : '';
-                        $checked = $post['conferido'] ? 'checked' : '';
-                        echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='{$post['isPoupaTempo']}' class='$classe'>";
-                        echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
-                        echo "<td>{$post['regional_str']}</td>";
-                        echo "<td>{$post['lote']}</td>";
-                        echo "<td>{$post['nome_posto']}</td>";
-                        echo "<td>{$post['data_expedicao']}</td>";
-                        echo "<td>{$post['quantidade']}</td>";
-                        echo "<td>{$post['codigo_barras']}</td>";
-                        echo '</tr>';
-                    }
-                    
-                    echo '</tbody>';
-                    echo '</table>';
-                }
-            } elseif (strpos($key, 'PT_') === 0) {
-                // Postos Poupa Tempo de uma regional específica
-                $postos_pt = array_filter($regionais_data[$regional], function($p) {
-                    return $p['isPoupaTempo'] == '1';
-                });
-                
-                if (!empty($postos_pt)) {
-                    $total_pt = count($postos_pt);
-                    $conferidos_pt = count(array_filter($postos_pt, function($p) { return $p['conferido']; }));
-                    
+                if (!empty($postos_reg)) {
                     $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
-                    echo "<h2>$regional_str - Regional $regional_str ($total_pt pacotes no total / $conferidos_pt conferidos) <span class='poupa-tempo-label'>POUPA TEMPO</span></h2>";
-                    echo '<table>';
-                    echo '<thead>';
-                    echo '<tr>';
-                    echo '<th>Salvar</th>';
-                    echo '<th>Regional</th>';
-                    echo '<th>Número do Lote</th>';
-                    echo '<th>Número e Nome do Posto</th>';
-                    echo '<th>Data Expedição</th>';
-                    echo '<th>Quantidade</th>';
-                    echo '<th>Código de Barras</th>';
-                    echo '</tr>';
-                    echo '</thead>';
-                    echo '<tbody>';
+                    $total_reg = count($postos_reg);
+                    $conferidos_reg = count(array_filter($postos_reg, function($p) { return $p['conferido']; }));
                     
-                    foreach ($postos_pt as $post) {
+                    echo "<h2>$regional_str - Regional $regional_str ($total_reg pacotes no total / $conferidos_reg conferidos)</h2>";
+                    echo '<table>';
+                    echo '<thead><tr>';
+                    echo '<th>Salvar</th><th>Regional</th><th>Lote</th><th>Posto</th><th>Data</th><th>Qtd</th><th>Código</th>';
+                    echo '</tr></thead><tbody>';
+                    
+                    foreach ($postos_reg as $post) {
                         $classe = $post['conferido'] ? 'confirmado' : '';
                         $checked = $post['conferido'] ? 'checked' : '';
-                        echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='{$post['isPoupaTempo']}' class='$classe'>";
+                        echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='0' class='$classe'>";
                         echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
-                        echo "<td>{$post['regional_str']}</td>";
-                        echo "<td>{$post['lote']}</td>";
-                        echo "<td>{$post['nome_posto']}</td>";
-                        echo "<td>{$post['data_expedicao']}</td>";
-                        echo "<td>{$post['quantidade']}</td>";
-                        echo "<td>{$post['codigo_barras']}</td>";
+                        echo "<td>{$post['regional_str']}</td><td>{$post['lote']}</td><td>{$post['posto']}</td>";
+                        echo "<td>{$post['data_expedicao']}</td><td>{$post['quantidade']}</td><td>{$post['codigo_barras']}</td>";
                         echo '</tr>';
                     }
-                    
-                    echo '</tbody>';
-                    echo '</table>';
-                }
-            } else {
-                // Demais regionais - postos não-Poupa Tempo
-                if (!empty($regionais_data[$regional])) {
-                    $postos_reg = array_filter($regionais_data[$regional], function($p) {
-                        return $p['isPoupaTempo'] != '1';
-                    });
-                    
-                    if (!empty($postos_reg)) {
-                        $total_reg = count($postos_reg);
-                        $conferidos_reg = count(array_filter($postos_reg, function($p) { return $p['conferido']; }));
-                        
-                        $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
-                        echo "<h2>$regional_str - Regional $regional_str ($total_reg pacotes no total / $conferidos_reg conferidos)</h2>";
-                        echo '<table>';
-                        echo '<thead>';
-                        echo '<tr>';
-                        echo '<th>Salvar</th>';
-                        echo '<th>Regional</th>';
-                        echo '<th>Número do Lote</th>';
-                        echo '<th>Número e Nome do Posto</th>';
-                        echo '<th>Data Expedição</th>';
-                        echo '<th>Quantidade</th>';
-                        echo '<th>Código de Barras</th>';
-                        echo '</tr>';
-                        echo '</thead>';
-                        echo '<tbody>';
-                        
-                        foreach ($postos_reg as $post) {
-                            $classe = $post['conferido'] ? 'confirmado' : '';
-                            $checked = $post['conferido'] ? 'checked' : '';
-                            echo "<tr data-lote='{$post['lote']}' data-codigo='{$post['codigo_barras']}' data-poupatempo='{$post['isPoupaTempo']}' class='$classe'>";
-                            echo "<td><input type='radio' name='salvar_{$post['lote']}' class='radio-conferencia' data-lote='{$post['lote']}' $checked></td>";
-                            echo "<td>{$post['regional_str']}</td>";
-                            echo "<td>{$post['lote']}</td>";
-                            echo "<td>{$post['nome_posto']}</td>";
-                            echo "<td>{$post['data_expedicao']}</td>";
-                            echo "<td>{$post['quantidade']}</td>";
-                            echo "<td>{$post['codigo_barras']}</td>";
-                            echo '</tr>';
-                        }
-                        
-                        echo '</tbody>';
-                        echo '</table>';
-                    }
+                    echo '</tbody></table>';
                 }
             }
         }
     ?>
+    </div>
+
+    <!-- Áudios -->
     </div>
 
     <!-- Áudios -->
