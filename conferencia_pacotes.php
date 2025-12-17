@@ -182,7 +182,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v8.17.2</title>
+    <title>Conferência de Pacotes v8.17.5</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
@@ -274,9 +274,23 @@ try {
             font-weight: 700;
             margin-left: 8px;
         }
+        .versao {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #28a745;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body>
+<div class="versao">v8.17.5</div>
 
 <h2>📋 Conferência de Pacotes v8.17.2</h2>
 
@@ -327,40 +341,45 @@ try {
 // ========================================
 
 $grupo_pt = array();           // Todos postos Poupa Tempo em UMA lista
-$grupo_r01 = array();          // Todos postos Regional 01 em UMA lista
+$grupo_r01 = array();          // Todos postos Regional 01 em UMA lista (excluindo PT)
 $grupo_capital = array();      // Todos postos Capital em UMA lista
 $grupo_999 = array();          // Todos postos Central IIPR em UMA lista
 $grupo_outros = array();       // Regionais: array($regional => array de postos)
 
 foreach ($regionais_data as $regional => $postos) {
     foreach ($postos as $posto) {
-        // 1. Poupa Tempo (PRIORIDADE MÁXIMA)
+        // 1. Poupa Tempo (PRIORIDADE MÁXIMA - ex: posto 28, 80)
         if ($posto['tipoEntrega'] == 'poupatempo') {
             $grupo_pt[] = $posto; // Adiciona direto na lista
+            continue; // v8.17.5: NÃO classifica em outros grupos
         }
-        // 2. Regional 01 (independente de ser correios ou não)
-        elseif ($regional == 1) {
+        // 2. Regional 01 (postos 01, 02, 27 - excluindo os que já foram para PT)
+        if ($regional == 1) {
             $grupo_r01[] = $posto; // Adiciona direto na lista
+            continue;
         }
         // 3. Capital (regional = 0)
-        elseif ($regional == 0) {
+        if ($regional == 0) {
             $grupo_capital[] = $posto; // Adiciona direto na lista
+            continue;
         }
         // 4. Central IIPR (regional = 999)
-        elseif ($regional == 999) {
+        if ($regional == 999) {
             $grupo_999[] = $posto; // Adiciona direto na lista
+            continue;
         }
-        // 5. Demais regionais (mantém agrupamento por regional)
-        else {
-            if (!isset($grupo_outros[$regional])) {
-                $grupo_outros[$regional] = array();
-            }
-            $grupo_outros[$regional][] = $posto;
+        // 5. Demais regionais (serão ordenadas crescentemente)
+        if (!isset($grupo_outros[$regional])) {
+            $grupo_outros[$regional] = array();
         }
+        $grupo_outros[$regional][] = $posto;
     }
 }
 
-// v8.17.4: Função para renderizar tabela (aceita array plano OU aninhado)
+// v8.17.5: Ordena demais regionais em ordem crescente
+ksort($grupo_outros);
+
+// v8.17.5: Função para renderizar tabela (aceita array plano OU aninhado)
 function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
     if (empty($dados)) {
         return;
@@ -445,8 +464,8 @@ if (!empty($grupo_capital)) {
 if (!empty($grupo_999)) {
     renderizarTabela('Postos da Central IIPR', $grupo_999);
 }
+// v8.17.5: Demais regionais já ordenadas (ksort aplicado na linha 367)
 if (!empty($grupo_outros)) {
-    ksort($grupo_outros);
     foreach ($grupo_outros as $regional => $postos) {
         $regionalStr = str_pad($regional, 3, '0', STR_PAD_LEFT);
         renderizarTabela($regionalStr . ' - Regional ' . $regionalStr, array($regional => $postos));
