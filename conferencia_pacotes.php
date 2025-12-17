@@ -1,16 +1,20 @@
 <?php
-/* conferencia_pacotes.php — v8.17.4
- * AGRUPAMENTO CORRETO: UMA TABELA POR GRUPO
+/* conferencia_pacotes.php — v9.2
+ * LÓGICA INTELIGENTE DE SONS BASEADA NO CONTEXTO
  * 
- * Ordem:
- * 1. Postos do Poupa Tempo - UMA tabela com TODOS os postos PT
- * 2. Postos do Posto 01 - UMA tabela com TODOS os postos da regional 01
- * 3. Postos da Capital - UMA tabela com TODOS os postos da capital (regional 0)
- * 4. Postos da Central IIPR - UMA tabela com TODOS os postos da central (999)
- * 5. Regionais - cada regional sua própria tabela
+ * Sons:
+ * - beep.mp3: Primeiro pacote OU pacote correto do grupo atual
+ * - posto_poupatempo.mp3: PT aparece enquanto confere correios (misturado!)
+ * - pacotedeoutraregional.mp3: Regional diferente OU correios no meio do PT
+ * - pacotejaconferido.mp3: Pacote já conferido
+ * - concluido.mp3: Grupo completo conferido (PT/Capital/R01/999/regionais)
  * 
- * Formato: "Postos do Poupa Tempo (23 pacotes / 15 conferidos)"
- * Fecha conexões MySQL após cada operação
+ * Agrupamento (fonte: ciRegionais):
+ * 1. Postos do Poupa Tempo - UMA tabela (ciRegionais.entrega)
+ * 2. Postos do Posto 01 - UMA tabela (ciRegionais.regional = 1, exceto PT)
+ * 3. Postos da Capital - UMA tabela (ciRegionais.regional = 0)
+ * 4. Postos da Central IIPR - UMA tabela (ciRegionais.regional = 999)
+ * 5. Regionais - ordem crescente (100, 105, 200...)
  */
 
 // Inicializa variáveis
@@ -199,7 +203,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v9.0</title>
+    <title>Conferência de Pacotes v9.2</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
@@ -307,7 +311,7 @@ try {
     </style>
 </head>
 <body>
-<div class="versao">v9.0</div>
+<div class="versao">v9.2</div>
 
 <h2>📋 Conferência de Pacotes v8.17.2</h2>
 
@@ -504,7 +508,7 @@ if (empty($regionais_data)) {
 
 <script>
 // ========================================
-// v8.17.1: JavaScript com AJAX auto-save
+// v9.2: JavaScript com lógica inteligente de sons
 // ========================================
 
 function substituirMultiplosPadroes(inputString) {
@@ -539,7 +543,10 @@ document.addEventListener("DOMContentLoaded", function() {
     var postoPoupaTempo = document.getElementById("posto_poupatempo");
     var btnResetar = document.getElementById("resetar");
     
+    // v9.2: Variáveis de contexto para sons inteligentes
     var regionalAtual = null;
+    var tipoAtual = null; // 'poupatempo' ou 'correios'
+    var primeiroConferido = false;
     
     input.focus();
     
@@ -591,6 +598,7 @@ document.addEventListener("DOMContentLoaded", function() {
         
         var regionalDoPacote = linha.getAttribute("data-regional");
         var isPoupaTempo = linha.getAttribute("data-ispt") === "1";
+        var tipoPacote = isPoupaTempo ? 'poupatempo' : 'correios';
         
         // Verifica se já foi conferido
         if (linha.classList.contains("confirmado")) {
@@ -599,26 +607,42 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
         
-        // Define regional atual se não estiver definido
-        if (!regionalAtual) {
-            regionalAtual = regionalDoPacote;
-        }
+        // v9.2: Lógica inteligente de sons
+        var somParaTocar = null;
         
-        // Verifica se o pacote é de outra regional
-        if (regionalDoPacote !== regionalAtual) {
-            pacoteOutraRegional.play();
-            input.value = "";
-            return;
+        // Caso 1: Primeiro pacote da conferência - sempre beep
+        if (!primeiroConferido) {
+            somParaTocar = beep;
+            regionalAtual = regionalDoPacote;
+            tipoAtual = tipoPacote;
+            primeiroConferido = true;
+        }
+        // Caso 2: Pacote Poupa Tempo aparecendo em meio aos Correios
+        else if (tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
+            somParaTocar = postoPoupaTempo; // Alerta: PT misturado com correios!
+            // NÃO altera regionalAtual nem tipoAtual - continua conferindo correios
+        }
+        // Caso 3: Pacote Correios aparecendo em meio ao Poupa Tempo
+        else if (tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
+            somParaTocar = pacoteOutraRegional; // Alerta: correios no meio do PT!
+            // NÃO altera regionalAtual nem tipoAtual
+        }
+        // Caso 4: Regional diferente (mesmo tipo)
+        else if (regionalDoPacote !== regionalAtual && tipoPacote === tipoAtual) {
+            somParaTocar = pacoteOutraRegional; // Alerta: regional diferente!
+            // NÃO altera regionalAtual nem tipoAtual
+        }
+        // Caso 5: Pacote correto (mesma regional, mesmo tipo)
+        else {
+            somParaTocar = beep; // Tudo certo!
         }
         
         // Marca como conferido
         linha.classList.add("confirmado");
         
-        // Toca áudio diferenciado para Poupa Tempo
-        if (isPoupaTempo) {
-            postoPoupaTempo.play();
-        } else {
-            beep.play();
+        // Toca o som apropriado
+        if (somParaTocar) {
+            somParaTocar.play();
         }
         
         input.value = "";
@@ -638,19 +662,47 @@ document.addEventListener("DOMContentLoaded", function() {
             salvarConferencia(lote, regional, posto, dataexp, qtd, codbar);
         }
         
-        // Verifica se completou a regional
-        var linhasDaRegional = document.querySelectorAll('tr[data-regional="' + regionalAtual + '"]');
-        var conferidos = [];
+        // v9.2: Verifica se completou o GRUPO atual (PT, Capital, R01, 999, ou outra regional)
+        var grupoAtual = null;
+        var todasLinhas = document.querySelectorAll('tbody tr');
+        var linhasDoGrupo = [];
         
-        for (var i = 0; i < linhasDaRegional.length; i++) {
-            if (linhasDaRegional[i].classList.contains("confirmado")) {
-                conferidos.push(linhasDaRegional[i]);
+        // Determina qual grupo está sendo conferido
+        if (tipoAtual === 'poupatempo') {
+            grupoAtual = 'poupatempo';
+            // Todas as linhas PT
+            for (var i = 0; i < todasLinhas.length; i++) {
+                if (todasLinhas[i].getAttribute('data-ispt') === '1') {
+                    linhasDoGrupo.push(todasLinhas[i]);
+                }
+            }
+        } else {
+            grupoAtual = regionalAtual;
+            // Todas as linhas da regional atual que NÃO sejam PT
+            for (var i = 0; i < todasLinhas.length; i++) {
+                if (todasLinhas[i].getAttribute('data-regional') === regionalAtual && 
+                    todasLinhas[i].getAttribute('data-ispt') !== '1') {
+                    linhasDoGrupo.push(todasLinhas[i]);
+                }
             }
         }
         
-        if (conferidos.length === linhasDaRegional.length) {
-            concluido.play();
+        // Conta quantos foram conferidos
+        var conferidosDoGrupo = 0;
+        for (var j = 0; j < linhasDoGrupo.length; j++) {
+            if (linhasDoGrupo[j].classList.contains('confirmado')) {
+                conferidosDoGrupo++;
+            }
+        }
+        
+        // Se completou o grupo, toca concluído e reseta contexto
+        if (conferidosDoGrupo === linhasDoGrupo.length && linhasDoGrupo.length > 0) {
+            setTimeout(function() {
+                concluido.play();
+            }, 300); // Pequeno delay para não sobrepor com o beep
             regionalAtual = null;
+            tipoAtual = null;
+            primeiroConferido = false;
         }
     });
     
@@ -672,6 +724,8 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             
             regionalAtual = null;
+            tipoAtual = null; // v9.2: Reseta tipo
+            primeiroConferido = false; // v9.2: Reseta flag
             input.value = "";
             input.focus();
             
