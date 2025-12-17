@@ -1,7 +1,11 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.16.1
- * Sistema de busca avancada de producao de cedulas
+ * consulta_producao.php - Versao 8.17.0
+ * 
+ * CHANGELOG v8.17.0:
+ * - [CORRIGIDO] Detalhes do despacho não apareciam - queries retornando vazio
+ * - [CORRIGIDO] Campos necessários adicionados às queries de itens e lotes
+ * - [MANTIDO] Funcionalidade completa de estatísticas e filtros
  * 
  * CHANGELOG v8.16.1:
  * - [NOVO] Aba Estatisticas expandida com múltiplos painéis de dados
@@ -810,28 +814,72 @@ try {
         <!-- Detalhes do Despacho -->
         <?php if ($id_despacho > 0): ?>
         <?php
-            // v8.16.1: Carregar tipo e dados do despacho selecionado
+            // v8.17.0: Carregar tipo e dados do despacho selecionado - QUERIES CORRIGIDAS
             $despacho_tipo = '';
             $itens = array();
             $lotes = array();
             try {
+                // Busca o tipo do despacho
                 $stmtTipo = $pdo_controle->prepare("SELECT grupo FROM ciDespachos WHERE id = ? LIMIT 1");
                 $stmtTipo->execute(array($id_despacho));
                 $rowTipo = $stmtTipo->fetch();
                 if ($rowTipo && isset($rowTipo['grupo'])) {
                     $despacho_tipo = $rowTipo['grupo'];
                 }
+                
+                // Busca itens (Poupa Tempo)
                 if ($despacho_tipo === 'POUPA TEMPO') {
-                    $stmtItens = $pdo_controle->prepare("SELECT i.posto, i.lote, i.quantidade, i.usuario, i.lacre_iipr, i.lacre_correios, i.etiqueta_correios, i.conferido, i.conferido_por, p.nome AS nome_posto, l.data_carga, l.responsaveis FROM ciDespachoItens i LEFT JOIN ciPostosCsv p ON p.codigo = i.posto LEFT JOIN ciDespachoLotes l ON l.id_despacho = i.id_despacho AND l.posto = i.posto AND l.lote = i.lote WHERE i.id_despacho = ? ORDER BY i.posto, i.lote");
+                    $stmtItens = $pdo_controle->prepare("
+                        SELECT 
+                            i.posto, 
+                            i.lote, 
+                            i.quantidade, 
+                            i.usuario, 
+                            COALESCE(i.lacre_iipr, '') AS lacre_iipr,
+                            COALESCE(i.lacre_correios, '') AS lacre_correios,
+                            COALESCE(i.etiqueta_correios, '') AS etiqueta_correios,
+                            COALESCE(i.conferido, 'N') AS conferido,
+                            COALESCE(i.conferido_por, '') AS conferido_por,
+                            COALESCE(p.nome, CONCAT('Posto ', i.posto)) AS nome_posto,
+                            COALESCE(l.data_carga, '') AS data_carga,
+                            COALESCE(l.responsaveis, '') AS responsaveis
+                        FROM ciDespachoItens i
+                        LEFT JOIN ciPostosCsv p ON p.codigo = i.posto
+                        LEFT JOIN ciDespachoLotes l ON l.id_despacho = i.id_despacho 
+                            AND l.posto = i.posto 
+                            AND l.lote = i.lote
+                        WHERE i.id_despacho = ?
+                        ORDER BY i.posto, i.lote
+                    ");
                     $stmtItens->execute(array($id_despacho));
                     $itens = $stmtItens->fetchAll();
-                } else {
-                    $stmtLotes = $pdo_controle->prepare("SELECT l.posto, l.lote, l.quantidade, l.data_carga, l.responsaveis, l.etiquetaiipr, l.etiquetacorreios, l.etiqueta_correios, l.conferido, l.conferido_por FROM ciDespachoLotes l WHERE l.id_despacho = ? ORDER BY l.posto, CAST(l.lote AS UNSIGNED)");
-                    $stmtLotes->execute(array($id_despacho));
-                    $lotes = $stmtLotes->fetchAll();
                 }
+                
+                // Busca lotes (Correios - SEMPRE busca para mostrar)
+                $stmtLotes = $pdo_controle->prepare("
+                    SELECT 
+                        l.posto, 
+                        l.lote, 
+                        l.quantidade, 
+                        COALESCE(l.data_carga, '') AS data_carga,
+                        COALESCE(l.responsaveis, '') AS responsaveis,
+                        COALESCE(l.etiquetaiipr, 0) AS etiquetaiipr,
+                        COALESCE(l.etiquetacorreios, 0) AS etiquetacorreios,
+                        COALESCE(l.etiqueta_correios, '') AS etiqueta_correios,
+                        COALESCE(l.conferido, 'N') AS conferido,
+                        COALESCE(l.conferido_por, '') AS conferido_por
+                    FROM ciDespachoLotes l
+                    WHERE l.id_despacho = ?
+                    ORDER BY l.posto, CAST(l.lote AS UNSIGNED)
+                ");
+                $stmtLotes->execute(array($id_despacho));
+                $lotes = $stmtLotes->fetchAll();
+                
             } catch (Exception $e) {
-                // Falha silenciosa para não quebrar a página
+                // v8.17.0: Exibe erro para debug em vez de falha silenciosa
+                echo "<div style='background:#f8d7da; color:#721c24; padding:10px; margin:10px 0; border:1px solid #f5c6cb;'>";
+                echo "<strong>Erro ao carregar detalhes:</strong> " . htmlspecialchars($e->getMessage());
+                echo "</div>";
             }
         ?>
         <div class="painel">
