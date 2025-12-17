@@ -64,19 +64,32 @@ try {
         die(json_encode(array('success' => true)));
     }
 
-    // v8.17.3: Busca postos com tipo de entrega (Poupa Tempo e Correios)
-    $postosTipoEntrega = array(); // posto => 'poupatempo' ou 'correios'
-    $sql = "SELECT LPAD(posto,3,'0') AS posto, LOWER(TRIM(REPLACE(entrega,' ',''))) AS tipo 
-            FROM ciRegionais WHERE entrega IS NOT NULL LIMIT 500";
+    // v9.0: Busca REGIONAL e ENTREGA de ciRegionais (fonte da verdade)
+    $postosInfo = array(); // posto => array('regional' => X, 'entrega' => 'poupatempo'/'correios'/null)
+    $sql = "SELECT LPAD(posto,3,'0') AS posto, 
+                   CAST(regional AS UNSIGNED) AS regional,
+                   LOWER(TRIM(REPLACE(entrega,' ',''))) AS entrega
+            FROM ciRegionais 
+            LIMIT 1000";
     $stmt = $pdo->query($sql);
     while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $tipo_limpo = $r['tipo'];
-        if (strpos($tipo_limpo, 'poupa') !== false || strpos($tipo_limpo, 'tempo') !== false) {
-            $postosTipoEntrega[$r['posto']] = 'poupatempo';
-            $poupaTempoPostos[] = $r['posto'];
-        } elseif (strpos($tipo_limpo, 'correio') !== false) {
-            $postosTipoEntrega[$r['posto']] = 'correios';
+        $posto_pad = $r['posto'];
+        $regional_real = (int)$r['regional'];
+        $entrega_tipo = null;
+        
+        if (!empty($r['entrega'])) {
+            $entrega_limpo = $r['entrega'];
+            if (strpos($entrega_limpo, 'poupa') !== false || strpos($entrega_limpo, 'tempo') !== false) {
+                $entrega_tipo = 'poupatempo';
+            } elseif (strpos($entrega_limpo, 'correio') !== false) {
+                $entrega_tipo = 'correios';
+            }
         }
+        
+        $postosInfo[$posto_pad] = array(
+            'regional' => $regional_real,
+            'entrega' => $entrega_tipo
+        );
     }
 
     // Busca conferências já realizadas (com LIMIT)
@@ -138,23 +151,27 @@ try {
 
                 $lote = $row['lote'];
                 $posto = str_pad($row['posto'], 3, '0', STR_PAD_LEFT);
-                $regional = (int)$row['regional'];
-                $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
+                $regional_csv = (int)$row['regional']; // Regional do CSV (para código de barras)
+                $regional_str = str_pad($regional_csv, 3, '0', STR_PAD_LEFT);
                 $quantidade = str_pad($row['quantidade'], 5, '0', STR_PAD_LEFT);
 
                 $codigo_barras = $lote . $regional_str . $posto . $quantidade;
-                $isPT = in_array($posto, $poupaTempoPostos) ? 1 : 0;
-                $tipoEntrega = isset($postosTipoEntrega[$posto]) ? $postosTipoEntrega[$posto] : 'outros';
+                
+                // v9.0: Usa informações CORRETAS de ciRegionais
+                $regional_real = isset($postosInfo[$posto]) ? $postosInfo[$posto]['regional'] : $regional_csv;
+                $tipoEntrega = isset($postosInfo[$posto]) ? $postosInfo[$posto]['entrega'] : null;
+                $isPT = ($tipoEntrega == 'poupatempo') ? 1 : 0;
                 
                 // Verifica se já foi conferido
                 $key = $lote . '|' . $regional_str . '|' . $posto;
                 $conferido = isset($conferencias[$key]) ? 1 : 0;
 
-                if (!isset($regionais_data[$regional])) {
-                    $regionais_data[$regional] = array();
+                // v9.0: Agrupa por REGIONAL REAL (de ciRegionais)
+                if (!isset($regionais_data[$regional_real])) {
+                    $regionais_data[$regional_real] = array();
                 }
 
-                $regionais_data[$regional][] = array(
+                $regionais_data[$regional_real][] = array(
                     'lote' => $lote,
                     'posto' => $posto,
                     'regional' => $regional_str,
@@ -182,7 +199,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v8.17.5</title>
+    <title>Conferência de Pacotes v9.0</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
@@ -290,7 +307,7 @@ try {
     </style>
 </head>
 <body>
-<div class="versao">v8.17.5</div>
+<div class="versao">v9.0</div>
 
 <h2>📋 Conferência de Pacotes v8.17.2</h2>
 
@@ -336,9 +353,10 @@ try {
 <div id="tabelas">
 <?php
 // ========================================
-// v8.17.4: AGRUPAMENTO CORRETO - UMA TABELA POR GRUPO
-// Cada grupo é um ARRAY PLANO (não aninhado)
+// v9.0: AGRUPAMENTO USANDO DADOS DE ciRegionais
+// Classificação baseada em regional e entrega REAIS
 // ========================================
+
 
 $grupo_pt = array();           // Todos postos Poupa Tempo em UMA lista
 $grupo_r01 = array();          // Todos postos Regional 01 em UMA lista (excluindo PT)
