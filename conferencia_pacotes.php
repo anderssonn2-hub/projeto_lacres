@@ -1,13 +1,16 @@
 <?php
-/* conferencia_pacotes.php — v8.17.2
- * VERSÃO FUNCIONAL E SIMPLIFICADA
+/* conferencia_pacotes.php — v8.17.3
+ * AGRUPAMENTO PERFEITO POR TIPO DE ENTREGA
  * 
- * Funcionalidades:
- * - Carrega APENAS última data por padrão (rápido)
- * - Agrupamento: Poupa Tempo → Regional 01 → Capital → Central IIPR → Demais
- * - Auto-save via AJAX
- * - Sons de alerta diferenciados
- * - Interface limpa e responsiva
+ * Ordem de exibição:
+ * 1. Postos Poupa Tempo (entrega='poupa-tempo' em ciRegionais)
+ * 2. Postos do Posto 01 / Regional 01 (entrega='correios', regional=1)
+ * 3. Postos da Capital (regional=0)
+ * 4. Postos da Central IIPR (regional=999)
+ * 5. Postos das Regionais (demais regionais agrupadas)
+ * 
+ * Formato: "650 - Regional 650 (9 pacotes / 9 conferidos)"
+ * Auto-save AJAX + Sons diferenciados
  */
 
 // Inicializa variáveis
@@ -57,12 +60,19 @@ try {
         die(json_encode(array('success' => true)));
     }
 
-    // Busca Poupa Tempo (com LIMIT para performance)
-    $sql = "SELECT LPAD(posto,3,'0') AS posto FROM ciRegionais 
-            WHERE LOWER(REPLACE(entrega,' ','')) LIKE '%poupatempo%' LIMIT 100";
+    // v8.17.3: Busca postos com tipo de entrega (Poupa Tempo e Correios)
+    $postosTipoEntrega = array(); // posto => 'poupatempo' ou 'correios'
+    $sql = "SELECT LPAD(posto,3,'0') AS posto, LOWER(TRIM(REPLACE(entrega,' ',''))) AS tipo 
+            FROM ciRegionais WHERE entrega IS NOT NULL LIMIT 500";
     $stmt = $pdo->query($sql);
     while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $poupaTempoPostos[] = $r['posto'];
+        $tipo_limpo = $r['tipo'];
+        if (strpos($tipo_limpo, 'poupa') !== false || strpos($tipo_limpo, 'tempo') !== false) {
+            $postosTipoEntrega[$r['posto']] = 'poupatempo';
+            $poupaTempoPostos[] = $r['posto'];
+        } elseif (strpos($tipo_limpo, 'correio') !== false) {
+            $postosTipoEntrega[$r['posto']] = 'correios';
+        }
     }
 
     // Busca conferências já realizadas (com LIMIT)
@@ -130,6 +140,7 @@ try {
 
                 $codigo_barras = $lote . $regional_str . $posto . $quantidade;
                 $isPT = in_array($posto, $poupaTempoPostos) ? 1 : 0;
+                $tipoEntrega = isset($postosTipoEntrega[$posto]) ? $postosTipoEntrega[$posto] : 'outros';
                 
                 // Verifica se já foi conferido
                 $key = $lote . '|' . $regional_str . '|' . $posto;
@@ -143,6 +154,7 @@ try {
                     'lote' => $lote,
                     'posto' => $posto,
                     'regional' => $regional_str,
+                    'tipoEntrega' => $tipoEntrega,
                     'data' => $data_formatada,
                     'qtd' => ltrim($quantidade, '0'),
                     'codigo' => $codigo_barras,
@@ -306,39 +318,49 @@ try {
 <div id="tabelas">
 <?php
 // ========================================
-// AGRUPAMENTO: PT → R01 → Capital → 999 → Outros
+// v8.17.3: AGRUPAMENTO PERFEITO
+// Ordem: PT → Regional 01 (Correios) → Capital → Central IIPR → Demais
 // ========================================
 
 // Separar dados por grupos
-$grupo_pt = array();
-$grupo_r01 = array();
-$grupo_capital = array();
-$grupo_999 = array();
-$grupo_outros = array();
+$grupo_pt = array();           // Poupa Tempo (tipoEntrega='poupatempo')
+$grupo_r01_correios = array(); // Regional 01 COM entrega=correios
+$grupo_capital = array();      // Regional 0
+$grupo_999 = array();          // Central IIPR (999)
+$grupo_outros = array();       // Demais regionais
 
 foreach ($regionais_data as $regional => $postos) {
     foreach ($postos as $posto) {
-        if ($posto['isPT'] == 1) {
-            if (!isset($grupo_pt[$regional])) {
-                $grupo_pt[$regional] = array();
+        // 1. Poupa Tempo (PRIORIDADE MÁXIMA)
+        if ($posto['tipoEntrega'] == 'poupatempo') {
+            if (!isset($grupo_pt['PT'])) {
+                $grupo_pt['PT'] = array();
             }
-            $grupo_pt[$regional][] = $posto;
-        } elseif ($regional == 1) {
-            if (!isset($grupo_r01[$regional])) {
-                $grupo_r01[$regional] = array();
+            $grupo_pt['PT'][] = $posto;
+        }
+        // 2. Regional 01 com entrega=correios
+        elseif ($regional == 1 && $posto['tipoEntrega'] == 'correios') {
+            if (!isset($grupo_r01_correios['R01'])) {
+                $grupo_r01_correios['R01'] = array();
             }
-            $grupo_r01[$regional][] = $posto;
-        } elseif ($regional == 0) {
-            if (!isset($grupo_capital[$regional])) {
-                $grupo_capital[$regional] = array();
+            $grupo_r01_correios['R01'][] = $posto;
+        }
+        // 3. Capital (regional = 0)
+        elseif ($regional == 0) {
+            if (!isset($grupo_capital['CAP'])) {
+                $grupo_capital['CAP'] = array();
             }
-            $grupo_capital[$regional][] = $posto;
-        } elseif ($regional == 999) {
-            if (!isset($grupo_999[$regional])) {
-                $grupo_999[$regional] = array();
+            $grupo_capital['CAP'][] = $posto;
+        }
+        // 4. Central IIPR (regional = 999)
+        elseif ($regional == 999) {
+            if (!isset($grupo_999['IIPR'])) {
+                $grupo_999['IIPR'] = array();
             }
-            $grupo_999[$regional][] = $posto;
-        } else {
+            $grupo_999['IIPR'][] = $posto;
+        }
+        // 5. Demais regionais
+        else {
             if (!isset($grupo_outros[$regional])) {
                 $grupo_outros[$regional] = array();
             }
@@ -347,13 +369,26 @@ foreach ($regionais_data as $regional => $postos) {
     }
 }
 
-// Função para renderizar tabela
+// v8.17.3: Função para renderizar tabela COM CONTADORES
 function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
     if (empty($dados)) {
         return;
     }
     
+    // Conta total de pacotes e conferidos
+    $total_pacotes = 0;
+    $total_conferidos = 0;
+    foreach ($dados as $grupo => $postos) {
+        foreach ($postos as $posto) {
+            $total_pacotes++;
+            if ($posto['conf'] == 1) {
+                $total_conferidos++;
+            }
+        }
+    }
+    
     echo '<h3>' . htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
+    echo ' <span style="color:#666; font-weight:normal; font-size:14px;">(' . $total_pacotes . ' pacotes / ' . $total_conferidos . ' conferidos)</span>';
     if ($ehPoupaTempo) {
         echo ' <span class="tag-pt">POUPA TEMPO</span>';
     }
@@ -393,24 +428,24 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
     echo '</tbody></table>';
 }
 
-// Renderizar na ordem correta
+// v8.17.3: Renderizar na ordem correta com títulos apropriados
 if (!empty($grupo_pt)) {
-    renderizarTabela('Postos POUPA TEMPO', $grupo_pt, true);
+    renderizarTabela('Postos Poupa Tempo', $grupo_pt, true);
 }
-if (!empty($grupo_r01)) {
-    renderizarTabela('Regional 001', $grupo_r01);
+if (!empty($grupo_r01_correios)) {
+    renderizarTabela('001 - Postos do Posto 01 (Correios)', $grupo_r01_correios);
 }
 if (!empty($grupo_capital)) {
-    renderizarTabela('Capital', $grupo_capital);
+    renderizarTabela('000 - Postos da Capital', $grupo_capital);
 }
 if (!empty($grupo_999)) {
-    renderizarTabela('Central IIPR', $grupo_999);
+    renderizarTabela('999 - Postos da Central IIPR', $grupo_999);
 }
 if (!empty($grupo_outros)) {
     ksort($grupo_outros);
     foreach ($grupo_outros as $regional => $postos) {
         $regionalStr = str_pad($regional, 3, '0', STR_PAD_LEFT);
-        renderizarTabela('Regional ' . $regionalStr, array($regional => $postos));
+        renderizarTabela($regionalStr . ' - Regional ' . $regionalStr, array($regional => $postos));
     }
 }
 
