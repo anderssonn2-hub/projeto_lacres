@@ -1,16 +1,16 @@
 <?php
-/* conferencia_pacotes.php — v8.17.3
- * AGRUPAMENTO PERFEITO POR TIPO DE ENTREGA
+/* conferencia_pacotes.php — v8.17.4
+ * AGRUPAMENTO CORRETO: UMA TABELA POR GRUPO
  * 
- * Ordem de exibição:
- * 1. Postos Poupa Tempo (entrega='poupa-tempo' em ciRegionais)
- * 2. Postos do Posto 01 / Regional 01 (entrega='correios', regional=1)
- * 3. Postos da Capital (regional=0)
- * 4. Postos da Central IIPR (regional=999)
- * 5. Postos das Regionais (demais regionais agrupadas)
+ * Ordem:
+ * 1. Postos do Poupa Tempo - UMA tabela com TODOS os postos PT
+ * 2. Postos do Posto 01 - UMA tabela com TODOS os postos da regional 01
+ * 3. Postos da Capital - UMA tabela com TODOS os postos da capital (regional 0)
+ * 4. Postos da Central IIPR - UMA tabela com TODOS os postos da central (999)
+ * 5. Regionais - cada regional sua própria tabela
  * 
- * Formato: "650 - Regional 650 (9 pacotes / 9 conferidos)"
- * Auto-save AJAX + Sons diferenciados
+ * Formato: "Postos do Poupa Tempo (23 pacotes / 15 conferidos)"
+ * Fecha conexões MySQL após cada operação
  */
 
 // Inicializa variáveis
@@ -45,6 +45,8 @@ try {
                 ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar)";
         $stmt = $pdo->prepare($sql);
         $stmt->execute(array($regional, $lote, $posto, $dataexp, $qtd, $codbar));
+        $stmt = null; // v8.17.4: Libera statement
+        $pdo = null;  // v8.17.4: Fecha conexão
         die(json_encode(array('success' => true)));
     }
 
@@ -57,6 +59,8 @@ try {
         $sql = "DELETE FROM conferencia_pacotes WHERE nlote = ? AND regional = ? AND nposto = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute(array($lote, $regional, $posto));
+        $stmt = null; // v8.17.4: Libera statement
+        $pdo = null;  // v8.17.4: Fecha conexão
         die(json_encode(array('success' => true)));
     }
 
@@ -318,48 +322,35 @@ try {
 <div id="tabelas">
 <?php
 // ========================================
-// v8.17.3: AGRUPAMENTO PERFEITO
-// Ordem: PT → Regional 01 (Correios) → Capital → Central IIPR → Demais
+// v8.17.4: AGRUPAMENTO CORRETO - UMA TABELA POR GRUPO
+// Cada grupo é um ARRAY PLANO (não aninhado)
 // ========================================
 
-// Separar dados por grupos
-$grupo_pt = array();           // Poupa Tempo (tipoEntrega='poupatempo')
-$grupo_r01_correios = array(); // Regional 01 COM entrega=correios
-$grupo_capital = array();      // Regional 0
-$grupo_999 = array();          // Central IIPR (999)
-$grupo_outros = array();       // Demais regionais
+$grupo_pt = array();           // Todos postos Poupa Tempo em UMA lista
+$grupo_r01 = array();          // Todos postos Regional 01 em UMA lista
+$grupo_capital = array();      // Todos postos Capital em UMA lista
+$grupo_999 = array();          // Todos postos Central IIPR em UMA lista
+$grupo_outros = array();       // Regionais: array($regional => array de postos)
 
 foreach ($regionais_data as $regional => $postos) {
     foreach ($postos as $posto) {
         // 1. Poupa Tempo (PRIORIDADE MÁXIMA)
         if ($posto['tipoEntrega'] == 'poupatempo') {
-            if (!isset($grupo_pt['PT'])) {
-                $grupo_pt['PT'] = array();
-            }
-            $grupo_pt['PT'][] = $posto;
+            $grupo_pt[] = $posto; // Adiciona direto na lista
         }
-        // 2. Regional 01 com entrega=correios
-        elseif ($regional == 1 && $posto['tipoEntrega'] == 'correios') {
-            if (!isset($grupo_r01_correios['R01'])) {
-                $grupo_r01_correios['R01'] = array();
-            }
-            $grupo_r01_correios['R01'][] = $posto;
+        // 2. Regional 01 (independente de ser correios ou não)
+        elseif ($regional == 1) {
+            $grupo_r01[] = $posto; // Adiciona direto na lista
         }
         // 3. Capital (regional = 0)
         elseif ($regional == 0) {
-            if (!isset($grupo_capital['CAP'])) {
-                $grupo_capital['CAP'] = array();
-            }
-            $grupo_capital['CAP'][] = $posto;
+            $grupo_capital[] = $posto; // Adiciona direto na lista
         }
         // 4. Central IIPR (regional = 999)
         elseif ($regional == 999) {
-            if (!isset($grupo_999['IIPR'])) {
-                $grupo_999['IIPR'] = array();
-            }
-            $grupo_999['IIPR'][] = $posto;
+            $grupo_999[] = $posto; // Adiciona direto na lista
         }
-        // 5. Demais regionais
+        // 5. Demais regionais (mantém agrupamento por regional)
         else {
             if (!isset($grupo_outros[$regional])) {
                 $grupo_outros[$regional] = array();
@@ -369,21 +360,36 @@ foreach ($regionais_data as $regional => $postos) {
     }
 }
 
-// v8.17.3: Função para renderizar tabela COM CONTADORES
+// v8.17.4: Função para renderizar tabela (aceita array plano OU aninhado)
 function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
     if (empty($dados)) {
         return;
     }
     
-    // Conta total de pacotes e conferidos
-    $total_pacotes = 0;
-    $total_conferidos = 0;
-    foreach ($dados as $grupo => $postos) {
-        foreach ($postos as $posto) {
-            $total_pacotes++;
-            if ($posto['conf'] == 1) {
-                $total_conferidos++;
+    // Verifica se é array plano (lista de postos) ou aninhado (regional => postos)
+    $primeiro = reset($dados);
+    $eh_array_plano = isset($primeiro['lote']); // Se tem 'lote', é um posto
+    
+    // Normaliza para formato de iteração
+    $postos_para_exibir = array();
+    if ($eh_array_plano) {
+        // Array plano: já é lista de postos
+        $postos_para_exibir = $dados;
+    } else {
+        // Array aninhado: achatar
+        foreach ($dados as $regional => $postos) {
+            foreach ($postos as $posto) {
+                $postos_para_exibir[] = $posto;
             }
+        }
+    }
+    
+    // Conta total de pacotes e conferidos
+    $total_pacotes = count($postos_para_exibir);
+    $total_conferidos = 0;
+    foreach ($postos_para_exibir as $posto) {
+        if ($posto['conf'] == 1) {
+            $total_conferidos++;
         }
     }
     
@@ -404,42 +410,40 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
     echo '</tr></thead>';
     echo '<tbody>';
     
-    foreach ($dados as $regional => $postos) {
-        foreach ($postos as $posto) {
-            $classeConf = ($posto['conf'] == 1) ? ' confirmado' : '';
-            echo '<tr class="linha-conferencia' . $classeConf . '" ';
-            echo 'data-codigo="' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '" ';
-            echo 'data-regional="' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '" ';
-            echo 'data-lote="' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '" ';
-            echo 'data-posto="' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '" ';
-            echo 'data-data="' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '" ';
-            echo 'data-qtd="' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '" ';
-            echo 'data-ispt="' . $posto['isPT'] . '">';
-            echo '<td>' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '<td>' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '</td>';
-            echo '</tr>';
-        }
+    foreach ($postos_para_exibir as $posto) {
+        $classeConf = ($posto['conf'] == 1) ? ' confirmado' : '';
+        echo '<tr class="linha-conferencia' . $classeConf . '" ';
+        echo 'data-codigo="' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-regional="' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-lote="' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-posto="' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-data="' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-qtd="' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-ispt="' . $posto['isPT'] . '">';
+        echo '<td>' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td>' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td>' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td>' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td>' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td>' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '</tr>';
     }
     
     echo '</tbody></table>';
 }
 
-// v8.17.3: Renderizar na ordem correta com títulos apropriados
+// v8.17.4: Renderizar na ordem correta (cada grupo = UMA tabela)
 if (!empty($grupo_pt)) {
-    renderizarTabela('Postos Poupa Tempo', $grupo_pt, true);
+    renderizarTabela('Postos do Poupa Tempo', $grupo_pt, true);
 }
-if (!empty($grupo_r01_correios)) {
-    renderizarTabela('001 - Postos do Posto 01 (Correios)', $grupo_r01_correios);
+if (!empty($grupo_r01)) {
+    renderizarTabela('Postos do Posto 01', $grupo_r01);
 }
 if (!empty($grupo_capital)) {
-    renderizarTabela('000 - Postos da Capital', $grupo_capital);
+    renderizarTabela('Postos da Capital', $grupo_capital);
 }
 if (!empty($grupo_999)) {
-    renderizarTabela('999 - Postos da Central IIPR', $grupo_999);
+    renderizarTabela('Postos da Central IIPR', $grupo_999);
 }
 if (!empty($grupo_outros)) {
     ksort($grupo_outros);
