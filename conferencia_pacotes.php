@@ -1,8 +1,11 @@
 <?php
-/* conferencia_pacotes.php — v9.2
- * LÓGICA INTELIGENTE DE SONS BASEADA NO CONTEXTO
+/* conferencia_pacotes.php — v9.3
+ * CHANGELOG v9.3:
+ * - [ALTERADO] Coluna Regional para Poupa Tempo mostra o PRÓPRIO POSTO
+ *   Exemplo: Posto 023 (PT) → Regional exibida: 023 (não 001)
+ * - Mantém toda funcionalidade da v9.2
  * 
- * Sons:
+ * LÓGICA INTELIGENTE DE SONS BASEADA NO CONTEXTO (v9.2):
  * - beep.mp3: Primeiro pacote OU pacote correto do grupo atual
  * - posto_poupatempo.mp3: PT aparece enquanto confere correios (misturado!)
  * - pacotedeoutraregional.mp3: Regional diferente OU correios no meio do PT
@@ -175,10 +178,13 @@ try {
                     $regionais_data[$regional_real] = array();
                 }
 
+                // v9.3: Poupa Tempo usa próprio posto como regional na exibição
+                $regional_exibida = ($isPT == 1) ? $posto : $regional_str;
+
                 $regionais_data[$regional_real][] = array(
                     'lote' => $lote,
                     'posto' => $posto,
-                    'regional' => $regional_str,
+                    'regional' => $regional_exibida,
                     'tipoEntrega' => $tipoEntrega,
                     'data' => $data_formatada,
                     'qtd' => ltrim($quantidade, '0'),
@@ -203,7 +209,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v9.2</title>
+    <title>Conferência de Pacotes v9.3</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
