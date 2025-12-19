@@ -1,16 +1,19 @@
 <?php
-/* conferencia_pacotes.php — v9.4
- * NOVA VERSÃO baseada na v8.16.9
- * MUDANÇA PRINCIPAL:
- * - Adicionada coluna "Lido em" ao lado de "Código de barras"
- * - Mostra quando o pacote foi conferido (coluna lido_em da tabela conferencia_pacotes)
- * - JOIN com conferencia_pacotes para buscar data/hora da leitura
+/* conferencia_pacotes.php — v9.6
+ * NOVA VERSÃO baseada na v9.4
+ * MUDANÇAS:
+ * 1. ✅ Coluna "Conferido Por" mostrando lido_em da tabela conferencia_pacotes
+ * 2. ✅ Ao carregar a página, lotes já conferidos (conf=s) aparecem com fundo verde
+ * 3. ✅ Divisão visual clara entre POUPA TEMPO e CORREIOS
+ * 4. ✅ Filtro por datas: últimas 5 datas + opção de intervalo customizado
  */
 
 // Inicializa as variáveis
 $total_codigos = 0;
 $regionais_data = array();
 $datas_filtro = isset($_GET['datas']) && is_array($_GET['datas']) ? $_GET['datas'] : array();
+$data_inicio = isset($_GET['data_inicio']) ? trim($_GET['data_inicio']) : '';
+$data_fim = isset($_GET['data_fim']) ? trim($_GET['data_fim']) : '';
 $poupaTempoPostos = array();
 
 // Conexão com o banco de dados
@@ -28,8 +31,8 @@ try {
         $lote = isset($_POST['lote']) ? trim($_POST['lote']) : '';
         if (!empty($lote)) {
             $sql = "INSERT INTO conferencia_pacotes (nlote, conf, usuario, lido_em) 
-                    VALUES (?, 1, 'conferencia', NOW())
-                    ON DUPLICATE KEY UPDATE conf=1, lido_em=NOW()";
+                    VALUES (?, 's', 'conferencia', NOW())
+                    ON DUPLICATE KEY UPDATE conf='s', usuario='conferencia', lido_em=NOW()";
             $stmt = $pdo->prepare($sql);
             $stmt->execute(array($lote));
             echo json_encode(array('status' => 'success'));
@@ -56,9 +59,11 @@ try {
         $poupaTempoPostos[] = $r['posto'];
     }
 
-    // Busca conferências já realizadas com lido_em
+    // Busca conferências já realizadas com lido_em (TODAS, sem filtro de data)
     $conferencias = array();
-    $stmt = $pdo->query("SELECT nlote, usuario, DATE_FORMAT(lido_em, '%d/%m/%Y %H:%i:%s') as lido_em_fmt FROM conferencia_pacotes WHERE conf=1");
+    $stmt = $pdo->query("SELECT nlote, usuario, DATE_FORMAT(lido_em, '%d/%m/%Y %H:%i:%s') as lido_em_fmt 
+                         FROM conferencia_pacotes 
+                         WHERE conf='s'");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $conferencias[$row['nlote']] = array(
             'conf' => true,
@@ -79,14 +84,69 @@ try {
         $datas_disponiveis[] = $row['data'];
     }
 
-    // Se não há filtro, usa a primeira data (mais recente)
-    if (empty($datas_filtro) && !empty($datas_disponiveis)) {
-        $datas_filtro[] = $datas_disponiveis[0];
+    // Define quais datas buscar
+    $datasSql = array();
+    
+    // Prioridade 1: Intervalo customizado
+    if (!empty($data_inicio) && !empty($data_fim)) {
+        // Converte dd-mm-yyyy para yyyy-mm-dd
+        $partes_inicio = explode('-', $data_inicio);
+        $partes_fim = explode('-', $data_fim);
+        if (count($partes_inicio) == 3 && count($partes_fim) == 3) {
+            $sql_inicio = $partes_inicio[2] . '-' . $partes_inicio[1] . '-' . $partes_inicio[0];
+            $sql_fim = $partes_fim[2] . '-' . $partes_fim[1] . '-' . $partes_fim[0];
+            
+            $sql = "SELECT lote, posto, regional, quantidade, dataCarga 
+                    FROM ciPostosCsv 
+                    WHERE DATE(dataCarga) BETWEEN ? AND ?
+                    ORDER BY dataCarga DESC, regional, lote";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute(array($sql_inicio, $sql_fim));
+            
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $lote = $row['lote'];
+                $posto_str = str_pad($row['posto'], 3, '0', STR_PAD_LEFT);
+                $regional = (int)$row['regional'];
+                $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
+                $qtd = str_pad($row['quantidade'], 5, '0', STR_PAD_LEFT);
+                $data = date('d-m-Y', strtotime($row['dataCarga']));
+                
+                $codigo = $lote . $regional_str . $posto_str . $qtd;
+                $isPT = in_array($posto_str, $poupaTempoPostos) ? '1' : '0';
+                
+                // Busca informação de conferência (de TODAS as datas)
+                $conf = false;
+                $lido_em = '';
+                $usuario = '';
+                if (isset($conferencias[$lote])) {
+                    $conf = true;
+                    $lido_em = $conferencias[$lote]['lido_em'];
+                    $usuario = $conferencias[$lote]['usuario'];
+                }
+                
+                if (!isset($regionais_data[$regional])) {
+                    $regionais_data[$regional] = array();
+                }
+                
+                $regionais_data[$regional][] = array(
+                    'lote' => $lote,
+                    'posto' => $posto_str,
+                    'regional' => $regional_str,
+                    'data' => $data,
+                    'qtd' => ltrim($qtd, '0'),
+                    'codigo' => $codigo,
+                    'isPT' => $isPT,
+                    'conf' => $conf,
+                    'lido_em' => $lido_em,
+                    'usuario' => $usuario
+                );
+                
+                $total_codigos++;
+            }
+        }
     }
-
-    // Busca dados dos postos
-    if (!empty($datas_filtro)) {
-        $datasSql = array();
+    // Prioridade 2: Datas selecionadas
+    elseif (!empty($datas_filtro)) {
         foreach ($datas_filtro as $data) {
             $partes = explode('-', $data);
             if (count($partes) == 3) {
@@ -115,7 +175,69 @@ try {
                 $codigo = $lote . $regional_str . $posto_str . $qtd;
                 $isPT = in_array($posto_str, $poupaTempoPostos) ? '1' : '0';
                 
-                // Busca informação de conferência
+                // Busca informação de conferência (de TODAS as datas)
+                $conf = false;
+                $lido_em = '';
+                $usuario = '';
+                if (isset($conferencias[$lote])) {
+                    $conf = true;
+                    $lido_em = $conferencias[$lote]['lido_em'];
+                    $usuario = $conferencias[$lote]['usuario'];
+                }
+                
+                if (!isset($regionais_data[$regional])) {
+                    $regionais_data[$regional] = array();
+                }
+                
+                $regionais_data[$regional][] = array(
+                    'lote' => $lote,
+                    'posto' => $posto_str,
+                    'regional' => $regional_str,
+                    'data' => $data,
+                    'qtd' => ltrim($qtd, '0'),
+                    'codigo' => $codigo,
+                    'isPT' => $isPT,
+                    'conf' => $conf,
+                    'lido_em' => $lido_em,
+                    'usuario' => $usuario
+                );
+                
+                $total_codigos++;
+            }
+        }
+    }
+    // Prioridade 3: Data mais recente (padrão)
+    else {
+        if (!empty($datas_disponiveis)) {
+            $datas_filtro[] = $datas_disponiveis[0];
+            $partes = explode('-', $datas_disponiveis[0]);
+            if (count($partes) == 3) {
+                $datasSql[] = $partes[2] . '-' . $partes[1] . '-' . $partes[0];
+            }
+        }
+        
+        if (!empty($datasSql)) {
+            $placeholders = implode(',', array_fill(0, count($datasSql), '?'));
+            $sql = "SELECT lote, posto, regional, quantidade, dataCarga 
+                    FROM ciPostosCsv 
+                    WHERE DATE(dataCarga) IN ($placeholders)
+                    ORDER BY dataCarga DESC, regional, lote";
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($datasSql);
+            
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $lote = $row['lote'];
+                $posto_str = str_pad($row['posto'], 3, '0', STR_PAD_LEFT);
+                $regional = (int)$row['regional'];
+                $regional_str = str_pad($regional, 3, '0', STR_PAD_LEFT);
+                $qtd = str_pad($row['quantidade'], 5, '0', STR_PAD_LEFT);
+                $data = date('d-m-Y', strtotime($row['dataCarga']));
+                
+                $codigo = $lote . $regional_str . $posto_str . $qtd;
+                $isPT = in_array($posto_str, $poupaTempoPostos) ? '1' : '0';
+                
+                // Busca informação de conferência (de TODAS as datas)
                 $conf = false;
                 $lido_em = '';
                 $usuario = '';
@@ -155,7 +277,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v9.4</title>
+    <title>Conferência de Pacotes v9.6</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -175,6 +297,42 @@ try {
             margin: 30px 0 15px;
             padding-left: 10px;
             border-left: 4px solid #007bff;
+        }
+        
+        /* DESTAQUE PARA POUPA TEMPO */
+        h2.poupatempo {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            padding: 15px 20px;
+            border-left: none;
+            border-radius: 6px;
+            font-size: 22px;
+            font-weight: 700;
+            margin: 30px 0 20px;
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+        
+        /* DIVISOR ANTES DOS CORREIOS */
+        .divisor-correios {
+            margin: 50px 0 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+        .divisor-correios h2 {
+            color: white;
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
+        .divisor-correios p {
+            color: rgba(255,255,255,0.9);
+            margin-top: 8px;
+            font-size: 14px;
         }
         
         .radio-box {
@@ -224,6 +382,38 @@ try {
         .datas-checks input {
             margin-right: 6px;
             cursor: pointer;
+        }
+        
+        .filtro-customizado {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+        .filtro-customizado h4 {
+            margin-bottom: 12px;
+            color: #555;
+            font-size: 16px;
+        }
+        .intervalo-datas {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .intervalo-datas label {
+            font-weight: 600;
+            color: #555;
+        }
+        .intervalo-datas input[type="text"] {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 130px;
+        }
+        .intervalo-datas input[type="text"]:focus {
+            outline: none;
+            border-color: #007bff;
         }
         
         .botoes button {
@@ -328,7 +518,7 @@ try {
 </head>
 <body>
     <div class="container">
-        <h1>📋 Conferência de Pacotes v9.4</h1>
+        <h1>📋 Conferência de Pacotes v9.6</h1>
 
         <div class="radio-box">
             <label>
@@ -339,7 +529,7 @@ try {
 
         <div class="filtro">
             <form method="GET">
-                <h3>📅 Selecione as datas:</h3>
+                <h3>📅 Selecione as datas (últimas 5):</h3>
                 <div class="datas-checks">
                     <?php foreach ($datas_disponiveis as $dt): ?>
                         <label>
@@ -349,7 +539,22 @@ try {
                         </label>
                     <?php endforeach; ?>
                 </div>
-                <div class="botoes">
+                
+                <div class="filtro-customizado">
+                    <h4>🔎 Ou busque por intervalo de datas:</h4>
+                    <div class="intervalo-datas">
+                        <label>De:</label>
+                        <input type="text" name="data_inicio" placeholder="dd-mm-aaaa" 
+                               value="<?php echo htmlspecialchars($data_inicio); ?>" 
+                               maxlength="10">
+                        <label>Até:</label>
+                        <input type="text" name="data_fim" placeholder="dd-mm-aaaa" 
+                               value="<?php echo htmlspecialchars($data_fim); ?>" 
+                               maxlength="10">
+                    </div>
+                </div>
+                
+                <div class="botoes" style="margin-top: 20px;">
                     <button type="submit" class="btn-filtrar">🔍 Filtrar</button>
                     <button type="button" class="btn-reset" onclick="window.location.href='?'">🔄 Limpar</button>
                 </div>
@@ -367,7 +572,9 @@ try {
 
         <div id="tabelas">
 <?php
-// Ordem: 1) Poupa Tempo, 2) Reg 1, 3) Capital (0), 4) Central (999), 5) Demais
+// Ordem: 1) Poupa Tempo, 2) DIVISOR, 3) Reg 1, 4) Capital (0), 5) Central (999), 6) Demais
+
+$primeira_secao_correios = true; // flag para imprimir divisor apenas uma vez
 
 // 1. POUPA TEMPO
 $pt_todos = array();
@@ -379,7 +586,7 @@ foreach ($regionais_data as $postos) {
 if (!empty($pt_todos)) {
     $total = count($pt_todos);
     $conf_count = count(array_filter($pt_todos, function($x){ return $x['conf']; }));
-    echo "<h2>🔴 Postos Poupa Tempo ($total pacotes / $conf_count conferidos)</h2>";
+    echo "<h2 class='poupatempo'>🔴 POUPA TEMPO ($total pacotes / $conf_count conferidos)</h2>";
     echo '<table><thead><tr><th>Regional</th><th>Lote</th><th>Posto</th><th>Data</th><th>Qtd</th><th>Código</th><th>Conferido Por</th></tr></thead><tbody>';
     foreach ($pt_todos as $p) {
         $cls = $p['conf'] ? 'confirmado' : '';
@@ -395,6 +602,10 @@ if (!empty($pt_todos)) {
 if (isset($regionais_data[1])) {
     $r1 = array_filter($regionais_data[1], function($p){ return $p['isPT'] != '1'; });
     if (!empty($r1)) {
+        if ($primeira_secao_correios) {
+            echo '<div class="divisor-correios"><h2>📮 POSTOS DOS CORREIOS</h2><p>Postos regionais e capital (não Poupa Tempo)</p></div>';
+            $primeira_secao_correios = false;
+        }
         $total = count($r1);
         $conf_count = count(array_filter($r1, function($x){ return $x['conf']; }));
         echo "<h2>001 - Regional 001 ($total pacotes / $conf_count conferidos)</h2>";
@@ -414,6 +625,10 @@ if (isset($regionais_data[1])) {
 if (isset($regionais_data[0])) {
     $cap = array_filter($regionais_data[0], function($p){ return $p['isPT'] != '1'; });
     if (!empty($cap)) {
+        if ($primeira_secao_correios) {
+            echo '<div class="divisor-correios"><h2>📮 POSTOS DOS CORREIOS</h2><p>Postos regionais e capital (não Poupa Tempo)</p></div>';
+            $primeira_secao_correios = false;
+        }
         $total = count($cap);
         $conf_count = count(array_filter($cap, function($x){ return $x['conf']; }));
         echo "<h2>000 - Capital ($total pacotes / $conf_count conferidos)</h2>";
@@ -433,6 +648,10 @@ if (isset($regionais_data[0])) {
 if (isset($regionais_data[999])) {
     $total = count($regionais_data[999]);
     $conf_count = count(array_filter($regionais_data[999], function($x){ return $x['conf']; }));
+    if ($primeira_secao_correios) {
+        echo '<div class="divisor-correios"><h2>📮 POSTOS DOS CORREIOS</h2><p>Postos regionais e capital (não Poupa Tempo)</p></div>';
+        $primeira_secao_correios = false;
+    }
     echo "<h2>999 - Central IIPR ($total pacotes / $conf_count conferidos)</h2>";
     echo '<table><thead><tr><th>Regional</th><th>Lote</th><th>Posto</th><th>Data</th><th>Qtd</th><th>Código</th><th>Conferido Por</th></tr></thead><tbody>';
     foreach ($regionais_data[999] as $p) {
@@ -450,6 +669,10 @@ foreach (array_keys($regionais_data) as $reg) {
     if ($reg == 0 || $reg == 1 || $reg == 999) continue;
     $demais = array_filter($regionais_data[$reg], function($p){ return $p['isPT'] != '1'; });
     if (!empty($demais)) {
+        if ($primeira_secao_correios) {
+            echo '<div class="divisor-correios"><h2>📮 POSTOS DOS CORREIOS</h2><p>Postos regionais e capital (não Poupa Tempo)</p></div>';
+            $primeira_secao_correios = false;
+        }
         $reg_str = str_pad($reg, 3, '0', STR_PAD_LEFT);
         $total = count($demais);
         $conf_count = count(array_filter($demais, function($x){ return $x['conf']; }));
@@ -503,7 +726,7 @@ foreach (array_keys($regionais_data) as $reg) {
             } else if (auto.checked) {
                 tr.classList.add('confirmado');
                 
-                // Atualiza a célula "Lido em" com data/hora atual
+                // Atualiza a célula "Conferido Por" com data/hora atual
                 const cells = tr.querySelectorAll('td');
                 const lidoCell = cells[cells.length - 1]; // última célula
                 const agora = new Date();
@@ -549,7 +772,7 @@ foreach (array_keys($regionais_data) as $reg) {
                 if (!isConf) {
                     this.classList.add('confirmado');
                     
-                    // Atualiza a célula "Lido em" com data/hora atual
+                    // Atualiza a célula "Conferido Por" com data/hora atual
                     const cells = this.querySelectorAll('td');
                     const lidoCell = cells[cells.length - 1]; // última célula
                     const agora = new Date();
@@ -566,7 +789,7 @@ foreach (array_keys($regionais_data) as $reg) {
                 } else {
                     this.classList.remove('confirmado');
                     
-                    // Atualiza a célula "Lido em" para não conferido
+                    // Atualiza a célula "Conferido Por" para não conferido
                     const cells = this.querySelectorAll('td');
                     const lidoCell = cells[cells.length - 1]; // última célula
                     lidoCell.innerHTML = `<span class='nao-lido'>Não conferido</span>`;
@@ -579,6 +802,24 @@ foreach (array_keys($regionais_data) as $reg) {
                         });
                     }
                 }
+            });
+        });
+        
+        // Formatação automática dos inputs de data
+        const inputs = document.querySelectorAll('input[name="data_inicio"], input[name="data_fim"]');
+        inputs.forEach(input => {
+            input.addEventListener('input', function(e) {
+                let val = this.value.replace(/\D/g, ''); // remove não dígitos
+                if (val.length >= 2) {
+                    val = val.substring(0, 2) + '-' + val.substring(2);
+                }
+                if (val.length >= 5) {
+                    val = val.substring(0, 5) + '-' + val.substring(5);
+                }
+                if (val.length > 10) {
+                    val = val.substring(0, 10);
+                }
+                this.value = val;
             });
         });
     })();
