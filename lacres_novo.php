@@ -1,6 +1,15 @@
 <?php
-/* lacres_novo.php — Versão 8.16.0
+/* lacres_novo.php — Versão 9.7.1
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.7.1 (23/01/2026):
+ * - [NOVO] Filtros de data com inputs para data inicial e data final
+ * - [NOVO] Indicador no topo direito mostrando últimos dias com conferência e dias sem conferência
+ * - [NOVO] Pop-up centralizado ao clicar em inputs de etiquetas Correios (mostra posto atual)
+ * - [NOVO] Melhoria UX: foco visual no posto atual durante leitura de etiquetas
+ * - [NOVO] Query otimizada para buscar dias com/sem conferência nos últimos 30 dias
+ * - [MANTIDO] Auto-avançamento entre postos após leitura de etiqueta
+ * - Compatibilidade: PHP 5.3.3 + ES5 JavaScript
  * 
  * CHANGELOG v8.16.0 (12/12/2025):
  * - [ALTERADO] Formato do número do ofício no cabeçalho Correios: "Nº #101" (com # antes do ID)
@@ -2274,6 +2283,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// v9.7.1: Buscar dias com/sem conferência nos últimos 30 dias
+$dias_com_conferencia = array();
+$dias_sem_conferencia = array();
+try {
+    // Buscar últimos 30 dias com conferência (dados em ciPostosCsv)
+    $stmt_conferidos = $pdo_controle->query("
+        SELECT DISTINCT DATE(dataCarga) as data 
+        FROM ciPostosCsv 
+        WHERE dataCarga >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        ORDER BY data DESC
+        LIMIT 15
+    ");
+    while ($row = $stmt_conferidos->fetch(PDO::FETCH_ASSOC)) {
+        $dias_com_conferencia[] = date('d/m/Y', strtotime($row['data']));
+    }
+    
+    // Buscar últimos 30 dias (calendário completo)
+    $todos_dias = array();
+    for ($i = 0; $i < 30; $i++) {
+        $todos_dias[] = date('d/m/Y', strtotime("-$i days"));
+    }
+    
+    // Calcular dias SEM conferência (diferença)
+    $dias_sem_conferencia = array_diff($todos_dias, $dias_com_conferencia);
+    $dias_sem_conferencia = array_slice($dias_sem_conferencia, 0, 10); // Limitar a 10
+} catch (Exception $e) {
+    // Silenciar erro
+}
+
 // Obter datas disponíveis
 $stmt_datas = $pdo_controle->query("SELECT DISTINCT DATE(dataCarga) as data FROM ciPostosCsv WHERE dataCarga IS NOT NULL ORDER BY data DESC LIMIT 5");
 $datas_expedicao = array();
@@ -2281,13 +2319,48 @@ while ($row = $stmt_datas->fetch(PDO::FETCH_ASSOC)) {
     $datas_expedicao[] = date('d-m-Y', strtotime($row['data']));
 }
 
-// Usar datas da sessão se existirem, senão usar as do GET, ou default
-if (!empty($_SESSION['datas_filtro'])) {
-    $datas_filtro = $_SESSION['datas_filtro'];
+// v9.7.1: Processar filtro por intervalo de datas (data_inicial e data_final)
+if (isset($_GET['data_inicial']) && isset($_GET['data_final']) && !empty($_GET['data_inicial']) && !empty($_GET['data_final'])) {
+    $data_inicial = $_GET['data_inicial']; // formato dd/mm/yyyy
+    $data_final = $_GET['data_final'];     // formato dd/mm/yyyy
+    
+    // Converter para formato SQL (yyyy-mm-dd)
+    $data_inicial_sql = DateTime::createFromFormat('d/m/Y', $data_inicial);
+    $data_final_sql = DateTime::createFromFormat('d/m/Y', $data_final);
+    
+    if ($data_inicial_sql && $data_final_sql) {
+        // Buscar todas as datas no intervalo que existem em ciPostosCsv
+        $stmt_intervalo = $pdo_controle->prepare("
+            SELECT DISTINCT DATE(dataCarga) as data 
+            FROM ciPostosCsv 
+            WHERE DATE(dataCarga) BETWEEN ? AND ?
+            ORDER BY data DESC
+        ");
+        $stmt_intervalo->execute(array(
+            $data_inicial_sql->format('Y-m-d'),
+            $data_final_sql->format('Y-m-d')
+        ));
+        
+        $datas_filtro = array();
+        while ($row = $stmt_intervalo->fetch(PDO::FETCH_ASSOC)) {
+            $datas_filtro[] = date('d-m-Y', strtotime($row['data']));
+        }
+        
+        $_SESSION['datas_filtro'] = $datas_filtro;
+    } else {
+        // Formato inválido, usar padrão
+        $datas_filtro = isset($_GET['datas']) ? $_GET['datas'] : $datas_expedicao;
+        $_SESSION['datas_filtro'] = $datas_filtro;
+    }
 } else {
-    $datas_filtro = isset($_GET['datas']) ? $_GET['datas'] : $datas_expedicao;
-    // Salvar na sessão para uso futuro
-    $_SESSION['datas_filtro'] = $datas_filtro;
+    // Usar datas da sessão se existirem, senão usar as do GET, ou default
+    if (!empty($_SESSION['datas_filtro'])) {
+        $datas_filtro = $_SESSION['datas_filtro'];
+    } else {
+        $datas_filtro = isset($_GET['datas']) ? $_GET['datas'] : $datas_expedicao;
+        // Salvar na sessão para uso futuro
+        $_SESSION['datas_filtro'] = $datas_filtro;
+    }
 }
 
 // V7.9: Realizar análise de expedição com nova lógica de data
@@ -3954,13 +4027,79 @@ try {
             .btn-limpar-coluna,
             .btn-limpar-coluna-header,
             button.btn-limpar,
-            th button {
+            th button,
+            #popup-etiqueta-focal {
                 display: none !important;
             }
             
             .painel-analise:not(.collapsed) {
                 page-break-before: always;
             }
+        }
+        
+        /* v9.7.1: Pop-up centralizado para etiquetas */
+        #popup-etiqueta-focal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px 35px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+            z-index: 10001;
+            min-width: 400px;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            animation: popup-appear 0.3s ease-out;
+        }
+        
+        @keyframes popup-appear {
+            from { 
+                opacity: 0; 
+                transform: translate(-50%, -45%);
+            }
+            to { 
+                opacity: 1; 
+                transform: translate(-50%, -50%);
+            }
+        }
+        
+        #popup-etiqueta-focal.active {
+            display: block;
+        }
+        
+        #popup-etiqueta-focal .popup-header {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        #popup-etiqueta-focal .popup-posto {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 15px 0;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        #popup-etiqueta-focal .popup-instrucao {
+            font-size: 13px;
+            opacity: 0.85;
+            margin-top: 10px;
+        }
+        
+        #popup-etiqueta-focal .popup-progresso {
+            margin-top: 15px;
+            font-size: 12px;
+            opacity: 0.8;
+            padding: 8px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 6px;
         }
     </style>
 
@@ -3973,15 +4112,48 @@ try {
 </head>
 <body>
 
+<!-- v9.7.1: Pop-up centralizado para focar no posto atual -->
+<div id="popup-etiqueta-focal">
+    <div class="popup-header">🎯 Leitura de Etiqueta</div>
+    <div class="popup-posto" id="popup-posto-nome">-</div>
+    <div class="popup-instrucao">📦 Escaneie o código de barras da etiqueta (35 dígitos)</div>
+    <div class="popup-progresso" id="popup-progresso">-</div>
+</div>
+
 <div class="zoom-control">
     <button class="zoom-btn" id="zoom-in" title="Aumentar texto">A<sup>+</sup></button>
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
-<div class="version-info">Versão 0.8.2</div>
+<div class="version-info">Versão 9.7.1</div>
+
+<!-- v9.7.1: Indicador de dias com/sem conferência -->
+<div id="indicador-dias" style="position:fixed;top:10px;right:10px;padding:12px 18px;background:white;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,0.25);font-size:12px;z-index:10000;max-width:320px;">
+    <div style="font-weight:bold;margin-bottom:8px;color:#333;font-size:13px;">📅 Status de Conferências</div>
+    
+    <div style="margin-bottom:6px;">
+        <span style="color:#28a745;font-weight:bold;">✓ Com Conferência:</span><br>
+        <span style="font-size:11px;color:#555;">
+            <?php echo !empty($dias_com_conferencia) ? implode(', ', array_slice($dias_com_conferencia, 0, 5)) : 'Nenhum'; ?>
+            <?php if (count($dias_com_conferencia) > 5): ?>
+                <span style="color:#999;"> (+<?php echo count($dias_com_conferencia) - 5; ?> mais)</span>
+            <?php endif; ?>
+        </span>
+    </div>
+    
+    <div>
+        <span style="color:#dc3545;font-weight:bold;">✗ Sem Conferência:</span><br>
+        <span style="font-size:11px;color:#555;">
+            <?php echo !empty($dias_sem_conferencia) ? implode(', ', array_slice($dias_sem_conferencia, 0, 5)) : 'Nenhum'; ?>
+            <?php if (count($dias_sem_conferencia) > 5): ?>
+                <span style="color:#999;"> (+<?php echo count($dias_sem_conferencia) - 5; ?> mais)</span>
+            <?php endif; ?>
+        </span>
+    </div>
+</div>
 
 <!-- v8.14.7: Indicador de Auto-Save -->
-<div id="snapshot-indicador" style="position:fixed;top:10px;right:10px;padding:8px 15px;background:white;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-size:13px;font-weight:bold;z-index:10000;"></div>
+<div id="snapshot-indicador" style="position:fixed;top:200px;right:10px;padding:8px 15px;background:white;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-size:13px;font-weight:bold;z-index:10000;"></div>
 
 <?php if (!empty($mensagem_sucesso)): ?>
 <div class="mensagem-auto sucesso" id="mensagem-auto">
@@ -3997,7 +4169,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v8.14.9.5)
+        <span class="icone">📊</span> Análise de Expedição (v9.7.1)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -4168,6 +4340,34 @@ try {
                 <span style="color:#0d47a1;">Correios: <strong><?php echo number_format($ultimo_lacre_correios, 0, ',', '.'); ?></strong></span>
             </div>
         </div>
+        
+        <!-- v9.7.1: Filtros de data inicial e final -->
+        <div style="margin:15px 0;padding:12px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;">
+            <strong style="color:#495057;">🗓️ Filtrar por Período:</strong>
+            <div style="display:inline-block;margin-left:10px;">
+                <label style="margin-right:15px;">
+                    Data Inicial: 
+                    <input type="text" name="data_inicial" id="data_inicial" 
+                           placeholder="dd/mm/aaaa" 
+                           pattern="\d{2}/\d{2}/\d{4}" 
+                           style="width:110px;padding:4px 8px;border:1px solid #ced4da;border-radius:3px;">
+                </label>
+                <label style="margin-right:15px;">
+                    Data Final: 
+                    <input type="text" name="data_final" id="data_final" 
+                           placeholder="dd/mm/aaaa" 
+                           pattern="\d{2}/\d{2}/\d{4}" 
+                           style="width:110px;padding:4px 8px;border:1px solid #ced4da;border-radius:3px;">
+                </label>
+                <button type="submit" style="padding:5px 15px;background:#007bff;color:white;border:none;border-radius:3px;cursor:pointer;">
+                    Aplicar Período
+                </button>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:#6c757d;">
+                💡 Deixe em branco para usar seleção manual de datas abaixo
+            </div>
+        </div>
+        
         <div class="alinhado">
             <?php foreach ($datas_expedicao as $data): ?>
                 <label><input type="checkbox" name="datas[]" value="<?php echo $data ?>" <?php echo in_array($data, $datas_filtro) ? 'checked' : '' ?>> <?php echo $data ?></label>
@@ -6020,12 +6220,22 @@ document.addEventListener("DOMContentLoaded", function() {
     
     // v8.3 CORRIGIDA: Validação de etiquetas_correios duplicadas para CAPITAL + REGIONAIS (não CENTRAL)
     // CORREÇÃO: Usar blur em vez de change, limpar campo sem travar, sem guardas globais
+    // v9.7.1: Adicionar pop-up centralizado ao focar em etiquetas
     var etiquetasValidaveis = document.querySelectorAll('input.etiqueta-validavel');
     for (var v = 0; v < etiquetasValidaveis.length; v++) {
         (function(inputEtiqueta) {
+            // v9.7.1: Mostrar pop-up ao focar no input
+            inputEtiqueta.addEventListener('focus', function() {
+                mostrarPopupEtiqueta(this);
+            });
+            
             // v8.4: Listener de input para disparar blur quando atingir 35 dígitos (para scanner/leitura automática)
             inputEtiqueta.addEventListener('input', function() {
                 var valor = (this.value || '').replace(/\D/g, ''); // Remove tudo que não é dígito
+                
+                // v9.7.1: Atualizar progresso no popup
+                atualizarProgressoPopup(valor.length);
+                
                 if (valor.length >= 35) {
                     // Disparar blur para que a validação execute
                     this.blur();
@@ -6033,6 +6243,9 @@ document.addEventListener("DOMContentLoaded", function() {
             });
             
             inputEtiqueta.addEventListener('blur', function() {
+                // v9.7.1: Ocultar popup ao perder foco
+                ocultarPopupEtiqueta();
+                
                 var valorAtual = (this.value || '').trim();
                 var indice = this.getAttribute('data-indice');
                 var grupoAtual = this.getAttribute('data-grupo') || '';
@@ -6088,6 +6301,77 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         })(etiquetasValidaveis[v]);
     }
+    
+    // v9.7.1: Funções para controlar o pop-up de etiquetas
+    window.mostrarPopupEtiqueta = function(inputAtual) {
+        var popup = document.getElementById('popup-etiqueta-focal');
+        if (!popup) return;
+        
+        // Encontrar nome do posto
+        var tr = inputAtual.closest('tr');
+        if (!tr) return;
+        
+        var nomePosto = '(Posto não identificado)';
+        var tdPosto = tr.querySelector('td:first-child');
+        if (tdPosto) {
+            var texto = tdPosto.textContent || tdPosto.innerText || '';
+            // Remover texto do botão SPLIT se existir
+            nomePosto = texto.replace(/SPLIT/g, '').trim();
+        }
+        
+        // Atualizar conteúdo do popup
+        document.getElementById('popup-posto-nome').textContent = nomePosto;
+        
+        // Calcular posição atual
+        var todosEtiquetas = document.querySelectorAll('input.etiqueta-validavel');
+        var posAtual = 0;
+        var total = todosEtiquetas.length;
+        for (var i = 0; i < todosEtiquetas.length; i++) {
+            if (todosEtiquetas[i] === inputAtual) {
+                posAtual = i + 1;
+                break;
+            }
+        }
+        
+        document.getElementById('popup-progresso').textContent = 'Posto ' + posAtual + ' de ' + total;
+        
+        // Resetar contador de dígitos
+        atualizarProgressoPopup(0);
+        
+        // Mostrar popup
+        popup.className = 'active';
+    };
+    
+    window.ocultarPopupEtiqueta = function() {
+        var popup = document.getElementById('popup-etiqueta-focal');
+        if (popup) {
+            popup.className = '';
+        }
+    };
+    
+    window.atualizarProgressoPopup = function(digitosLidos) {
+        var progressoDiv = document.getElementById('popup-progresso');
+        if (!progressoDiv) return;
+        
+        var todosEtiquetas = document.querySelectorAll('input.etiqueta-validavel');
+        var inputAtual = document.activeElement;
+        var posAtual = 0;
+        var total = todosEtiquetas.length;
+        
+        for (var i = 0; i < todosEtiquetas.length; i++) {
+            if (todosEtiquetas[i] === inputAtual) {
+                posAtual = i + 1;
+                break;
+            }
+        }
+        
+        var texto = 'Posto ' + posAtual + ' de ' + total;
+        if (digitosLidos > 0) {
+            texto += ' • ' + digitosLidos + '/35 dígitos';
+        }
+        
+        progressoDiv.textContent = texto;
+    };
 });
 
 // Funcoes para o modal
