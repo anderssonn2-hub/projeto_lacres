@@ -1,15 +1,24 @@
 <?php
-/* lacres_novo.php — Versão 9.7.1
+/* lacres_novo.php — Versão 9.8.0
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.8.0 (23/01/2026):
+ * - [REMOVIDO] Checkboxes de seleção de datas (substituídos por calendário)
+ * - [NOVO] Calendário visual para seleção de datas (date picker nativo)
+ * - [NOVO] Campo para adicionar datas alternadas/específicas manualmente
+ * - [NOVO] Status de Conferência recolhível com botão toggle
+ * - [NOVO] Datas exibidas em badges coloridos: verde (conferidas) e amarelo (pendentes)
+ * - [NOVO] Mostra últimos 5 dias com conferência (ao invés de todos)
+ * - [MELHORADO] Botões de zoom A+/A- mais visíveis e acessíveis
+ * - [REMOVIDO] Sistema completo de snapshot/auto-save (causava valores antigos nos inputs)
+ * - [INTEGRADO] Salvamento de etiquetas Correios agora faz parte do "Gravar e Imprimir"
+ * - [PREPARADO] Botão "Salvar Etiquetas Correios" marcado para remoção futura
+ * - Compatibilidade: PHP 5.3.3 + ES5 JavaScript
  * 
  * CHANGELOG v9.7.1 (23/01/2026):
  * - [NOVO] Filtros de data com inputs para data inicial e data final
  * - [NOVO] Indicador no topo direito mostrando últimos dias com conferência e dias sem conferência
  * - [NOVO] Pop-up centralizado ao clicar em inputs de etiquetas Correios (mostra posto atual)
- * - [NOVO] Melhoria UX: foco visual no posto atual durante leitura de etiquetas
- * - [NOVO] Query otimizada para buscar dias com/sem conferência nos últimos 30 dias
- * - [MANTIDO] Auto-avançamento entre postos após leitura de etiqueta
- * - Compatibilidade: PHP 5.3.3 + ES5 JavaScript
  * 
  * CHANGELOG v8.16.0 (12/12/2025):
  * - [ALTERADO] Formato do número do ofício no cabeçalho Correios: "Nº #101" (com # antes do ID)
@@ -636,91 +645,6 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
     }
     exit;
 }
-
-// ============================================================================
-// v8.14.7: HANDLERS DE SNAPSHOT/AUTO-SAVE
-// ============================================================================
-
-// Handler para SALVAR snapshot
-if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_snapshot') {
-    try {
-        $chave_datas = isset($_POST['chave_datas']) ? trim($_POST['chave_datas']) : '';
-        $snapshot_data = isset($_POST['snapshot_data']) ? trim($_POST['snapshot_data']) : '';
-        $usuario = isset($_SESSION['responsavel']) ? $_SESSION['responsavel'] : 'Sistema';
-        
-        // Debug: log recebimento
-        error_log("[SNAPSHOT] Recebido: chave=" . $chave_datas . ", tamanho=" . strlen($snapshot_data));
-        
-        if (empty($chave_datas) || empty($snapshot_data)) {
-            error_log("[SNAPSHOT] ERRO: Dados incompletos");
-            echo json_encode(array('sucesso' => false, 'erro' => 'Dados incompletos'));
-            exit;
-        }
-        
-        // Validar JSON
-        $teste = json_decode($snapshot_data);
-        if ($teste === null) {
-            error_log("[SNAPSHOT] ERRO: JSON inválido");
-            echo json_encode(array('sucesso' => false, 'erro' => 'JSON inválido'));
-            exit;
-        }
-        
-        // INSERT ... ON DUPLICATE KEY UPDATE
-        $sql = "INSERT INTO ciSnapshotCorreios (chave_datas, snapshot_data, usuario_ultima_alteracao) 
-                VALUES (?, ?, ?) 
-                ON DUPLICATE KEY UPDATE 
-                    snapshot_data = VALUES(snapshot_data), 
-                    usuario_ultima_alteracao = VALUES(usuario_ultima_alteracao),
-                    ultima_atualizacao = CURRENT_TIMESTAMP";
-        
-        $stmt = $pdo_controle->prepare($sql);
-        $resultado = $stmt->execute(array($chave_datas, $snapshot_data, $usuario));
-        
-        error_log("[SNAPSHOT] Salvo com sucesso: " . ($resultado ? 'SIM' : 'NÃO'));
-        
-        echo json_encode(array('sucesso' => true));
-    } catch (Exception $e) {
-        error_log("[SNAPSHOT] EXCEÇÃO: " . $e->getMessage());
-        echo json_encode(array('sucesso' => false, 'erro' => $e->getMessage()));
-    }
-    exit;
-}
-
-// Handler para CARREGAR snapshot
-if (isset($_GET['acao']) && $_GET['acao'] === 'carregar_snapshot') {
-    try {
-        $chave_datas = isset($_GET['chave_datas']) ? trim($_GET['chave_datas']) : '';
-        
-        error_log("[SNAPSHOT] Carregando: chave=" . $chave_datas);
-        
-        if (empty($chave_datas)) {
-            echo json_encode(array('sucesso' => false, 'erro' => 'Chave não fornecida'));
-            exit;
-        }
-        
-        $sql = "SELECT snapshot_data FROM ciSnapshotCorreios WHERE chave_datas = ? LIMIT 1";
-        $stmt = $pdo_controle->prepare($sql);
-        $stmt->execute(array($chave_datas));
-        
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($row) {
-            error_log("[SNAPSHOT] Encontrado: tamanho=" . strlen($row['snapshot_data']));
-            echo json_encode(array('sucesso' => true, 'snapshot' => $row['snapshot_data']));
-        } else {
-            error_log("[SNAPSHOT] Não encontrado");
-            echo json_encode(array('sucesso' => false, 'erro' => 'Snapshot não encontrado'));
-        }
-    } catch (Exception $e) {
-        echo json_encode(['sucesso' => false, 'erro' => $e->getMessage()]);
-    }
-    exit;
-}
-
-// ============================================================================
-// FIM DOS HANDLERS DE SNAPSHOT v8.14.7
-// ============================================================================
-
 
 // === SALVAR OFÍCIO DOS CORREIOS (postos com entrega = 'correios') ===
 // Salva todos os postos CAPITAL, CENTRAL IIPR e REGIONAIS com lacres e etiquetas
@@ -2319,46 +2243,59 @@ while ($row = $stmt_datas->fetch(PDO::FETCH_ASSOC)) {
     $datas_expedicao[] = date('d-m-Y', strtotime($row['data']));
 }
 
-// v9.7.1: Processar filtro por intervalo de datas (data_inicial e data_final)
-if (isset($_GET['data_inicial']) && isset($_GET['data_final']) && !empty($_GET['data_inicial']) && !empty($_GET['data_final'])) {
-    $data_inicial = $_GET['data_inicial']; // formato dd/mm/yyyy
-    $data_final = $_GET['data_final'];     // formato dd/mm/yyyy
+// v9.8.0: Processar filtro por intervalo de datas (calendário HTML5 + datas alternadas)
+$datas_filtro = array();
+
+// Prioridade 1: Datas alternadas (específicas digitadas manualmente)
+if (isset($_GET['datas_alternadas']) && !empty(trim($_GET['datas_alternadas']))) {
+    $datas_alternadas_str = trim($_GET['datas_alternadas']);
+    // Separar por vírgula
+    $datas_array = explode(',', $datas_alternadas_str);
     
-    // Converter para formato SQL (yyyy-mm-dd)
-    $data_inicial_sql = DateTime::createFromFormat('d/m/Y', $data_inicial);
-    $data_final_sql = DateTime::createFromFormat('d/m/Y', $data_final);
-    
-    if ($data_inicial_sql && $data_final_sql) {
-        // Buscar todas as datas no intervalo que existem em ciPostosCsv
-        $stmt_intervalo = $pdo_controle->prepare("
-            SELECT DISTINCT DATE(dataCarga) as data 
-            FROM ciPostosCsv 
-            WHERE DATE(dataCarga) BETWEEN ? AND ?
-            ORDER BY data DESC
-        ");
-        $stmt_intervalo->execute(array(
-            $data_inicial_sql->format('Y-m-d'),
-            $data_final_sql->format('Y-m-d')
-        ));
-        
-        $datas_filtro = array();
-        while ($row = $stmt_intervalo->fetch(PDO::FETCH_ASSOC)) {
-            $datas_filtro[] = date('d-m-Y', strtotime($row['data']));
+    foreach ($datas_array as $data_str) {
+        $data_str = trim($data_str);
+        // Validar formato dd/mm/yyyy
+        if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $data_str)) {
+            $data_obj = DateTime::createFromFormat('d/m/Y', $data_str);
+            if ($data_obj) {
+                $data_formatada = $data_obj->format('d-m-Y');
+                if (!in_array($data_formatada, $datas_filtro)) {
+                    $datas_filtro[] = $data_formatada;
+                }
+            }
         }
-        
-        $_SESSION['datas_filtro'] = $datas_filtro;
-    } else {
-        // Formato inválido, usar padrão
-        $datas_filtro = isset($_GET['datas']) ? $_GET['datas'] : $datas_expedicao;
-        $_SESSION['datas_filtro'] = $datas_filtro;
     }
-} else {
-    // Usar datas da sessão se existirem, senão usar as do GET, ou default
+    
+    $_SESSION['datas_filtro'] = $datas_filtro;
+}
+// Prioridade 2: Intervalo de datas (calendário HTML5)
+elseif (isset($_GET['data_inicial_cal']) && isset($_GET['data_final_cal']) && 
+        !empty($_GET['data_inicial_cal']) && !empty($_GET['data_final_cal'])) {
+    
+    $data_inicial_cal = $_GET['data_inicial_cal']; // formato yyyy-mm-dd (HTML5 date)
+    $data_final_cal = $_GET['data_final_cal'];
+    
+    // Buscar todas as datas no intervalo que existem em ciPostosCsv
+    $stmt_intervalo = $pdo_controle->prepare("
+        SELECT DISTINCT DATE(dataCarga) as data 
+        FROM ciPostosCsv 
+        WHERE DATE(dataCarga) BETWEEN ? AND ?
+        ORDER BY data DESC
+    ");
+    $stmt_intervalo->execute(array($data_inicial_cal, $data_final_cal));
+    
+    while ($row = $stmt_intervalo->fetch(PDO::FETCH_ASSOC)) {
+        $datas_filtro[] = date('d-m-Y', strtotime($row['data']));
+    }
+    
+    $_SESSION['datas_filtro'] = $datas_filtro;
+}
+// Prioridade 3: Usar datas da sessão ou default
+else {
     if (!empty($_SESSION['datas_filtro'])) {
         $datas_filtro = $_SESSION['datas_filtro'];
     } else {
-        $datas_filtro = isset($_GET['datas']) ? $_GET['datas'] : $datas_expedicao;
-        // Salvar na sessão para uso futuro
+        $datas_filtro = $datas_expedicao;
         $_SESSION['datas_filtro'] = $datas_filtro;
     }
 }
@@ -4037,6 +3974,127 @@ try {
             }
         }
         
+        /* v9.8.0: Badges coloridos para datas */
+        .badge-data {
+            display: inline-block;
+            padding: 4px 10px;
+            margin: 3px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: default;
+        }
+        
+        .badge-data.conferida {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .badge-data.pendente {
+            background-color: #ffc107;
+            color: #333;
+        }
+        
+        /* v9.8.0: Status de Conferência recolhível */
+        #indicador-dias {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 12px 18px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+            font-size: 12px;
+            z-index: 10000;
+            max-width: 350px;
+            transition: all 0.3s ease;
+        }
+        
+        #indicador-dias.collapsed {
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        
+        #indicador-dias.collapsed .indicador-conteudo {
+            display: none;
+        }
+        
+        .indicador-toggle {
+            display: inline-block;
+            float: right;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+            user-select: none;
+        }
+        
+        .indicador-conteudo {
+            margin-top: 8px;
+        }
+        
+        /* v9.8.0: Botões de zoom mais visíveis */
+        .zoom-control {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10000;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+            display: flex;
+            gap: 8px;
+        }
+        
+        .zoom-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: transform 0.2s;
+        }
+        
+        .zoom-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .zoom-btn:active {
+            transform: scale(0.95);
+        }
+        
+        /* v9.8.0: Calendário e datas alternadas */
+        .campo-calendario {
+            display: inline-block;
+            margin-right: 15px;
+        }
+        
+        .campo-calendario input[type="date"] {
+            padding: 6px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .datas-alternadas {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        
+        .datas-alternadas input {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
         /* v9.7.1: Pop-up centralizado para etiquetas */
         #popup-etiqueta-focal {
             display: none;
@@ -4125,35 +4183,49 @@ try {
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
-<div class="version-info">Versão 9.7.1</div>
+<div class="version-info">Versão 9.8.0</div>
 
-<!-- v9.7.1: Indicador de dias com/sem conferência -->
-<div id="indicador-dias" style="position:fixed;top:10px;right:10px;padding:12px 18px;background:white;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,0.25);font-size:12px;z-index:10000;max-width:320px;">
-    <div style="font-weight:bold;margin-bottom:8px;color:#333;font-size:13px;">📅 Status de Conferências</div>
-    
-    <div style="margin-bottom:6px;">
-        <span style="color:#28a745;font-weight:bold;">✓ Com Conferência:</span><br>
-        <span style="font-size:11px;color:#555;">
-            <?php echo !empty($dias_com_conferencia) ? implode(', ', array_slice($dias_com_conferencia, 0, 5)) : 'Nenhum'; ?>
-            <?php if (count($dias_com_conferencia) > 5): ?>
-                <span style="color:#999;"> (+<?php echo count($dias_com_conferencia) - 5; ?> mais)</span>
-            <?php endif; ?>
-        </span>
+<!-- v9.8.0: Indicador de dias recolhível com badges coloridos -->
+<div id="indicador-dias">
+    <div style="font-weight:bold;color:#333;font-size:13px;">
+        📅 Status de Conferências
+        <span class="indicador-toggle" onclick="toggleIndicadorDias()" title="Recolher/Expandir">▼</span>
     </div>
     
-    <div>
-        <span style="color:#dc3545;font-weight:bold;">✗ Sem Conferência:</span><br>
-        <span style="font-size:11px;color:#555;">
-            <?php echo !empty($dias_sem_conferencia) ? implode(', ', array_slice($dias_sem_conferencia, 0, 5)) : 'Nenhum'; ?>
-            <?php if (count($dias_sem_conferencia) > 5): ?>
-                <span style="color:#999;"> (+<?php echo count($dias_sem_conferencia) - 5; ?> mais)</span>
-            <?php endif; ?>
-        </span>
+    <div class="indicador-conteudo">
+        <div style="margin:10px 0;">
+            <strong style="color:#28a745;font-size:12px;">✓ Últimas Conferências:</strong><br>
+            <div style="margin-top:5px;">
+                <?php 
+                $ultimas_cinco = array_slice($dias_com_conferencia, 0, 5);
+                if (!empty($ultimas_cinco)) {
+                    foreach ($ultimas_cinco as $data) {
+                        echo '<span class="badge-data conferida">' . htmlspecialchars($data) . '</span>';
+                    }
+                } else {
+                    echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
+                }
+                ?>
+            </div>
+        </div>
+        
+        <div style="margin:10px 0;">
+            <strong style="color:#ffc107;font-size:12px;">⚠ Conferências Pendentes:</strong><br>
+            <div style="margin-top:5px;">
+                <?php 
+                $ultimas_pendentes = array_slice($dias_sem_conferencia, 0, 5);
+                if (!empty($ultimas_pendentes)) {
+                    foreach ($ultimas_pendentes as $data) {
+                        echo '<span class="badge-data pendente">' . htmlspecialchars($data) . '</span>';
+                    }
+                } else {
+                    echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
+                }
+                ?>
+            </div>
+        </div>
     </div>
 </div>
-
-<!-- v8.14.7: Indicador de Auto-Save -->
-<div id="snapshot-indicador" style="position:fixed;top:200px;right:10px;padding:8px 15px;background:white;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-size:13px;font-weight:bold;z-index:10000;"></div>
 
 <?php if (!empty($mensagem_sucesso)): ?>
 <div class="mensagem-auto sucesso" id="mensagem-auto">
@@ -4169,7 +4241,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v9.7.1)
+        <span class="icone">📊</span> Análise de Expedição (v9.8.0)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -4341,37 +4413,39 @@ try {
             </div>
         </div>
         
-        <!-- v9.7.1: Filtros de data inicial e final -->
+        <!-- v9.8.0: Calendário para seleção de datas -->
         <div style="margin:15px 0;padding:12px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;">
-            <strong style="color:#495057;">🗓️ Filtrar por Período:</strong>
-            <div style="display:inline-block;margin-left:10px;">
-                <label style="margin-right:15px;">
-                    Data Inicial: 
-                    <input type="text" name="data_inicial" id="data_inicial" 
-                           placeholder="dd/mm/aaaa" 
-                           pattern="\d{2}/\d{2}/\d{4}" 
-                           style="width:110px;padding:4px 8px;border:1px solid #ced4da;border-radius:3px;">
-                </label>
-                <label style="margin-right:15px;">
-                    Data Final: 
-                    <input type="text" name="data_final" id="data_final" 
-                           placeholder="dd/mm/aaaa" 
-                           pattern="\d{2}/\d{2}/\d{4}" 
-                           style="width:110px;padding:4px 8px;border:1px solid #ced4da;border-radius:3px;">
-                </label>
-                <button type="submit" style="padding:5px 15px;background:#007bff;color:white;border:none;border-radius:3px;cursor:pointer;">
-                    Aplicar Período
+            <strong style="color:#495057;">📅 Selecionar Datas:</strong>
+            
+            <div style="margin-top:10px;">
+                <div class="campo-calendario">
+                    <label style="font-weight:bold;font-size:12px;color:#495057;">Data Inicial:</label><br>
+                    <input type="date" name="data_inicial_cal" id="data_inicial_cal" 
+                           style="width:150px;padding:6px 10px;border:1px solid #ced4da;border-radius:4px;">
+                </div>
+                
+                <div class="campo-calendario">
+                    <label style="font-weight:bold;font-size:12px;color:#495057;">Data Final:</label><br>
+                    <input type="date" name="data_final_cal" id="data_final_cal" 
+                           style="width:150px;padding:6px 10px;border:1px solid #ced4da;border-radius:4px;">
+                </div>
+                
+                <button type="submit" style="padding:8px 20px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;vertical-align:bottom;">
+                    📅 Aplicar Período
                 </button>
             </div>
-            <div style="margin-top:8px;font-size:11px;color:#6c757d;">
-                💡 Deixe em branco para usar seleção manual de datas abaixo
+            
+            <div class="datas-alternadas">
+                <label style="font-weight:bold;font-size:12px;color:#495057;display:block;margin-bottom:5px;">
+                    ➕ Datas Alternadas (opcionais):
+                </label>
+                <input type="text" name="datas_alternadas" id="datas_alternadas" 
+                       placeholder="Ex: 20/01/2026, 22/01/2026, 25/01/2026"
+                       title="Digite datas no formato dd/mm/aaaa separadas por vírgula">
+                <div style="margin-top:5px;font-size:11px;color:#6c757d;">
+                    💡 Digite datas específicas separadas por vírgula (formato: dd/mm/aaaa)
+                </div>
             </div>
-        </div>
-        
-        <div class="alinhado">
-            <?php foreach ($datas_expedicao as $data): ?>
-                <label><input type="checkbox" name="datas[]" value="<?php echo $data ?>" <?php echo in_array($data, $datas_filtro) ? 'checked' : '' ?>> <?php echo $data ?></label>
-            <?php endforeach; ?>
         </div>
         <br>
         <button type="submit">Filtrar por data(s)</button>
@@ -4448,7 +4522,8 @@ try {
 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
     <button type="button" class="btn-imprimir" onclick="confirmarGravarEImprimir();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir Correios</button>
     <button type="button" class="btn-imprimir" onclick="prepararEImprimir();" style="background:#6c757d;"><i>🖨️</i> Apenas Imprimir</button>
-    <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()"><i>💾</i> Salvar Etiquetas Correios</button>
+    <!-- v9.8.0: Botão oculto - funcionalidade integrada ao "Gravar e Imprimir" -->
+    <!-- <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()" style="display:none;"><i>💾</i> Salvar Etiquetas Correios</button> -->
 </div>
 
 <?php if (!empty($poupaTempoPayload)): ?>
@@ -5582,272 +5657,9 @@ if (document.readyState === 'loading') {
 // ============================================================================
 // v8.14.7: SISTEMA DE SNAPSHOT/AUTO-SAVE CONTÍNUO
 // ============================================================================
-// Salva estado da tela a cada 3 segundos (localStorage + banco)
-// Permite continuidade entre usuários diferentes na mesma máquina
-// Chave: datas do ofício (independente de login)
-
-var snapshotTimer = null;
-var snapshotSalvando = false;
-
-// Função para coletar estado completo da tela
-function coletarEstadoTela() {
-    var estado = {
-        lacres_iipr: {},
-        lacres_correios: {},
-        etiquetas_correios: {},
-        postos_selecionados: [],
-        data_snapshot: new Date().toISOString()
-    };
-    
-    // Coletar todos os inputs de lacres e etiquetas
-    var rows = document.querySelectorAll('tr[data-posto-codigo]');
-    console.log('[SNAPSHOT] Coletando de ' + rows.length + ' linhas');
-    
-    for (var i = 0; i < rows.length; i++) {
-        var tr = rows[i];
-        var postoCodigo = tr.getAttribute('data-posto-codigo');
-        if (!postoCodigo) continue;
-        
-        // Lacre IIPR - buscar input com data-tipo="iipr"
-        var inpIIPR = tr.querySelector('input[data-tipo="iipr"]');
-        if (inpIIPR && inpIIPR.value) {
-            estado.lacres_iipr[postoCodigo] = inpIIPR.value;
-            console.log('[SNAPSHOT] IIPR coletado: ' + postoCodigo + ' = ' + inpIIPR.value);
-        }
-        
-        // Lacre Correios - buscar input com data-tipo="correios"
-        var inpCorr = tr.querySelector('input[data-tipo="correios"]');
-        if (inpCorr && inpCorr.value) {
-            estado.lacres_correios[postoCodigo] = inpCorr.value;
-            console.log('[SNAPSHOT] Correios coletado: ' + postoCodigo + ' = ' + inpCorr.value);
-        }
-        
-        // Etiqueta Correios - buscar input com classe etiqueta-barras
-        var inpEtiq = tr.querySelector('input.etiqueta-barras');
-        if (inpEtiq && inpEtiq.value) {
-            estado.etiquetas_correios[postoCodigo] = inpEtiq.value;
-            console.log('[SNAPSHOT] Etiqueta coletada: ' + postoCodigo + ' = ' + inpEtiq.value.substring(0, 10) + '...');
-        }
-        
-        // Checkbox selecionado
-        var checkbox = tr.querySelector('input[type="checkbox"]');
-        if (checkbox && checkbox.checked) {
-            estado.postos_selecionados.push(postoCodigo);
-        }
-    }
-    
-    console.log('[SNAPSHOT] Estado coletado:', estado);
-    return estado;
-}
-
-// Função para restaurar estado da tela
-function restaurarEstadoTela(estado) {
-    if (!estado) return;
-    
-    var rows = document.querySelectorAll('tr[data-posto-codigo]');
-    for (var i = 0; i < rows.length; i++) {
-        var tr = rows[i];
-        var postoCodigo = tr.getAttribute('data-posto-codigo');
-        if (!postoCodigo) continue;
-        
-        // Restaurar Lacre IIPR
-        if (estado.lacres_iipr && estado.lacres_iipr[postoCodigo]) {
-            var inpIIPR = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
-            if (inpIIPR) inpIIPR.value = estado.lacres_iipr[postoCodigo];
-        }
-        
-        // Restaurar Lacre Correios
-        if (estado.lacres_correios && estado.lacres_correios[postoCodigo]) {
-            var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
-            if (inpCorr) inpCorr.value = estado.lacres_correios[postoCodigo];
-        }
-        
-        // Restaurar Etiqueta Correios
-        if (estado.etiquetas_correios && estado.etiquetas_correios[postoCodigo]) {
-            var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
-            if (inpEtiq) inpEtiq.value = estado.etiquetas_correios[postoCodigo];
-        }
-        
-        // Restaurar checkbox
-        if (estado.postos_selecionados && estado.postos_selecionados.indexOf(postoCodigo) !== -1) {
-            var checkbox = tr.querySelector('input[type="checkbox"]');
-            if (checkbox) checkbox.checked = true;
-        }
-    }
-}
-
-// Função para obter chave do snapshot (baseada nas datas)
-function obterChaveSnapshot() {
-    var datasInput = document.querySelector('input[name="datas"]');
-    if (!datasInput || !datasInput.value) return null;
-    return 'snapshot_correios:' + datasInput.value;
-}
-
-// Função para salvar snapshot (localStorage + backend)
-function salvarSnapshotCorreios() {
-    var chave = obterChaveSnapshot();
-    if (!chave) {
-        console.log('[SNAPSHOT] Chave não disponível, abortando');
-        return;
-    }
-    
-    console.log('[SNAPSHOT] Iniciando salvamento com chave: ' + chave);
-    
-    var estado = coletarEstadoTela();
-    var estadoJSON = JSON.stringify(estado);
-    
-    console.log('[SNAPSHOT] JSON gerado, tamanho: ' + estadoJSON.length + ' bytes');
-    
-    // 1. Salvar no localStorage (rápido, local)
-    try {
-        window.localStorage.setItem(chave, estadoJSON);
-        console.log('[SNAPSHOT] Salvo no localStorage');
-    } catch (e) {
-        console.log('[SNAPSHOT] Erro ao salvar no localStorage:', e);
-    }
-    
-    // 2. Salvar no backend (persistente, compartilhado)
-    if (!snapshotSalvando) {
-        snapshotSalvando = true;
-        atualizarIndicadorSnapshot('salvando');
-        
-        console.log('[SNAPSHOT] Enviando para backend...');
-        
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', window.location.href, true);
-        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-        
-        xhr.onload = function() {
-            snapshotSalvando = false;
-            console.log('[SNAPSHOT] Resposta recebida, status: ' + xhr.status);
-            console.log('[SNAPSHOT] Resposta: ' + xhr.responseText);
-            if (xhr.status === 200) {
-                atualizarIndicadorSnapshot('salvo');
-            } else {
-                atualizarIndicadorSnapshot('erro');
-            }
-        };
-        
-        xhr.onerror = function() {
-            snapshotSalvando = false;
-            console.log('[SNAPSHOT] Erro na requisição XHR');
-            atualizarIndicadorSnapshot('erro');
-        };
-        
-        var params = 'acao=salvar_snapshot&chave_datas=' + encodeURIComponent(chave) + 
-                     '&snapshot_data=' + encodeURIComponent(estadoJSON);
-        console.log('[SNAPSHOT] Parâmetros preparados, enviando...');
-        xhr.send(params);
-    } else {
-        console.log('[SNAPSHOT] Já está salvando, aguardando...');
-    }
-}
-
-// Função para carregar snapshot (localStorage primeiro, depois backend)
-function carregarSnapshotCorreios() {
-    var chave = obterChaveSnapshot();
-    if (!chave) return;
-    
-    // 1. Tentar localStorage primeiro (mais rápido)
-    try {
-        var estadoJSON = window.localStorage.getItem(chave);
-        if (estadoJSON) {
-            var estado = JSON.parse(estadoJSON);
-            restaurarEstadoTela(estado);
-            console.log('[Snapshot] Restaurado do localStorage');
-            return;
-        }
-    } catch (e) {
-        console.log('Erro ao ler localStorage:', e);
-    }
-    
-    // 2. Buscar no backend
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', window.location.href + '?acao=carregar_snapshot&chave_datas=' + encodeURIComponent(chave), true);
-    
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            try {
-                var resposta = JSON.parse(xhr.responseText);
-                if (resposta.sucesso && resposta.snapshot) {
-                    var estado = JSON.parse(resposta.snapshot);
-                    restaurarEstadoTela(estado);
-                    console.log('[Snapshot] Restaurado do backend');
-                }
-            } catch (e) {
-                console.log('Erro ao processar snapshot do backend:', e);
-            }
-        }
-    };
-    
-    xhr.send();
-}
-
-// Função para atualizar indicador visual
-function atualizarIndicadorSnapshot(status) {
-    var indicador = document.getElementById('snapshot-indicador');
-    if (!indicador) return;
-    
-    if (status === 'salvando') {
-        indicador.innerHTML = '💾 Salvando...';
-        indicador.style.color = '#ff9800';
-    } else if (status === 'salvo') {
-        indicador.innerHTML = '✅ Salvo';
-        indicador.style.color = '#28a745';
-        setTimeout(function() {
-            indicador.innerHTML = '';
-        }, 2000);
-    } else if (status === 'erro') {
-        indicador.innerHTML = '⚠️ Erro ao salvar';
-        indicador.style.color = '#dc3545';
-        setTimeout(function() {
-            indicador.innerHTML = '';
-        }, 3000);
-    }
-}
-
-// Inicializar auto-save (debounced a cada 3 segundos)
-function iniciarAutoSave() {
-    console.log('[SNAPSHOT] Iniciando auto-save...');
-    
-    // v8.14.9.2: NÃO restaurar snapshot automaticamente ao carregar
-    // Apenas monitorar mudanças para salvar
-    // Para restaurar, usuário deve clicar em botão "Restaurar Snapshot" (futuro)
-    // carregarSnapshotCorreios(); // DESABILITADO
-    
-    // Monitorar mudanças e fazer auto-save
-    // Buscar inputs por data-tipo e classe
-    var inputs = document.querySelectorAll('input[data-tipo="iipr"], input[data-tipo="correios"], input.etiqueta-barras, input[type="checkbox"]');
-    console.log('[SNAPSHOT] Monitorando ' + inputs.length + ' inputs');
-    
-    for (var i = 0; i < inputs.length; i++) {
-        inputs[i].addEventListener('input', function() {
-            console.log('[SNAPSHOT] Input alterado, resetando timer...');
-            if (snapshotTimer) clearTimeout(snapshotTimer);
-            snapshotTimer = setTimeout(function() {
-                console.log('[SNAPSHOT] Timer expirado, salvando...');
-                salvarSnapshotCorreios();
-            }, 3000);
-        });
-        
-        inputs[i].addEventListener('change', function() {
-            if (snapshotTimer) clearTimeout(snapshotTimer);
-            snapshotTimer = setTimeout(function() {
-                salvarSnapshotCorreios();
-            }, 3000);
-        });
-    }
-}
-
-// Inicializar quando DOM estiver pronto
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', iniciarAutoSave);
-} else {
-    iniciarAutoSave();
-}
-
 // ============================================================================
-// FIM DO SISTEMA DE SNAPSHOT v8.14.7
+// v9.8.0: Sistema de Snapshot REMOVIDO
+// Causava valores antigos nos inputs de lacres
 // ============================================================================
 
 // Funcao para preparar e imprimir, garantindo que valores do split sejam preservados
@@ -6371,6 +6183,24 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         
         progressoDiv.textContent = texto;
+    };
+    
+    // v9.8.0: Função para toggle do indicador de dias
+    window.toggleIndicadorDias = function() {
+        var indicador = document.getElementById('indicador-dias');
+        if (!indicador) return;
+        
+        if (indicador.className.indexOf('collapsed') >= 0) {
+            // Expandir
+            indicador.className = indicador.className.replace(/\s*collapsed/g, '');
+            var toggleIcon = indicador.querySelector('.indicador-toggle');
+            if (toggleIcon) toggleIcon.textContent = '▼';
+        } else {
+            // Recolher
+            indicador.className = indicador.className + ' collapsed';
+            var toggleIcon = indicador.querySelector('.indicador-toggle');
+            if (toggleIcon) toggleIcon.textContent = '▶';
+        }
     };
 });
 
