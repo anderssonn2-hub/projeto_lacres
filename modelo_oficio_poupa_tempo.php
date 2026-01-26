@@ -8,6 +8,15 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.8.2: Controle de Lotes Individuais (26/01/2026)
+   - [NOVO] Tabela de lotes individuais com checkbox para cada lote
+   - [NOVO] Recálculo dinâmico do total baseado nos lotes marcados
+   - [NOVO] Por padrão todos os lotes vêm marcados
+   - [NOVO] Lotes desmarcados não aparecem na impressão
+   - [NOVO] Total de CIN's depende apenas dos lotes confirmados
+   - [NOVO] Busca individual de lotes por posto (não agrupa quantidade)
+   - [MELHORADO] Controle granular: desmarcar lotes não finalizados
+   
    v8.16.0: Sincronização com lacres_novo.php v8.16.0
    - [SINCRONIZADO] Versão alinhada com sistema principal
    - Poupa Tempo permanece inalterado (não exibe número no cabeçalho)
@@ -384,45 +393,59 @@ if ($pdo_controle && !empty($datasNorm)) {
 
     $in = "'" . implode("','", array_map('strval', $datasNorm)) . "'";
 
-    // v8.14.9: Adicionar campo usuario de ciPostosCsv
+    // v9.8.2: Busca lotes individuais (não agrupa quantidade)
     $sql = "
         SELECT 
             LPAD(c.posto,3,'0') AS codigo,
             COALESCE(r.nome, CONCAT('POUPA TEMPO - ', LPAD(c.posto,3,'0'))) AS nome,
-            SUM(COALESCE(c.quantidade,0)) AS quantidade,
-            GROUP_CONCAT(DISTINCT c.lote ORDER BY c.lote SEPARATOR ',') AS lotes,
+            c.lote AS lote,
+            COALESCE(c.quantidade,0) AS quantidade,
             r.endereco AS endereco,
-            MAX(c.usuario) AS usuario
+            c.usuario AS usuario
         FROM ciPostosCsv c
         INNER JOIN ciRegionais r 
                 ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
         WHERE DATE(c.dataCarga) IN ($in)
           AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
-        GROUP BY 
-            LPAD(c.posto,3,'0'), r.nome, r.endereco
         ORDER BY 
-            LPAD(c.posto,3,'0')
+            LPAD(c.posto,3,'0'), c.lote
     ";
 
     try {
         $stmt = $pdo_controle->query($sql);
+        $postosPorCodigo = array(); // v9.8.2: Agrupar lotes por posto
+        
         foreach ($stmt as $r) {
             $codigo   = (string)$r['codigo'];           
             $nome     = (string)$r['nome'];             
+            $lote     = (string)$r['lote'];
             $quant    = (int)$r['quantidade'];          
-            $lotes    = isset($r['lotes']) ? (string)$r['lotes'] : '';
             $endereco = trim((string)$r['endereco']);
-            $usuario  = isset($r['usuario']) ? trim((string)$r['usuario']) : '';   // v8.14.9
+            $usuario  = isset($r['usuario']) ? trim((string)$r['usuario']) : '';
 
-            $paginas[] = array(
-                'codigo'   => $codigo,
-                'nome'     => $nome,
-                'qtd'      => $quant,
-                'lotes'    => $lotes,
-                'endereco' => $endereco,
-                'usuario'  => $usuario,  // v8.14.9
+            // v9.8.2: Agrupar por posto e acumular lotes
+            if (!isset($postosPorCodigo[$codigo])) {
+                $postosPorCodigo[$codigo] = array(
+                    'codigo'   => $codigo,
+                    'nome'     => $nome,
+                    'endereco' => $endereco,
+                    'usuario'  => $usuario,
+                    'lotes'    => array(),  // Array de lotes individuais
+                    'qtd_total' => 0
+                );
+            }
+            
+            // Adiciona lote individual
+            $postosPorCodigo[$codigo]['lotes'][] = array(
+                'lote' => $lote,
+                'quantidade' => $quant
             );
+            $postosPorCodigo[$codigo]['qtd_total'] += $quant;
         }
+        
+        // Converte para array sequencial
+        $paginas = array_values($postosPorCodigo);
+        
     } catch (Exception $e) {
         // error_log("Erro SQL Poupatempo: " . $e->getMessage());
     }
@@ -679,6 +702,31 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     
     /* Garantir que tabelas não quebrem */
     table{page-break-inside:avoid}
+    
+    /* v9.8.2: Ocultar lotes desmarcados na impressão */
+    .linha-lote[data-checked="0"]{
+        display:none !important;
+    }
+    
+    /* v9.8.2: Ocultar checkboxes e área de controle na impressão */
+    .tabela-lotes h5,
+    .checkbox-lote,
+    .marcar-todos{
+        display:none !important;
+    }
+    
+    .tabela-lotes{
+        background:transparent !important;
+        border:none !important;
+    }
+    
+    .lotes-detalhe thead th:first-child{
+        display:none !important;
+    }
+    
+    .lotes-detalhe tbody td:first-child{
+        display:none !important;
+    }
 }
 </style>
 <script type="text/javascript">
@@ -750,6 +798,92 @@ function executarGravacaoPT(modo, comImpressao) {
 // Função para gravar e imprimir (agora com modal)
 function gravarEImprimir() {
     confirmarGravarPT(true);
+}
+
+// v9.8.2: Recalcula total baseado nos lotes marcados
+function recalcularTotal(posto) {
+    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + posto + '"]');
+    var total = 0;
+    var lotesConfirmados = [];
+    
+    for (var i = 0; i < checkboxes.length; i++) {
+        var cb = checkboxes[i];
+        var quantidade = parseInt(cb.getAttribute('data-quantidade')) || 0;
+        var lote = cb.getAttribute('data-lote');
+        var linha = cb.closest('tr');
+        
+        if (cb.checked) {
+            total += quantidade;
+            lotesConfirmados.push(lote);
+            linha.setAttribute('data-checked', '1');
+        } else {
+            linha.setAttribute('data-checked', '0');
+        }
+    }
+    
+    // Atualiza displays
+    var totalCins = document.getElementById('total_' + posto);
+    if (totalCins) {
+        totalCins.textContent = formatarNumero(total);
+    }
+    
+    var totalRodape = document.getElementById('total_rodape_' + posto);
+    if (totalRodape) {
+        totalRodape.textContent = formatarNumero(total);
+    }
+    
+    // Atualiza hidden inputs
+    var hiddenLotes = document.getElementById('lotes_confirmados_' + posto);
+    if (hiddenLotes) {
+        hiddenLotes.value = lotesConfirmados.join(',');
+    }
+    
+    var hiddenQuantidade = document.getElementById('quantidade_final_' + posto);
+    if (hiddenQuantidade) {
+        hiddenQuantidade.value = total;
+    }
+    
+    // Atualiza checkbox "marcar todos"
+    atualizarCheckboxMarcarTodos(posto);
+}
+
+// v9.8.2: Marca/desmarca todos os lotes de um posto
+function marcarTodosLotes(checkbox, posto) {
+    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + posto + '"]');
+    var marcado = checkbox.checked;
+    
+    for (var i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].checked = marcado;
+    }
+    
+    recalcularTotal(posto);
+}
+
+// v9.8.2: Atualiza estado do checkbox "marcar todos"
+function atualizarCheckboxMarcarTodos(posto) {
+    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + posto + '"]');
+    var marcarTodos = document.querySelector('.marcar-todos[data-posto="' + posto + '"]');
+    
+    if (!marcarTodos) return;
+    
+    var todosмаrcados = true;
+    var algumMarcado = false;
+    
+    for (var i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            algumMarcado = true;
+        } else {
+            todosMarcados = false;
+        }
+    }
+    
+    marcarTodos.checked = todosMarcados;
+    marcarTodos.indeterminate = algumMarcado && !todosMarcados;
+}
+
+// v9.8.2: Formata número com separador de milhares
+function formatarNumero(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 // Função apenas para gravar (agora com modal)
@@ -889,7 +1023,8 @@ if (document.readyState === 'loading') {
   <?php foreach ($paginas as $idx => $p): 
         $codigo   = $p['codigo'];                     
         $nome     = $p['nome'] ? $p['nome'] : "POUPA TEMPO";
-        $quant    = (int)$p['qtd'];
+        $qtd_total = (int)$p['qtd_total'];  // v9.8.2: Total de todos os lotes
+        $lotes_array = $p['lotes'];          // v9.8.2: Array de lotes individuais
         $endereco = isset($p['endereco']) ? $p['endereco'] : '';
 
         // garante código com 3 dígitos
@@ -899,7 +1034,7 @@ if (document.readyState === 'loading') {
         $valorLacre = isset($lacresPorPosto[$codigo3]) ? $lacresPorPosto[$codigo3] : '';
         $valorNome = isset($nomesPorPosto[$codigo3]) ? $nomesPorPosto[$codigo3] : ($codigo . ' - ' . $nome);
         $valorEndereco = isset($enderecosPorPosto[$codigo3]) ? $enderecosPorPosto[$codigo3] : $endereco;
-        $valorQuantidade = isset($quantidadesPorPosto[$codigo3]) ? $quantidadesPorPosto[$codigo3] : $quant;
+        $valorQuantidade = isset($quantidadesPorPosto[$codigo3]) ? $quantidadesPorPosto[$codigo3] : $qtd_total;
   ?>
   <div class="folha-a4-oficio">
     <div class="oficio">
@@ -947,13 +1082,11 @@ if (document.readyState === 'loading') {
                          style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold; word-wrap:break-word; overflow-wrap:break-word; white-space:normal; line-height:1.3;">
                 </div>
               </td>
-              <!-- Quantidade de carteiras editável como input -->
+              <!-- Quantidade de carteiras - v9.8.2: Calculada dinamicamente dos lotes marcados -->
               <td style="text-align:right">
-                <input type="text" 
-                       name="quantidade_posto[<?php echo e($codigo3); ?>]" 
-                       value="<?php echo e($valorQuantidade); ?>" 
-                       class="input-editavel"
-                       style="text-align:right;">
+                <span class="total-cins" id="total_<?php echo e($codigo3); ?>" style="font-weight:bold; font-size:14px;">
+                  <?php echo number_format($valorQuantidade, 0, ',', '.'); ?>
+                </span>
               </td>
               <!-- Número do lacre -->
               <td style="text-align:right">
@@ -963,14 +1096,72 @@ if (document.readyState === 'loading') {
                     class="input-editavel"
                     style="text-align:right;"
                 >
-                <!-- v8.14.4: Hidden input para lote (usado ao salvar) -->
-                <input type="hidden"
-                    name="lote_posto[<?php echo e($codigo3); ?>]"
-                    value="<?php echo e($p['lotes']); ?>"
-                >
               </td>
             </tr>
           </table>
+
+          <!-- v9.8.2: Tabela de Lotes Individuais com Checkboxes -->
+          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
+            <h5 style="margin:0 0 10px 0; color:#333; font-size:13px;">
+              📦 Lotes para Despacho (marque os lotes a enviar):
+            </h5>
+            <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe">
+              <thead>
+                <tr style="background:#e0e0e0;">
+                  <th style="width:10%; text-align:center; padding:6px; border:1px solid #ccc;">
+                    <input type="checkbox" 
+                           class="marcar-todos" 
+                           data-posto="<?php echo e($codigo3); ?>" 
+                           checked 
+                           onchange="marcarTodosLotes(this, '<?php echo e($codigo3); ?>')">
+                  </th>
+                  <th style="width:50%; text-align:left; padding:6px; border:1px solid #ccc;">Lote</th>
+                  <th style="width:40%; text-align:right; padding:6px; border:1px solid #ccc;">Quantidade</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($lotes_array as $lote_info): ?>
+                <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-checked="1">
+                  <td style="text-align:center; padding:6px; border:1px solid #ccc;">
+                    <input type="checkbox" 
+                           class="checkbox-lote" 
+                           data-posto="<?php echo e($codigo3); ?>" 
+                           data-quantidade="<?php echo e($lote_info['quantidade']); ?>"
+                           data-lote="<?php echo e($lote_info['lote']); ?>"
+                           checked 
+                           onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
+                  </td>
+                  <td style="text-align:left; padding:6px; border:1px solid #ccc; font-weight:bold;">
+                    <?php echo e($lote_info['lote']); ?>
+                  </td>
+                  <td style="text-align:right; padding:6px; border:1px solid #ccc;">
+                    <?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?>
+                  </td>
+                </tr>
+                <?php endforeach; ?>
+              </tbody>
+              <tfoot>
+                <tr style="background:#f0f0f0; font-weight:bold;">
+                  <td colspan="2" style="text-align:right; padding:6px; border:1px solid #ccc;">
+                    <strong>TOTAL (lotes marcados):</strong>
+                  </td>
+                  <td style="text-align:right; padding:6px; border:1px solid #ccc;">
+                    <span class="total-lotes-rodape" id="total_rodape_<?php echo e($codigo3); ?>">
+                      <?php echo number_format($qtd_total, 0, ',', '.'); ?>
+                    </span>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+            <input type="hidden" 
+                   name="lotes_confirmados[<?php echo e($codigo3); ?>]" 
+                   id="lotes_confirmados_<?php echo e($codigo3); ?>" 
+                   value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_array)); ?>">
+            <input type="hidden" 
+                   name="quantidade_posto[<?php echo e($codigo3); ?>]" 
+                   id="quantidade_final_<?php echo e($codigo3); ?>" 
+                   value="<?php echo $qtd_total; ?>">
+          </div>
 
           <div style="flex-grow:1;"></div>
 
