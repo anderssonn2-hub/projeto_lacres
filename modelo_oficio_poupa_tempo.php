@@ -8,6 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.8.4: Debug e Mensagens de Erro Aprimoradas (26/01/2026)
+   - [NOVO] Debug detalhado com ?debug_dados=1 ou ?debug=1
+   - [NOVO] Mensagem clara quando não há dados para exibir
+   - [CORRIGIDO] Linha duplicada removida (isset validação)
+   - [MELHORADO] Identificação de problema: datas vazias vs. sem produção
+   - [ADICIONADO] Botão "Voltar" quando não há dados
+   
    v9.8.3: Correção da Exibição de Lotes (26/01/2026)
    - [CORRIGIDO] Lotes individuais agora são exibidos corretamente
    - [CORRIGIDO] Tabela de lotes com melhor visibilidade
@@ -361,6 +368,20 @@ if (isset($_POST['pt_datas'])) {
     $datasStr = $_GET['pt_datas'];
 }
 
+// v9.8.4: Debug para identificar problemas de dados vazios
+if (isset($_GET['debug']) || isset($_GET['debug_dados'])) {
+    echo "<pre style='background:#ffc;padding:20px;border:3px solid #f00;margin:10px;'>";
+    echo "<h2 style='color:#f00;'>🔍 DEBUG v9.8.4 - DADOS RECEBIDOS</h2>";
+    echo "<strong>POST pt_datas:</strong> " . (isset($_POST['pt_datas']) ? $_POST['pt_datas'] : 'NÃO DEFINIDO') . "\n";
+    echo "<strong>GET pt_datas:</strong> " . (isset($_GET['pt_datas']) ? $_GET['pt_datas'] : 'NÃO DEFINIDO') . "\n";
+    echo "<strong>datasStr final:</strong> " . (empty($datasStr) ? 'VAZIO!' : $datasStr) . "\n";
+    echo "\n<strong>Todo POST:</strong>\n";
+    print_r($_POST);
+    echo "\n<strong>Todo GET:</strong>\n";
+    print_r($_GET);
+    echo "</pre>";
+}
+
 if (!empty($datasStr)) {
     $tmp = explode(',', $datasStr);
     foreach ($tmp as $d) {
@@ -480,6 +501,30 @@ if (isset($_GET['debug_pt'])) {
     echo "<pre>\n-------------------------------\n\n";
     echo "PAGINAS (resultado do SELECT):\n";
     var_dump($paginas);
+    echo "</pre>";
+}
+
+// v9.8.4: Debug final - mostra se tem dados para exibir
+if (isset($_GET['debug']) || isset($_GET['debug_dados'])) {
+    echo "<pre style='background:#ffe;padding:20px;border:3px solid #00f;margin:10px;'>";
+    echo "<h2 style='color:#00f;'>🔍 DEBUG v9.8.4 - RESULTADO DA BUSCA</h2>";
+    echo "<strong>datasNorm (datas normalizadas):</strong> " . (empty($datasNorm) ? 'VAZIO!' : implode(', ', $datasNorm)) . "\n";
+    echo "<strong>Total de páginas (postos):</strong> " . count($paginas) . "\n";
+    echo "<strong>temDados:</strong> " . ($temDados ? 'SIM' : 'NÃO') . "\n\n";
+    
+    if (!empty($paginas)) {
+        foreach ($paginas as $idx => $p) {
+            echo "Página #{$idx}: Posto {$p['codigo']} - {$p['nome']}\n";
+            echo "  Total lotes: " . (isset($p['lotes']) ? count($p['lotes']) : 0) . "\n";
+            echo "  Qtd total: {$p['qtd_total']}\n";
+        }
+    } else {
+        echo "\n❌ NENHUMA PÁGINA GERADA!\n";
+        echo "Possíveis causas:\n";
+        echo "1. Datas não têm produção no banco\n";
+        echo "2. Query SQL não retornou resultados\n";
+        echo "3. Posto não está configurado como Poupa Tempo\n";
+    }
     echo "</pre>";
 }
 
@@ -1039,7 +1084,7 @@ if (document.readyState === 'loading') {
     <button type="button" onclick="gravarEImprimir();" class="btn-sucesso btn-imprimir">
         💾🖨️ Gravar e Imprimir
     </button>
-isset($p['lotes']) && is_array($p['lotes']) ? $p['lotes'] : array();  // v9.8.3: Validação
+
     <!-- Botão apenas Gravar -->
     <button type="button" onclick="apenasGravar();" class="btn-salvar">
         💾 Gravar Dados
@@ -1056,7 +1101,7 @@ isset($p['lotes']) && is_array($p['lotes']) ? $p['lotes'] : array();  // v9.8.3:
         $codigo   = $p['codigo'];                     
         $nome     = $p['nome'] ? $p['nome'] : "POUPA TEMPO";
         $qtd_total = (int)$p['qtd_total'];  // v9.8.2: Total de todos os lotes
-        $lotes_array = $p['lotes'];          // v9.8.2: Array de lotes individuais
+        $lotes_array = isset($p['lotes']) && is_array($p['lotes']) ? $p['lotes'] : array();  // v9.8.3: Validação
         $endereco = isset($p['endereco']) ? $p['endereco'] : '';
 
         // garante código com 3 dígitos
@@ -1282,6 +1327,31 @@ isset($p['lotes']) && is_array($p['lotes']) ? $p['lotes'] : array();  // v9.8.3:
         <div class="cols100"><h4><b>Data:</b></h4></div>
       </div>
     </div>
+  </div>
+  <?php endforeach; ?>
+
+<?php else: // v9.8.4: Mensagem quando não há dados ?>
+  <div style="margin:50px auto; max-width:800px; padding:30px; background:#fff3cd; border:3px solid #856404; border-radius:8px; text-align:center;">
+    <h2 style="color:#856404; margin-top:0;">⚠️ Nenhum Ofício para Exibir</h2>
+    <p style="font-size:16px; line-height:1.6;">
+      <strong>Não foram encontrados dados para gerar o ofício Poupa Tempo.</strong>
+    </p>
+    <p style="font-size:14px; color:#666; line-height:1.6;">
+      <strong>Possíveis causas:</strong><br>
+      • As datas selecionadas não têm produção cadastrada no sistema<br>
+      • Nenhum posto Poupa Tempo tem lotes nas datas escolhidas<br>
+      • Os postos não estão configurados com entrega "POUPA TEMPO"<br>
+      • Problema na conexão com o banco de dados
+    </p>
+    <p style="margin-top:20px;">
+      <a href="javascript:history.back()" style="display:inline-block; padding:12px 24px; background:#007bff; color:#fff; text-decoration:none; border-radius:4px; font-weight:bold;">
+        ← Voltar e Selecionar Outras Datas
+      </a>
+    </p>
+    <hr style="margin:30px 0; border:none; border-top:1px solid #ccc;">
+    <p style="font-size:12px; color:#999;">
+      <strong>Debug:</strong> Para mais detalhes, adicione <code>?debug_dados=1</code> na URL
+    </p>
   </div>
 <?php endif; ?>
 

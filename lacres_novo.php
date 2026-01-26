@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — Versão 9.8.3
+/* lacres_novo.php — Versão 9.8.4
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.8.4 (26/01/2026):
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.8.4
+ * - [MELHORADO] Debug para identificar quando não há dados
+ * - [ADICIONADO] Mensagem clara se nenhum ofício for gerado
  * 
  * CHANGELOG v9.8.3 (26/01/2026):
  * - [CORRIGIDO] Exibição de lotes individuais no ofício Poupa Tempo
@@ -4240,7 +4245,7 @@ try {
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
-<div class="version-info">Versão 9.8.3</div>
+<div class="version-info">Versão 9.8.4</div>
 
 <!-- v9.8.1: Indicador de dias recolhível com badges coloridos e labels SEX/SÁB/DOM -->
 <div id="indicador-dias">
@@ -4310,7 +4315,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v9.8.3)
+        <span class="icone">📊</span> Análise de Expedição (v9.8.4)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
