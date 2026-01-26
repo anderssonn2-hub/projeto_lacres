@@ -8,6 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.8.6: Melhorias de Impressão (26/01/2026)
+   - [CORRIGIDO] Coluna vazia de checkboxes removida na impressão
+   - [CORRIGIDO] Título "📦 Lotes para Despacho" oculto na impressão
+   - [CORRIGIDO] Texto "(lotes marcados):" oculto na impressão
+   - [MELHORADO] Impressão limpa mostrando apenas lotes selecionados
+   - [TESTADO] Layout profissional sem elementos de controle
+   
    v9.8.5: Correção de Sintaxe (26/01/2026)
    - [CORRIGIDO] Parse error: unexpected token "endforeach" na linha 1265
    - [CORRIGIDO] Bloco else duplicado removido
@@ -784,12 +791,26 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         display:none !important;
     }
     
-    /* v9.8.3: Ocultar checkboxes e controles na impressão */
+    /* v9.8.5: Ocultar checkboxes, título e coluna vazia na impressão */
     .titulo-controle,
     .checkbox-lote,
     .marcar-todos,
     .col-checkbox{
         display:none !important;
+    }
+    
+    /* v9.8.5: Ocultar texto "(lotes marcados):" no rodapé */
+    .lotes-detalhe tfoot strong{
+        display:none !important;
+    }
+    
+    /* v9.8.5: Ajustar tabela sem coluna de checkbox */
+    .lotes-detalhe thead th:first-child,
+    .lotes-detalhe tbody td:first-child,
+    .lotes-detalhe tfoot td:first-child{
+        display:none !important;
+        width:0 !important;
+        padding:0 !important;
     }
     
     .tabela-lotes{
@@ -798,7 +819,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         padding:5px !important;
     }
     
-    /* v9.8.3: Ajusta layout da tabela de lotes na impressão */
+    /* v9.8.5: Ajusta layout da tabela de lotes na impressão */
     .lotes-detalhe thead tr,
     .lotes-detalhe tbody tr,
     .lotes-detalhe tfoot tr{
