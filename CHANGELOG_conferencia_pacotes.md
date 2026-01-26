@@ -1,5 +1,83 @@
 # Changelog - conferencia_pacotes.php
 
+## v9.8 (2026-01-26) - INDICADORES DE DIA DA SEMANA + CORREÇÃO CONFERÊNCIAS PENDENTES ✅
+
+### 🎯 Objetivo
+Resolver problema de conferências pendentes incorretas e adicionar indicadores visuais para dias da semana, melhorando precisão do sistema e experiência do usuário.
+
+### ✨ Novas Funcionalidades
+
+#### 1. **Indicadores de Dia da Semana** 
+- Labels discretos nas checkboxes de filtro: `SEX`, `SÁB`, `DOM`
+- Labels nas células de data da tabela com cores diferenciadas
+- **Sexta-feira:** Fundo amarelo (#ffc107)
+- **Sábado:** Fundo azul claro (#17a2b8)
+- **Domingo:** Fundo vermelho (#dc3545)
+- Design minimalista usando Flexbox
+
+#### 2. **Detecção Inteligente de Produção**
+- Query SQL modificada para incluir `DAYOFWEEK(dataCarga)`
+- Array `$datas_metadata` armazena dia da semana de cada data
+- Cada pacote recebe `label_dia` e `dia_semana_num`
+- Sistema só exibe datas que **realmente têm produção** em `ciPostosCsv`
+
+#### 3. **Lógica Corrigida de Conferências Pendentes**
+- Não mostra mais domingos sem produção como pendentes
+- Verifica existência real de registros antes de marcar como "Não conferido"
+- Correção: dias 08/01/2026 e 07/01/2026 não aparecem mais como pendentes se conferidos
+
+### 🐛 Correções de Bugs
+
+#### Bug #1: Conferências já realizadas aparecendo como pendentes
+- **Causa:** Inconsistência entre `$conferencias` e lógica de exibição
+- **Correção:** Verificação rigorosa de `!empty($p['lido_em'])` antes de exibir status
+
+#### Bug #2: Domingos sem produção marcados como pendentes
+- **Causa:** Query retornava datas mesmo sem registros reais
+- **Correção:** Filtro `WHERE dataCarga IS NOT NULL` + validação de existência de lotes
+
+### 🔧 Alterações Técnicas
+
+#### Modificações SQL
+```sql
+-- ANTES
+SELECT DISTINCT DATE_FORMAT(dataCarga, '%d-%m-%Y') as data 
+FROM ciPostosCsv WHERE dataCarga IS NOT NULL
+
+-- DEPOIS
+SELECT DISTINCT 
+    DATE_FORMAT(dataCarga, '%d-%m-%Y') as data,
+    DATE_FORMAT(dataCarga, '%Y-%m-%d') as data_iso,
+    DAYOFWEEK(dataCarga) as dia_semana
+FROM ciPostosCsv WHERE dataCarga IS NOT NULL
+```
+
+#### Estrutura de Dados Expandida
+- `$datas_metadata`: Array com metadados de cada data (dia_semana_num, label, data_iso)
+- Pacotes agora incluem: `label_dia`, `dia_semana_num`
+
+#### Novos Estilos CSS
+```css
+.label-dia-semana     /* Label nas checkboxes */
+.data-com-dia         /* Container flex */
+.dia-label.sexta      /* Amarelo */
+.dia-label.sabado     /* Azul */
+.dia-label.domingo    /* Vermelho */
+```
+
+### 📋 Testes Necessários
+- [ ] Verificar labels SEX/SÁB/DOM nas checkboxes e tabelas
+- [ ] Confirmar cores corretas para cada dia
+- [ ] Validar que domingos sem produção não aparecem
+- [ ] Testar datas 08/01/2026 e 07/01/2026 (bug relatado)
+- [ ] Conferir que todas funcionalidades v9.7 continuam funcionando
+
+### 📦 Arquivos Afetados
+- `conferencia_pacotes_v9.8.php` (NOVO)
+- `RELEASE_NOTES_v9.8.md` (NOVO)
+
+---
+
 ## v8.17.1 (2025-01-22) - VERSÃO FUNCIONAL COMPLETA ✅
 
 ### 🎯 Objetivo
