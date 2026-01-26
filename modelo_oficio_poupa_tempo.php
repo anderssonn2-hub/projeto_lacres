@@ -1247,6 +1247,7 @@ if (document.readyState === 'loading') {
                    id="quantidade_final_<?php echo e($codigo3); ?>" 
                    value="<?php echo $qtd_total; ?>">
           </div>
+          <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
           <div style="flex-grow:1;"></div>
 
@@ -1268,9 +1269,9 @@ if (document.readyState === 'loading') {
       </div>
     </div>
   </div>
-  <?php endforeach; ?>
+  <?php endforeach; ?>  <!-- Fecha o foreach de $paginas -->
 
-<?php else: // v9.8.4: Mensagem quando não há dados ?>
+<?php else: ?>  <!-- Se $temDados for false, exibe mensagem de erro -->
   <div style="margin:50px auto; max-width:800px; padding:30px; background:#fff3cd; border:3px solid #856404; border-radius:8px; text-align:center;">
     <h2 style="color:#856404; margin-top:0;">⚠️ Nenhum Ofício para Exibir</h2>
     <p style="font-size:16px; line-height:1.6;">
@@ -1293,7 +1294,7 @@ if (document.readyState === 'loading') {
       <strong>Debug:</strong> Para mais detalhes, adicione <code>?debug_dados=1</code> na URL
     </p>
   </div>
-<?php endif; ?>
+<?php endif; ?>  <!-- Fecha o if ($temDados) -->
 
 </form>
 
