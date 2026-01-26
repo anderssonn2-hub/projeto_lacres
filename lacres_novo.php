@@ -1,6 +1,16 @@
 <?php
-/* lacres_novo.php — Versão 9.8.0
+/* lacres_novo.php — Versão 9.8.1
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.8.1 (26/01/2026):
+ * - [CORRIGIDO] Status de Conferências: agora mostra APENAS dias com produção real
+ * - [CORRIGIDO] Bug: dias 07/01/2026 e 08/01/2026 não aparecem mais como pendentes sem produção
+ * - [NOVO] Labels de dia da semana nos badges: SEX (amarelo), SÁB (azul), DOM (vermelho)
+ * - [MELHORADO] Lógica: conferências pendentes = dias COM produção MAS sem conferência
+ * - [REMOVIDO] Calendário completo de 30 dias (mostrava domingos sem produção como pendentes)
+ * - [NOVO] Query SQL com DAYOFWEEK() para detectar fins de semana
+ * - [NOVO] Array $metadados_dias armazena informações de dia da semana
+ * - [INTEGRAÇÃO] conferencia_pacotes: JOIN entre ciPostosCsv e conferencia_pacotes
  * 
  * CHANGELOG v9.8.0 (23/01/2026):
  * - [REMOVIDO] Checkboxes de seleção de datas (substituídos por calendário)
@@ -2207,30 +2217,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// v9.7.1: Buscar dias com/sem conferência nos últimos 30 dias
+// v9.8.1: Buscar dias com/sem conferência nos últimos 30 dias (COM DIA DA SEMANA)
 $dias_com_conferencia = array();
 $dias_sem_conferencia = array();
+$metadados_dias = array(); // Novo: armazena dia da semana
 try {
-    // Buscar últimos 30 dias com conferência (dados em ciPostosCsv)
+    // Buscar últimos 30 dias COM produção (dados em ciPostosCsv)
     $stmt_conferidos = $pdo_controle->query("
-        SELECT DISTINCT DATE(dataCarga) as data 
+        SELECT DISTINCT 
+            DATE(dataCarga) as data,
+            DAYOFWEEK(dataCarga) as dia_semana
         FROM ciPostosCsv 
         WHERE dataCarga >= DATE_SUB(NOW(), INTERVAL 30 DAY)
         ORDER BY data DESC
         LIMIT 15
     ");
+    $dias_com_producao = array(); // Dias que tiveram produção
     while ($row = $stmt_conferidos->fetch(PDO::FETCH_ASSOC)) {
-        $dias_com_conferencia[] = date('d/m/Y', strtotime($row['data']));
+        $data_fmt = date('d/m/Y', strtotime($row['data']));
+        $dias_com_producao[] = $data_fmt;
+        
+        // Determina label do dia (1=Dom, 6=Sex, 7=Sáb)
+        $dia_num = (int)$row['dia_semana'];
+        $label = '';
+        if ($dia_num == 6) $label = 'SEX';
+        elseif ($dia_num == 7) $label = 'SÁB';
+        elseif ($dia_num == 1) $label = 'DOM';
+        
+        $metadados_dias[$data_fmt] = array(
+            'dia_semana_num' => $dia_num,
+            'label' => $label
+        );
     }
     
-    // Buscar últimos 30 dias (calendário completo)
-    $todos_dias = array();
-    for ($i = 0; $i < 30; $i++) {
-        $todos_dias[] = date('d/m/Y', strtotime("-$i days"));
+    // Buscar dias COM conferência registrada (tabela conferencia_pacotes)
+    try {
+        $stmt_conf = $pdo_controle->query("
+            SELECT DISTINCT DATE(dataCarga) as data
+            FROM ciPostosCsv csv
+            INNER JOIN conferencia_pacotes cp ON csv.lote = cp.nlote
+            WHERE csv.dataCarga >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+              AND cp.conf = 's'
+            ORDER BY data DESC
+        ");
+        while ($row = $stmt_conf->fetch(PDO::FETCH_ASSOC)) {
+            $dias_com_conferencia[] = date('d/m/Y', strtotime($row['data']));
+        }
+    } catch (Exception $e) {
+        // Se conferencia_pacotes não existir, assume que nenhum dia foi conferido
+        $dias_com_conferencia = array();
     }
     
-    // Calcular dias SEM conferência (diferença)
-    $dias_sem_conferencia = array_diff($todos_dias, $dias_com_conferencia);
+    // Calcular dias PENDENTES: dias com produção MAS sem conferência
+    $dias_sem_conferencia = array_diff($dias_com_producao, $dias_com_conferencia);
+    $dias_sem_conferencia = array_values($dias_sem_conferencia); // Reindexar
     $dias_sem_conferencia = array_slice($dias_sem_conferencia, 0, 10); // Limitar a 10
 } catch (Exception $e) {
     // Silenciar erro
@@ -4183,9 +4223,9 @@ try {
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
-<div class="version-info">Versão 9.8.0</div>
+<div class="version-info">Versão 9.8.1</div>
 
-<!-- v9.8.0: Indicador de dias recolhível com badges coloridos -->
+<!-- v9.8.1: Indicador de dias recolhível com badges coloridos e labels SEX/SÁB/DOM -->
 <div id="indicador-dias">
     <div style="font-weight:bold;color:#333;font-size:13px;">
         📅 Status de Conferências
@@ -4200,7 +4240,9 @@ try {
                 $ultimas_cinco = array_slice($dias_com_conferencia, 0, 5);
                 if (!empty($ultimas_cinco)) {
                     foreach ($ultimas_cinco as $data) {
-                        echo '<span class="badge-data conferida">' . htmlspecialchars($data) . '</span>';
+                        $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
+                        $badge_label = !empty($label_dia) ? " <small style='font-size:9px;background:#6c757d;color:white;padding:1px 3px;border-radius:2px;'>$label_dia</small>" : '';
+                        echo '<span class="badge-data conferida">' . htmlspecialchars($data) . $badge_label . '</span>';
                     }
                 } else {
                     echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
@@ -4216,7 +4258,17 @@ try {
                 $ultimas_pendentes = array_slice($dias_sem_conferencia, 0, 5);
                 if (!empty($ultimas_pendentes)) {
                     foreach ($ultimas_pendentes as $data) {
-                        echo '<span class="badge-data pendente">' . htmlspecialchars($data) . '</span>';
+                        $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
+                        $badge_class = '';
+                        $badge_label = '';
+                        if ($label_dia == 'SEX') {
+                            $badge_label = " <small style='font-size:9px;background:#ffc107;color:#333;padding:1px 3px;border-radius:2px;font-weight:bold;'>SEX</small>";
+                        } elseif ($label_dia == 'SÁB') {
+                            $badge_label = " <small style='font-size:9px;background:#17a2b8;color:white;padding:1px 3px;border-radius:2px;font-weight:bold;'>SÁB</small>";
+                        } elseif ($label_dia == 'DOM') {
+                            $badge_label = " <small style='font-size:9px;background:#dc3545;color:white;padding:1px 3px;border-radius:2px;font-weight:bold;'>DOM</small>";
+                        }
+                        echo '<span class="badge-data pendente">' . htmlspecialchars($data) . $badge_label . '</span>';
                     }
                 } else {
                     echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
@@ -4241,7 +4293,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v9.8.0)
+        <span class="icone">📊</span> Análise de Expedição (v9.8.1)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
