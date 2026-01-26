@@ -8,6 +8,12 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.8.5: Correção de Sintaxe (26/01/2026)
+   - [CORRIGIDO] Parse error: unexpected token "endforeach" na linha 1265
+   - [CORRIGIDO] Bloco else duplicado removido
+   - [CORRIGIDO] endforeach solto removido
+   - [TESTADO] Sintaxe PHP validada
+   
    v9.8.4: Debug e Mensagens de Erro Aprimoradas (26/01/2026)
    - [NOVO] Debug detalhado com ?debug_dados=1 ou ?debug=1
    - [NOVO] Mensagem clara quando não há dados para exibir
@@ -1244,72 +1250,6 @@ if (document.readyState === 'loading') {
 
           <div style="flex-grow:1;"></div>
 
-          <div class="txtjust" style="margin-bottom:5px">
-            Entregue em maos para __________________________________________________,<br>
-            RG/CPF: _____________________________, que abaixo assina.
-          </div>
-        </div>
-      </div>
-
-      <div class="cols100 border-1px p5">
-        <div class="cols50 fleft"><h4><b>Entregue por: </b><i>_________________</i></h4></div>
-        <div class="cols50 fright"><h4><b>DATA: </b><i><?php echo date('d/m/Y'); ?></i></h4></div>
-      </div>
-
-      <div class="cols100 border-1px p5">
-        <div class="cols100"><h4><b>Assinatura:</b></h4></div>
-        <div class="cols100"><h4><b>Data:</b></h4></div>
-      </div>
-    </div>
-  </div>
-  <?php endforeach; ?>
-
-<?php else: ?>
-  <!-- Página editável padrão quando não há dados (nenhum Poupatempo encontrado) -->
-  <div class="folha-a4-oficio">
-    <div class="oficio">
-      <div class="cols100 border-1px">
-        <div class="cols25 fleft margin2px">
-          <img alt="Logotipo" style="margin-left:10px;margin-top:10px;padding-right:15px;float:left" src="logo_celepar.png" width="250" height="55">
-        </div>
-        <div class="cols65 fright center margin2px">
-          <h3><i>COSEP <br> Coordenacao De Servicos De Producao</i></h3>
-          <h3><b><br> Comprovante de Entrega </b></h3>
-        </div>
-      </div>
-
-      <div class="cols100 center border-1px p5 moldura">
-        <h4 class="left">
-          <br><span class="nometit">POUPATEMPO PARANA</span>
-          <br><span class="nometit">ENDERECO: 
-            <input type="text" name="endereco_posto[000]" value="" class="input-editavel" style="width:90%;" placeholder="Digite o endereco">
-          </span>
-          <br><span class="nometit"></span>
-        </h4>
-      </div>
-
-      <div class="cols100 processo border-1px">
-        <div class="oficio-observacao">
-          <table style="table-layout:fixed; width:100%; max-width:650px;">
-            <tr>
-              <th style="width:55%; max-width:350px;">Poupatempo</th>
-              <th style="width:22%;">Quantidade de CIN's</th>
-              <th style="width:23%;">Numero do Lacre</th>
-            </tr>
-            <tr>
-              <!-- v8.14.9.5: Nome do posto com largura controlada -->
-              <td style="width:55%; max-width:350px; text-align:left; padding:4px !important; overflow:visible;">
-                <div style="width:100%; overflow-x:auto; white-space:nowrap;">
-                  <input type="text" name="nome_posto[000]" value="" class="input-editavel" 
-                         style="width:auto; min-width:300px; max-width:100%; border:none; background:transparent; font-size:11px;" 
-                         placeholder="Digite o posto">
-                </div>
-              </td>
-              <td style="text-align:right"><input type="text" name="quantidade_posto[000]" value="" class="input-editavel" style="text-align:right;" placeholder="0"></td>
-              <td style="text-align:right"><input type="text" name="lacre_iipr[000]" value="" class="input-editavel" style="text-align:right;" placeholder="Lacre"></td>
-            </tr>
-          </table>
-          <div style="flex-grow:1;"></div>
           <div class="txtjust" style="margin-bottom:5px">
             Entregue em maos para __________________________________________________,<br>
             RG/CPF: _____________________________, que abaixo assina.
