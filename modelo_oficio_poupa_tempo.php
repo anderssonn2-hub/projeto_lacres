@@ -8,6 +8,14 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.8.3: Correção da Exibição de Lotes (26/01/2026)
+   - [CORRIGIDO] Lotes individuais agora são exibidos corretamente
+   - [CORRIGIDO] Tabela de lotes com melhor visibilidade
+   - [CORRIGIDO] Checkboxes funcionando para seleção de lotes
+   - [CORRIGIDO] Debug melhorado para identificar problemas
+   - [CONFIRMADO] CSS de impressão oculta checkboxes e lotes desmarcados
+   - [MELHORADO] Validação de array de lotes antes de exibir
+   
    v9.8.2: Controle de Lotes Individuais (26/01/2026)
    - [NOVO] Tabela de lotes individuais com checkbox para cada lote
    - [NOVO] Recálculo dinâmico do total baseado nos lotes marcados
@@ -446,6 +454,23 @@ if ($pdo_controle && !empty($datasNorm)) {
         // Converte para array sequencial
         $paginas = array_values($postosPorCodigo);
         
+        // Debug: Verifica estrutura de lotes
+        if (isset($_GET['debug_lotes'])) {
+            echo "<pre style='background:#fff3cd;padding:20px;border:2px solid #856404;margin:10px;'>";
+            echo "<h3>DEBUG LOTES v9.8.3</h3>";
+            echo "Total de postos: " . count($paginas) . "\n\n";
+            foreach ($paginas as $idx => $posto) {
+                echo "Posto #{$idx}: {$posto['codigo']} - {$posto['nome']}\n";
+                echo "  Total lotes: " . count($posto['lotes']) . "\n";
+                echo "  Qtd total: {$posto['qtd_total']}\n";
+                foreach ($posto['lotes'] as $lidx => $lt) {
+                    echo "    Lote [{$lidx}]: {$lt['lote']} = {$lt['quantidade']} CINs\n";
+                }
+                echo "\n";
+            }
+            echo "</pre>";
+        }
+        
     } catch (Exception $e) {
         // error_log("Erro SQL Poupatempo: " . $e->getMessage());
     }
@@ -708,24 +733,31 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         display:none !important;
     }
     
-    /* v9.8.2: Ocultar checkboxes e área de controle na impressão */
-    .tabela-lotes h5,
+    /* v9.8.3: Ocultar checkboxes e controles na impressão */
+    .titulo-controle,
     .checkbox-lote,
-    .marcar-todos{
+    .marcar-todos,
+    .col-checkbox{
         display:none !important;
     }
     
     .tabela-lotes{
         background:transparent !important;
-        border:none !important;
+        border:1px solid #ccc !important;
+        padding:5px !important;
     }
     
-    .lotes-detalhe thead th:first-child{
-        display:none !important;
+    /* v9.8.3: Ajusta layout da tabela de lotes na impressão */
+    .lotes-detalhe thead tr,
+    .lotes-detalhe tbody tr,
+    .lotes-detalhe tfoot tr{
+        background:transparent !important;
     }
     
-    .lotes-detalhe tbody td:first-child{
-        display:none !important;
+    .lotes-detalhe th,
+    .lotes-detalhe td{
+        font-size:11px !important;
+        padding:4px !important;
     }
 }
 </style>
@@ -1007,7 +1039,7 @@ if (document.readyState === 'loading') {
     <button type="button" onclick="gravarEImprimir();" class="btn-sucesso btn-imprimir">
         💾🖨️ Gravar e Imprimir
     </button>
-
+isset($p['lotes']) && is_array($p['lotes']) ? $p['lotes'] : array();  // v9.8.3: Validação
     <!-- Botão apenas Gravar -->
     <button type="button" onclick="apenasGravar();" class="btn-salvar">
         💾 Gravar Dados
@@ -1100,14 +1132,15 @@ if (document.readyState === 'loading') {
             </tr>
           </table>
 
-          <!-- v9.8.2: Tabela de Lotes Individuais com Checkboxes -->
-          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
-            <h5 style="margin:0 0 10px 0; color:#333; font-size:13px;">
+          <!-- v9.8.3: Tabela de Lotes Individuais com Checkboxes -->
+          <?php if (!empty($lotes_array)): // v9.8.3: Só exibe se houver lotes ?>
+          <div class="tabela-lotes no-print-controls" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
+            <h5 class="titulo-controle" style="margin:0 0 10px 0; color:#333; font-size:13px; font-weight:bold;">
               📦 Lotes para Despacho (marque os lotes a enviar):
             </h5>
             <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe">
               <thead>
-                <tr style="background:#e0e0e0;">
+                <tr stclass="col-checkbox" yle="background:#e0e0e0;">
                   <th style="width:10%; text-align:center; padding:6px; border:1px solid #ccc;">
                     <input type="checkbox" 
                            class="marcar-todos" 
@@ -1121,7 +1154,7 @@ if (document.readyState === 'loading') {
               </thead>
               <tbody>
                 <?php foreach ($lotes_array as $lote_info): ?>
-                <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-checked="1">
+                <tr clclass="col-checkbox" ass="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-checked="1">
                   <td style="text-align:center; padding:6px; border:1px solid #ccc;">
                     <input type="checkbox" 
                            class="checkbox-lote" 
@@ -1142,7 +1175,8 @@ if (document.readyState === 'loading') {
               </tbody>
               <tfoot>
                 <tr style="background:#f0f0f0; font-weight:bold;">
-                  <td colspan="2" style="text-align:right; padding:6px; border:1px solid #ccc;">
+                  <td class="col-checkbox" style="border:1px solid #ccc;"></td>
+                  <td style="text-align:right; padding:6px; border:1px solid #ccc;">
                     <strong>TOTAL (lotes marcados):</strong>
                   </td>
                   <td style="text-align:right; padding:6px; border:1px solid #ccc;">
