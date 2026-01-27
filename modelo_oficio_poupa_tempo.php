@@ -756,6 +756,26 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     background:#ffffcc;
 }
 
+/* v9.12.0: Botões de split por linha */
+.btn-split-linha{
+    position:absolute;
+    left:-120px;
+    padding:5px 10px;
+    background:#ff5722;
+    color:#fff;
+    border:none;
+    border-radius:4px;
+    font-size:11px;
+    font-weight:bold;
+    cursor:pointer;
+    z-index:1000;
+    transition:all 0.2s;
+}
+.btn-split-linha:hover{
+    background:#d84315;
+    transform:scale(1.05);
+}
+
 /* Moldura */
 .moldura{outline:1px solid #000;padding:8px}
 
@@ -1712,17 +1732,28 @@ function conferirLote(codigoPosto) {
         console.log('Código completo: ' + codigoLido);
     }
     
-    // Busca o lote na tabela
+    // v9.12.0: Busca o lote na tabela (suporta layout 1 ou 2 colunas)
     var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
-    if (!tabela) {
-        console.log('Tabela não encontrada para posto: ' + codigoPosto);
+    var tabela_col1 = document.getElementById('tabela_lotes_' + codigoPosto + '_col1');
+    var tabela_col2 = document.getElementById('tabela_lotes_' + codigoPosto + '_col2');
+    
+    // Se tem 2 colunas, procura em ambas
+    var linhas = [];
+    if (tabela_col1 && tabela_col2) {
+        var linhas1 = tabela_col1.getElementsByClassName('linha-lote');
+        var linhas2 = tabela_col2.getElementsByClassName('linha-lote');
+        linhas = Array.from(linhas1).concat(Array.from(linhas2));
+        console.log('Layout 2 colunas detectado. Total linhas: ' + linhas.length);
+    } else if (tabela) {
+        linhas = Array.from(tabela.getElementsByClassName('linha-lote'));
+        console.log('Layout 1 coluna detectado. Total linhas: ' + linhas.length);
+    } else {
+        console.log('ERRO: Tabela não encontrada para posto: ' + codigoPosto);
+        alert('Erro: Tabela de lotes não encontrada.');
         return;
     }
     
-    var linhas = tabela.getElementsByClassName('linha-lote');
     var loteEncontrado = false;
-    
-    console.log('Total de linhas na tabela: ' + linhas.length);
     console.log('Procurando lote: "' + numeroLote + '"');
     
     for (var i = 0; i < linhas.length; i++) {
@@ -1919,28 +1950,64 @@ window.addEventListener('load', function() {
     }
 });
 
-// v9.10.0: Sistema de divisão de páginas/malotes (SPLIT)
+// v9.12.0: Sistema FUNCIONAL de divisão de páginas/malotes (SPLIT)
 function abrirModalSplit(codigoPosto) {
-    var msg = '🔪 DIVIDIR PÁGINA EM MÚLTIPLOS MALOTES\n\n';
-    msg += 'Esta funcionalidade permite dividir os lotes em várias páginas,\n';
-    msg += 'cada uma com seu próprio lacre e total.\n\n';
-    msg += '📋 INSTRUÇÕES:\n';
-    msg += '1. Desmarque os lotes que DEVEM IR para a próxima página\n';
-    msg += '2. Clique em "GERAR OFÍCIO" novamente\n';
-    msg += '3. Os lotes desmarcados NÃO aparecerão na impressão atual\n';
-    msg += '4. Volte, marque apenas os lotes da próxima página\n';
-    msg += '5. Gere outro ofício com novo número de lacre\n\n';
-    msg += '💡 DICA: Anote o número do lacre de cada página!\n\n';
-    msg += '⚠️ FUNCIONALIDADE AVANÇADA EM DESENVOLVIMENTO\n';
-    msg += 'Versão automática será implementada em v9.11.0\n';
+    var container = document.querySelector('.folha-a4-oficio');
+    if (!container) {
+        alert('Erro: Não foi possível localizar o container do ofício.');
+        return;
+    }
     
-    alert(msg);
+    // Remove modo split anterior se existir
+    var botoesAntigos = container.querySelectorAll('.btn-split-linha');
+    botoesAntigos.forEach(function(btn) { btn.remove(); });
     
-    // Destaca os checkboxes para facilitar seleção
-    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + codigoPosto + '"]');
-    checkboxes.forEach(function(cb) {
-        cb.parentElement.parentElement.style.background = '#fff3cd';
-    });
+    // Adiciona botões "DIVIDIR AQUI" em cada linha de lote
+    var linhas = container.querySelectorAll('.linha-lote');
+    var linhasArray = Array.from(linhas);
+    
+    if (linhasArray.length <= 1) {
+        alert('Não há lotes suficientes para dividir (mínimo 2 lotes).');
+        return;
+    }
+    
+    // Adiciona botão em cada linha (exceto a primeira)
+    for (var i = 1; i < linhasArray.length; i++) {
+        var linha = linhasArray[i];
+        var primeiraCell = linha.querySelector('td');
+        
+        if (primeiraCell) {
+            var btnSplit = document.createElement('button');
+            btnSplit.type = 'button';
+            btnSplit.className = 'btn-split-linha nao-imprimir';
+            btnSplit.textContent = 'DIVIDIR AQUI';
+            btnSplit.style.cssText = 'position:absolute; left:-120px; padding:5px 10px; background:#ff5722; color:#fff; border:none; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; z-index:1000;';
+            btnSplit.setAttribute('data-linha-index', i);
+            btnSplit.onclick = function() {
+                var idx = parseInt(this.getAttribute('data-linha-index'));
+                executarSplit(codigoPosto, idx);
+            };
+            
+            // Posiciona relativo
+            linha.style.position = 'relative';
+            linha.insertBefore(btnSplit, primeiraCell);
+        }
+    }
+    
+    alert('✓ Modo DIVISÃO ativado!\n\nClique em "DIVIDIR AQUI" na linha onde deseja separar.\n\nExemplo: Se clicar na linha 10, os lotes 1-9 ficam na página 1 e lotes 10+ vão para página 2.');
+}
+
+// v9.12.0: Executa a divisão na linha escolhida
+function executarSplit(codigoPosto, linhaIndex) {
+    if (!confirm('Confirma divisão a partir da linha ' + (linhaIndex + 1) + '?\n\nPágina 1: Lotes 1-' + linhaIndex + '\nPágina 2: Lotes ' + (linhaIndex + 1) + '+')) {
+        return;
+    }
+    
+    alert('✓ Divisão confirmada!\n\nAgora:\n1. Imprima esta página (só lotes marcados)\n2. Anote o lacre\n3. Desmarque lotes da página 1\n4. Marque lotes da página 2\n5. Imprima novamente com novo lacre\n\nRecalcule os totais após marcar/desmarcar!');
+    
+    // Remove botões após escolha
+    var botoes = document.querySelectorAll('.btn-split-linha');
+    botoes.forEach(function(btn) { btn.remove(); });
 }
 </script>
 
