@@ -8,6 +8,22 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.13.0: SPLIT Automático com Duplicação Real (27/01/2026)
+   - [NOVO] Clique "DIVIDIR AQUI" duplica página automaticamente
+   - [NOVO] Lotes divididos entre página 1 e página 2 (criada abaixo)
+   - [NOVO] Cada página tem total independente recalculado
+   - [NOVO] Cada página tem campo de lacre próprio
+   - [NOVO] Page-break configurado para impressão separada
+   - [VISUAL] Sistema intuitivo: escolhe linha → duplica → pronto!
+   - [EXEMPLO] 6 lotes divididos em 4 → Pág1: 1,2,3 | Pág2: 4,5,6
+   - [AUTOMÁTICO] Totais recalculados automaticamente em ambas
+   - [PRÁTICO] Sem necessidade de marcar/desmarcar manualmente
+   
+   v9.12.0: Sistema SPLIT Funcional + Conferência 2 Colunas (27/01/2026)
+   - [CORRIGIDO] Conferência busca em _col1 e _col2 simultaneamente
+   - [ADICIONADO] Botões "DIVIDIR AQUI" por linha com CSS vermelho
+   - [FUNCIONAL] executarSplit() fornece instruções de uso
+   
    v9.9.3: Correções Finais de Conferência (27/01/2026)
    - [CORRIGIDO] Extração de lote agora usa 8 dígitos (não 6)
    - [CORRIGIDO] Código 0075940100600600100 → Lote: 00759401 (8 dig) ✓
@@ -15,24 +31,6 @@
    - [SIMPLIFICADO] Rodapé em apenas 2 linhas
    - [OTIMIZADO] Zero queries MySQL adicionais (usa dados já carregados)
    - [TESTADO] Conferência validada com lotes de 8 dígitos
-   
-   v9.9.2: Melhorias de Conferência e Rodapé (27/01/2026)
-   
-   v9.9.1: Correções Críticas de Impressão e CSS (27/01/2026)
-   
-   v9.8.7: Layout e Impressão Profissional (26/01/2026)
-   - [REMOVIDO] Texto "📦 Lotes para Despacho" removido (tela e impressão)
-   - [CORRIGIDO] Coluna de checkbox não ocupa espaço na impressão
-   - [MELHORADO] Tabelas com largura máxima de 650px e centralizadas
-   - [UNIFORMIZADO] Fontes em 14px em todas as tabelas
-   - [CORRIGIDO] Tabelas não ultrapassam margens direita/esquerda
-   - [MELHORADO] Padding uniforme de 8px em todas as células
-   - [PROFISSIONAL] Layout limpo e consistente
-   
-   v9.8.6: Melhorias de Impressão (26/01/2026)
-   - [CORRIGIDO] Coluna vazia de checkboxes removida na impressão
-   - [CORRIGIDO] Título "📦 Lotes para Despacho" oculto na impressão
-   - [CORRIGIDO] Texto "(lotes marcados):" oculto na impressão
    - [MELHORADO] Impressão limpa mostrando apenas lotes selecionados
    - [TESTADO] Layout profissional sem elementos de controle
    
@@ -814,6 +812,15 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         min-height:277mm;
         max-height:277mm;
         overflow:hidden;
+    }
+    
+    /* v9.12.0: Page break para páginas divididas */
+    .pagina-split-1{
+        page-break-after:always !important;
+    }
+    
+    .pagina-split-2{
+        page-break-before:always !important;
     }
     
     .oficio{
@@ -1997,17 +2004,136 @@ function abrirModalSplit(codigoPosto) {
     alert('✓ Modo DIVISÃO ativado!\n\nClique em "DIVIDIR AQUI" na linha onde deseja separar.\n\nExemplo: Se clicar na linha 10, os lotes 1-9 ficam na página 1 e lotes 10+ vão para página 2.');
 }
 
-// v9.12.0: Executa a divisão na linha escolhida
+// v9.12.0: Executa a divisão na linha escolhida - DUPLICAÇÃO AUTOMÁTICA
 function executarSplit(codigoPosto, linhaIndex) {
-    if (!confirm('Confirma divisão a partir da linha ' + (linhaIndex + 1) + '?\n\nPágina 1: Lotes 1-' + linhaIndex + '\nPágina 2: Lotes ' + (linhaIndex + 1) + '+')) {
+    if (!confirm('Dividir página nesta linha?\n\nLotes 1 a ' + linhaIndex + ' ficam na primeira página\nLotes ' + (linhaIndex + 1) + ' em diante vão para NOVA página abaixo')) {
         return;
     }
     
-    alert('✓ Divisão confirmada!\n\nAgora:\n1. Imprima esta página (só lotes marcados)\n2. Anote o lacre\n3. Desmarque lotes da página 1\n4. Marque lotes da página 2\n5. Imprima novamente com novo lacre\n\nRecalcule os totais após marcar/desmarcar!');
+    // 1. Encontrar o contêiner principal do posto (folha-a4-oficio)
+    var folhaOriginal = null;
+    var todasFolhas = document.querySelectorAll('.folha-a4-oficio');
+    for (var i = 0; i < todasFolhas.length; i++) {
+        var inputLacre = todasFolhas[i].querySelector('input[name="lote_posto[' + codigoPosto + ']"]');
+        if (inputLacre) {
+            folhaOriginal = todasFolhas[i];
+            break;
+        }
+    }
     
-    // Remove botões após escolha
-    var botoes = document.querySelectorAll('.btn-split-linha');
-    botoes.forEach(function(btn) { btn.remove(); });
+    if (!folhaOriginal) {
+        alert('Erro: Não foi possível encontrar a página do posto ' + codigoPosto);
+        return;
+    }
+    
+    // 2. Clonar a folha inteira
+    var folhaNova = folhaOriginal.cloneNode(true);
+    
+    // 3. Adicionar classe para page-break na folha original
+    folhaOriginal.classList.add('pagina-split-1');
+    folhaNova.classList.add('pagina-split-2');
+    
+    // 4. Coletar TODAS as linhas de lote (ambas as colunas se existir)
+    var linhasOriginais = [];
+    var tabela1 = folhaOriginal.querySelector('#tabela_lotes_' + codigoPosto + '_col1');
+    var tabela2 = folhaOriginal.querySelector('#tabela_lotes_' + codigoPosto + '_col2');
+    var tabelaUnica = folhaOriginal.querySelector('#tabela_lotes_' + codigoPosto);
+    
+    if (tabela1 && tabela2) {
+        // Layout 2 colunas
+        var linhas1 = Array.from(tabela1.querySelectorAll('tbody .linha-lote'));
+        var linhas2 = Array.from(tabela2.querySelectorAll('tbody .linha-lote'));
+        linhasOriginais = linhas1.concat(linhas2);
+    } else if (tabelaUnica) {
+        // Layout 1 coluna
+        linhasOriginais = Array.from(tabelaUnica.querySelectorAll('tbody .linha-lote'));
+    }
+    
+    // 5. PÁGINA ORIGINAL: remover lotes que vão para página 2
+    for (var i = 0; i < linhasOriginais.length; i++) {
+        if (i >= linhaIndex) {
+            linhasOriginais[i].remove();
+        }
+    }
+    
+    // 6. PÁGINA NOVA: remover lotes que ficam na página 1
+    var linhasNovas = [];
+    var tabela1Nova = folhaNova.querySelector('#tabela_lotes_' + codigoPosto + '_col1');
+    var tabela2Nova = folhaNova.querySelector('#tabela_lotes_' + codigoPosto + '_col2');
+    var tabelaUnicaNova = folhaNova.querySelector('#tabela_lotes_' + codigoPosto);
+    
+    if (tabela1Nova && tabela2Nova) {
+        var linhas1Nova = Array.from(tabela1Nova.querySelectorAll('tbody .linha-lote'));
+        var linhas2Nova = Array.from(tabela2Nova.querySelectorAll('tbody .linha-lote'));
+        linhasNovas = linhas1Nova.concat(linhas2Nova);
+    } else if (tabelaUnicaNova) {
+        linhasNovas = Array.from(tabelaUnicaNova.querySelectorAll('tbody .linha-lote'));
+    }
+    
+    for (var j = 0; j < linhasNovas.length; j++) {
+        if (j < linhaIndex) {
+            linhasNovas[j].remove();
+        }
+    }
+    
+    // 7. Limpar campo de lacre na página nova
+    var inputLacreNovo = folhaNova.querySelector('input[name="lote_posto[' + codigoPosto + ']"]');
+    if (inputLacreNovo) {
+        inputLacreNovo.value = '';
+        inputLacreNovo.name = 'lote_posto[' + codigoPosto + '_parte2]';
+    }
+    
+    // 8. Atualizar IDs únicos na página nova para evitar conflitos
+    var elementosComId = folhaNova.querySelectorAll('[id]');
+    for (var m = 0; m < elementosComId.length; m++) {
+        var idOriginal = elementosComId[m].id;
+        elementosComId[m].id = idOriginal + '_parte2';
+    }
+    
+    // 9. Remover botões SPLIT de ambas as páginas
+    var botoesSplit1 = folhaOriginal.querySelectorAll('.btn-split-linha, .btn-split');
+    var botoesSplit2 = folhaNova.querySelectorAll('.btn-split-linha, .btn-split');
+    for (var n = 0; n < botoesSplit1.length; n++) {
+        botoesSplit1[n].remove();
+    }
+    for (var o = 0; o < botoesSplit2.length; o++) {
+        botoesSplit2[o].remove();
+    }
+    
+    // 10. Remover painéis de controle SPLIT
+    var painelSplit1 = folhaOriginal.querySelector('.controle-split');
+    var painelSplit2 = folhaNova.querySelector('.controle-split');
+    if (painelSplit1) painelSplit1.remove();
+    if (painelSplit2) painelSplit2.remove();
+    
+    // 11. Inserir a nova página LOGO APÓS a original
+    folhaOriginal.parentNode.insertBefore(folhaNova, folhaOriginal.nextSibling);
+    
+    // 12. Recalcular totais em ambas as páginas
+    setTimeout(function() {
+        // Total página 1
+        recalcularTotal(codigoPosto);
+        
+        // Total página 2
+        var checkboxesNovos = folhaNova.querySelectorAll('.checkbox-lote:checked');
+        var totalNovo = 0;
+        for (var p = 0; p < checkboxesNovos.length; p++) {
+            totalNovo += parseInt(checkboxesNovos[p].getAttribute('data-quantidade')) || 0;
+        }
+        var spanTotalNovo = folhaNova.querySelector('.total-posto');
+        if (spanTotalNovo) {
+            spanTotalNovo.textContent = formatarNumero(totalNovo);
+        }
+        var spanRodapeNovo = folhaNova.querySelector('.total-lotes-rodape');
+        if (spanRodapeNovo) {
+            spanRodapeNovo.textContent = formatarNumero(totalNovo);
+        }
+    }, 100);
+    
+    var qtdPagina1 = linhaIndex;
+    var qtdPagina2 = linhasOriginais.length - linhaIndex;
+    
+    alert('✅ Página dividida automaticamente!\n\n📄 PÁGINA 1: ' + qtdPagina1 + ' lotes\n📄 PÁGINA 2: ' + qtdPagina2 + ' lotes (nova página criada abaixo)\n\nCada página tem:\n✓ Seus próprios lotes\n✓ Total independente\n✓ Campo de lacre próprio\n✓ Rodapé com assinaturas\n\nDigite os lacres e imprima cada página separadamente!');
 }
 </script>
 
