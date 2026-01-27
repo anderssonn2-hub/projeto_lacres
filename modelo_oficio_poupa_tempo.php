@@ -8,14 +8,15 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.9.3: Correções Finais de Conferência (27/01/2026)
+   - [CORRIGIDO] Extração de lote agora usa 8 dígitos (não 6)
+   - [CORRIGIDO] Código 0075940100600600100 → Lote: 00759401 (8 dig) ✓
+   - [CORRIGIDO] Quantidade extraída corretamente (posições 8-11)
+   - [SIMPLIFICADO] Rodapé em apenas 2 linhas
+   - [OTIMIZADO] Zero queries MySQL adicionais (usa dados já carregados)
+   - [TESTADO] Conferência validada com lotes de 8 dígitos
+   
    v9.9.2: Melhorias de Conferência e Rodapé (27/01/2026)
-   - [REMOVIDO] Título "📦 Conferência de Lotes" do painel
-   - [CORRIGIDO] Conferência com código de barras de 19 dígitos (extrai lote automaticamente)
-   - [CORRIGIDO] Linha verde para lote encontrado funciona corretamente
-   - [CORRIGIDO] Linha amarela para lote não cadastrado com quantidade editável
-   - [MODIFICADO] Rodapé: "Entregue para:" e "RG/CPF:" na mesma linha
-   - [REMOVIDO] Texto "Entregue em mãos para... que abaixo assina"
-   - [TESTADO] Conferência funcional com scanner de código de barras
    
    v9.9.1: Correções Críticas de Impressão e CSS (27/01/2026)
    
@@ -1397,14 +1398,13 @@ if (document.readyState === 'loading') {
           <?php if (!empty($lotes_array)): ?>
           <div class="painel-conferencia controle-conferencia" style="margin-top:15px;">
             <div class="campo-leitura">
-              <label for="input_conferencia_<?php echo e($codigo3); ?>">Leitura (código de barras 19 dígitos):</label>
+              <label for="input_conferencia_<?php echo e($codigo3); ?>">Leitura:</label>
               <input type="text" 
                      id="input_conferencia_<?php echo e($codigo3); ?>" 
                      class="input-conferencia"
-                     placeholder="Leia o código de barras ou digite o número do lote..."
+                     placeholder="Leia código de barras (19 dígitos) ou digite lote (8 dígitos)..."
                      autocomplete="off"
-                     maxlength="19"
-                     onkeydown="if(event.keyCode===13){conferirLote('<?php echo e($codigo3); ?>');return false;}">
+                     onkeydown="if(event.keyCode===13){conferirLote('<?php echo e($codigo3); ?>');return false;}">              
             </div>
             <div class="contador-conferencia">
               <span>Total de Lotes: <strong id="total_lotes_<?php echo e($codigo3); ?>"><?php echo count($lotes_array); ?></strong></span>
@@ -1490,12 +1490,12 @@ if (document.readyState === 'loading') {
       <div class="cols100 border-1px p5">
         <div class="cols100">
           <h4 style="margin:5px 0;">
-            <b>Entregue para:</b> <i>_________________________________</i>
-            <span style="margin-left:20px;"><b>RG/CPF:</b> <i>_____________________________</i></span>
+            <b>Entregue para:</b> <i>___________________________________</i>
+            <span style="margin-left:30px;"><b>RG/CPF:</b> <i>_____________________________</i></span>
           </h4>
         </div>
         <div class="cols100">
-          <h4 style="margin:5px 0;"><b>Data:</b> <i>____________________</i></h4>
+          <h4 style="margin:5px 0;"><b>Data:</b> <i>_______________________</i></h4>
         </div>
       </div>
     </div>
@@ -1543,7 +1543,7 @@ setTimeout(function() {
 
 <!-- v9.9.0: Sistema de Conferência de Lotes -->
 <script type="text/javascript">
-// v9.9.2: Função para conferir lote via código de barras (extrai lote de 19 dígitos)
+// v9.9.3: Função para conferir lote via código de barras (extrai lote de 8 dígitos)
 function conferirLote(codigoPosto) {
     var input = document.getElementById('input_conferencia_' + codigoPosto);
     if (!input) return;
@@ -1551,14 +1551,14 @@ function conferirLote(codigoPosto) {
     var codigoLido = input.value.trim();
     if (codigoLido === '') return;
     
-    // v9.9.2: Se código tem 19 dígitos, extrai o lote (posições 1-6)
+    // v9.9.3: Se código tem 19 dígitos, extrai o lote (posições 0-7 = 8 dígitos)
     var numeroLote = codigoLido;
     if (codigoLido.length === 19 && /^\d{19}$/.test(codigoLido)) {
-        // Extrai caracteres da posição 0 a 5 (6 primeiros dígitos)
-        numeroLote = codigoLido.substring(0, 6);
-        // Remove zeros à esquerda
-        numeroLote = parseInt(numeroLote, 10).toString();
+        // Extrai caracteres da posição 0 a 7 (8 primeiros dígitos)
+        numeroLote = codigoLido.substring(0, 8);
+        // NÃO remove zeros à esquerda para preservar formato original
         console.log('Código de barras 19 dígitos detectado. Lote extraído: ' + numeroLote);
+        console.log('Código completo: ' + codigoLido);
     }
     
     // Busca o lote na tabela
@@ -1611,10 +1611,11 @@ function conferirLote(codigoPosto) {
         var tbody = tabela.getElementsByTagName('tbody')[0];
         if (!tbody) return;
         
-        // v9.9.2: Extrai quantidade do código de barras (dígitos 7-10)
+        // v9.9.3: Extrai quantidade do código de barras (posições 8-11 = 4 dígitos)
         var quantidadeExtraida = 0;
         if (codigoLido.length === 19 && /^\d{19}$/.test(codigoLido)) {
-            quantidadeExtraida = parseInt(codigoLido.substring(6, 10), 10);
+            quantidadeExtraida = parseInt(codigoLido.substring(8, 12), 10);
+            console.log('Quantidade extraída: ' + quantidadeExtraida);
         }
         
         // Cria nova linha
