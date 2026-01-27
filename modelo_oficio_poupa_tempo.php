@@ -1431,14 +1431,98 @@ if (document.readyState === 'loading') {
             </div>
           </div>
 
-          <!-- v9.8.6: Tabela de Lotes Individuais com Checkboxes -->
-          <!-- TODO v9.10.0: Implementar layout 2 colunas quando count($lotes_array) > 15
-               - Dividir lotes em 2 arrays (metade em cada)
-               - Criar 2 divs lado a lado (cols50 fleft)
-               - Cada div com tabela de 50% width
-               - Exemplo: 30 lotes = 15 esquerda + 15 direita
-          -->
-          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px; max-height:400px; overflow-y:auto;">
+          <!-- v9.10.0: Tabela de Lotes com Layout 2 Colunas Automático -->
+          <!-- Removido max-height e overflow para mostrar todos os lotes -->
+          <?php 
+          // v9.10.0: Determina se precisa 2 colunas (>12 lotes)
+          $total_lotes = count($lotes_array);
+          $usar_duas_colunas = $total_lotes > 12;
+          $lotes_coluna1 = array();
+          $lotes_coluna2 = array();
+          
+          if ($usar_duas_colunas) {
+              $meio = (int)ceil($total_lotes / 2);
+              $lotes_coluna1 = array_slice($lotes_array, 0, $meio);
+              $lotes_coluna2 = array_slice($lotes_array, $meio);
+          } else {
+              $lotes_coluna1 = $lotes_array;
+          }
+          ?>
+          
+          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
+            <?php if ($usar_duas_colunas): ?>
+            <!-- Layout 2 Colunas -->
+            <div style="display:flex; gap:15px; justify-content:space-between;">
+              <!-- Coluna Esquerda -->
+              <div style="flex:1;">
+                <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>_col1">
+                  <thead>
+                    <tr style="background:#e0e0e0;">
+                      <th class="col-checkbox" style="width:40px; text-align:center; padding:6px; border:1px solid #ccc;">
+                        <input type="checkbox" class="marcar-todos" data-posto="<?php echo e($codigo3); ?>" checked>
+                      </th>
+                      <th style="text-align:left; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Lote</th>
+                      <th style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Qtd</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php foreach ($lotes_coluna1 as $lote_info): ?>
+                    <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote_info['lote']); ?>" data-checked="1">
+                      <td class="col-checkbox" style="text-align:center; padding:6px; border:1px solid #ccc;">
+                        <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
+                               data-quantidade="<?php echo e($lote_info['quantidade']); ?>" 
+                               data-lote="<?php echo e($lote_info['lote']); ?>" checked 
+                               onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
+                      </td>
+                      <td style="text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;">
+                        <?php echo e($lote_info['lote']); ?>
+                      </td>
+                      <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
+                        <span class="valor-quantidade" style="display:none;"><?php echo number_format($lote_info['quantidade'], 0, '', ''); ?></span>
+                        <span class="valor-tela"><?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?></span>
+                      </td>
+                    </tr>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- Coluna Direita -->
+              <div style="flex:1;">
+                <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>_col2">
+                  <thead>
+                    <tr style="background:#e0e0e0;">
+                      <th class="col-checkbox" style="width:40px; text-align:center; padding:6px; border:1px solid #ccc;">
+                        <input type="checkbox" class="marcar-todos" data-posto="<?php echo e($codigo3); ?>" checked>
+                      </th>
+                      <th style="text-align:left; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Lote</th>
+                      <th style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Qtd</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php foreach ($lotes_coluna2 as $lote_info): ?>
+                    <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote_info['lote']); ?>" data-checked="1">
+                      <td class="col-checkbox" style="text-align:center; padding:6px; border:1px solid #ccc;">
+                        <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
+                               data-quantidade="<?php echo e($lote_info['quantidade']); ?>" 
+                               data-lote="<?php echo e($lote_info['lote']); ?>" checked 
+                               onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
+                      </td>
+                      <td style="text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;">
+                        <?php echo e($lote_info['lote']); ?>
+                      </td>
+                      <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
+                        <span class="valor-quantidade" style="display:none;"><?php echo number_format($lote_info['quantidade'], 0, '', ''); ?></span>
+                        <span class="valor-tela"><?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?></span>
+                      </td>
+                    </tr>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <?php else: ?>
+            <!-- Layout 1 Coluna (padrão para <=12 lotes) -->
             <table style="width:100%; max-width:650px; margin:0 auto; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>">
               <thead>
                 <tr style="background:#e0e0e0;">
@@ -1500,6 +1584,23 @@ if (document.readyState === 'loading') {
                    name="quantidade_posto[<?php echo e($codigo3); ?>]" 
                    id="quantidade_final_<?php echo e($codigo3); ?>" 
                    value="<?php echo $qtd_total; ?>">
+            <?php endif; ?>  <!-- Fecha o if/else de layout 2 colunas -->
+            
+            <!-- v9.10.0: Bot\u00e3o SPLIT para dividir p\u00e1gina em m\u00faltiplos malotes -->
+            <div class="controle-split nao-imprimir" style="margin-top:15px; padding:10px; background:#fff3cd; border:2px solid #ffc107; border-radius:4px; text-align:center;">
+              <p style="margin:5px 0; font-weight:bold; color:#856404;">
+                \ud83d\udce6 Precisa dividir estes lotes em m\u00faltiplos malotes?
+              </p>
+              <button type="button" 
+                      class="btn-split" 
+                      onclick="abrirModalSplit('<?php echo e($codigo3); ?>')"
+                      style="padding:10px 20px; background:#28a745; color:#fff; border:none; border-radius:4px; font-size:14px; font-weight:bold; cursor:pointer; margin-top:5px;">
+                \u2702\ufe0f DIVIDIR P\u00c1GINA EM M\u00daLTIPLOS MALOTES
+              </button>
+              <p style="margin:5px 0; font-size:12px; color:#666;">
+                Clique para criar p\u00e1ginas separadas com lacres e totais diferentes
+              </p>
+            </div>
           </div>
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
@@ -1804,6 +1905,30 @@ window.addEventListener('load', function() {
         }, 300);
     }
 });
+
+// v9.10.0: Sistema de divisão de páginas/malotes (SPLIT)
+function abrirModalSplit(codigoPosto) {
+    var msg = '🔪 DIVIDIR PÁGINA EM MÚLTIPLOS MALOTES\n\n';
+    msg += 'Esta funcionalidade permite dividir os lotes em várias páginas,\n';
+    msg += 'cada uma com seu próprio lacre e total.\n\n';
+    msg += '📋 INSTRUÇÕES:\n';
+    msg += '1. Desmarque os lotes que DEVEM IR para a próxima página\n';
+    msg += '2. Clique em "GERAR OFÍCIO" novamente\n';
+    msg += '3. Os lotes desmarcados NÃO aparecerão na impressão atual\n';
+    msg += '4. Volte, marque apenas os lotes da próxima página\n';
+    msg += '5. Gere outro ofício com novo número de lacre\n\n';
+    msg += '💡 DICA: Anote o número do lacre de cada página!\n\n';
+    msg += '⚠️ FUNCIONALIDADE AVANÇADA EM DESENVOLVIMENTO\n';
+    msg += 'Versão automática será implementada em v9.11.0\n';
+    
+    alert(msg);
+    
+    // Destaca os checkboxes para facilitar seleção
+    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + codigoPosto + '"]');
+    checkboxes.forEach(function(cb) {
+        cb.parentElement.parentElement.style.background = '#fff3cd';
+    });
+}
 </script>
 
 </body>
