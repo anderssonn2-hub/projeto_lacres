@@ -8,17 +8,17 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.9.1: Correções Críticas de Impressão e CSS (27/01/2026)
+   - [CORRIGIDO] CSS aparecendo como texto plano no topo da página
+   - [CORRIGIDO] Quebra de página forçada entre ofícios (page-break-after:always)
+   - [CORRIGIDO] Lotes respeitam a folha do posto (page-break-inside:avoid)
+   - [CORRIGIDO] Texto sobrepondo outros textos na impressão
+   - [CORRIGIDO] Controle de altura com overflow-y:auto na tela
+   - [CORRIGIDO] Overflow removido na impressão (max-height:none)
+   - [MELHORADO] Z-index e position para evitar sobreposição
+   - [TESTADO] Cada posto fica em uma folha completa
+   
    v9.9.0: Sistema de Conferência com Código de Barras (27/01/2026)
-   - [NOVO] Conferência de lotes via leitor de código de barras
-   - [NOVO] Linha fica verde ao ler lote que existe na página
-   - [NOVO] Linha amarela criada automaticamente para lote inexistente
-   - [NOVO] Campo de leitura com foco automático (atalho Alt+C)
-   - [NOVO] Contador visual de lotes conferidos vs total
-   - [CORRIGIDO] Layout centralizado sem ultrapassar margem direita
-   - [CORRIGIDO] Lotes desmarcados não aparecem na impressão
-   - [UNIFORMIZADO] Fonte igual ao nome do posto (14px, negrito)
-   - [MELHORADO] Impressão limpa sem botões, checkbox ou cores
-   - [TESTADO] Sistema de conferência completo e funcional
    
    v9.8.7: Layout e Impressão Profissional (26/01/2026)
    - [REMOVIDO] Texto "📦 Lotes para Despacho" removido (tela e impressão)
@@ -689,11 +689,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     display:flex;
     flex-direction:column;
     min-height:calc(297mm - 40mm);
+    position:relative;
 }
 .oficio *{box-sizing:border-box}
 
 /* Classes de layout */
-.cols100{width:100%;margin-bottom:10px}
+.cols100{width:100%;margin-bottom:10px;clear:both;position:relative}
 .cols65{width:65%}
 .cols50{width:50%}
 .cols25{width:25%}
@@ -711,11 +712,14 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     flex-grow:1;
     display:flex;
     flex-direction:column;
+    position:relative;
+    z-index:1;
 }
 .oficio-observacao{
     height:100%;
     display:flex;
     flex-direction:column;
+    position:relative;
 }
 
 /* Títulos */
@@ -785,17 +789,35 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         padding:8mm;
         box-shadow:none;
         display:block;
-        break-after:page;
-        min-height:auto;
+        page-break-after:always !important;
+        page-break-inside:avoid !important;
+        min-height:277mm;
+        max-height:277mm;
+        overflow:hidden;
     }
     
     .oficio{
         display:flex;
         flex-direction:column;
-        height:calc(297mm - 16mm);
+        max-height:calc(297mm - 20mm);
+        overflow:hidden;
     }
     
-    .processo{flex:1}
+    .processo{
+        flex:1;
+        overflow:hidden;
+    }
+    
+    /* v9.9.0: Tabela de lotes com altura controlada */
+    .tabela-lotes{
+        max-height:none !important;
+        overflow:visible !important;
+        page-break-inside:avoid !important;
+        background:transparent !important;
+        border:none !important;
+        padding:0 !important;
+        margin:10px 0 !important;
+    }
     
     /* Evitar quebra nos últimos blocos */
     .oficio .cols100.border-1px.p5:nth-last-of-type(2),
@@ -891,17 +913,21 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         font-size:14px !important;
         padding:8px !important;
     }
-}
-</style>
-        border:none !important;
-        padding:0 !important;
-        margin:10px 0 !important;
+    
+    /* v9.9.0: QUEBRA DE PÁGINA - cada ofício em uma folha */
+    .folha-a4-oficio{
+        page-break-after:always !important;
+        page-break-inside:avoid !important;
     }
     
-    /* v9.9.0: Tabela principal com max-width para não ultrapassar margem */
-    .oficio-observacao table{
-        max-width:650px !important;
-        margin:0 auto !important;
+    /* Evitar quebra dentro da tabela de lotes */
+    .tabela-lotes{
+        page-break-inside:avoid !important;
+    }
+    
+    /* Evitar quebra da tabela principal */
+    .oficio-observacao > table{
+        page-break-inside:avoid !important;
     }
 }
 
@@ -999,10 +1025,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     margin-right:auto !important;
     max-width:650px !important;
 }
-
-@media print{
-    body{background:#fff;margin:0;padding:0}
-    .controles-pagina,.nao-imprimir{display:none !important}
 </style>
 <script type="text/javascript">
 // v8.14.3: Modal de confirmação com 3 opções para Poupa Tempo
@@ -1393,7 +1415,7 @@ if (document.readyState === 'loading') {
           </div>
 
           <!-- v9.8.6: Tabela de Lotes Individuais com Checkboxes -->
-          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
+          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px; max-height:400px; overflow-y:auto;">
             <table style="width:100%; max-width:650px; margin:0 auto; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>">
               <thead>
                 <tr style="background:#e0e0e0;">
