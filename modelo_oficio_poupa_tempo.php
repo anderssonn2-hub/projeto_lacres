@@ -1482,21 +1482,18 @@ if (document.readyState === 'loading') {
         </div>
       </div>
 
+      <!-- v9.9.4: Rodapé com 2 linhas físicas REAIS -->
       <div class="cols100 border-1px p5">
         <div class="cols50 fleft"><h4><b>Entregue por: </b><i>_____________________</i></h4></div>
         <div class="cols50 fright"><h4><b>DATA: </b><i><?php echo date('d/m/Y'); ?></i></h4></div>
       </div>
 
       <div class="cols100 border-1px p5">
-        <div class="cols100">
-          <h4 style="margin:5px 0;">
-            <b>Entregue para:</b> <i>___________________________________</i>
-            <span style="margin-left:30px;"><b>RG/CPF:</b> <i>_____________________________</i></span>
-          </h4>
-        </div>
-        <div class="cols100">
-          <h4 style="margin:5px 0;"><b>Data:</b> <i>_______________________</i></h4>
-        </div>
+        <h4 style="margin:5px 0;">
+          <b>Entregue para:</b> <i>_________________________</i>
+          <span style="margin-left:15px;"><b>RG/CPF:</b> <i>____________________</i></span>
+          <span style="margin-left:15px;"><b>Data:</b> <i>_______________</i></span>
+        </h4>
       </div>
     </div>
   </div>
@@ -1563,16 +1560,25 @@ function conferirLote(codigoPosto) {
     
     // Busca o lote na tabela
     var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
-    if (!tabela) return;
+    if (!tabela) {
+        console.log('Tabela não encontrada para posto: ' + codigoPosto);
+        return;
+    }
     
     var linhas = tabela.getElementsByClassName('linha-lote');
     var loteEncontrado = false;
     
+    console.log('Total de linhas na tabela: ' + linhas.length);
+    console.log('Procurando lote: "' + numeroLote + '"');
+    
     for (var i = 0; i < linhas.length; i++) {
         var linha = linhas[i];
-        var loteNaLinha = linha.getAttribute('data-lote');
+        var loteNaLinha = (linha.getAttribute('data-lote') || '').trim();
+        
+        console.log('Linha ' + i + ': Lote na linha="' + loteNaLinha + '"');
         
         if (loteNaLinha === numeroLote) {
+            console.log('✓ LOTE ENCONTRADO! Linha ' + i);
             loteEncontrado = true;
             
             // Verifica se já foi conferido
