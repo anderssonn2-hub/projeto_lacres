@@ -8,17 +8,16 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v9.9.1: Correções Críticas de Impressão e CSS (27/01/2026)
-   - [CORRIGIDO] CSS aparecendo como texto plano no topo da página
-   - [CORRIGIDO] Quebra de página forçada entre ofícios (page-break-after:always)
-   - [CORRIGIDO] Lotes respeitam a folha do posto (page-break-inside:avoid)
-   - [CORRIGIDO] Texto sobrepondo outros textos na impressão
-   - [CORRIGIDO] Controle de altura com overflow-y:auto na tela
-   - [CORRIGIDO] Overflow removido na impressão (max-height:none)
-   - [MELHORADO] Z-index e position para evitar sobreposição
-   - [TESTADO] Cada posto fica em uma folha completa
+   v9.9.2: Melhorias de Conferência e Rodapé (27/01/2026)
+   - [REMOVIDO] Título "📦 Conferência de Lotes" do painel
+   - [CORRIGIDO] Conferência com código de barras de 19 dígitos (extrai lote automaticamente)
+   - [CORRIGIDO] Linha verde para lote encontrado funciona corretamente
+   - [CORRIGIDO] Linha amarela para lote não cadastrado com quantidade editável
+   - [MODIFICADO] Rodapé: "Entregue para:" e "RG/CPF:" na mesma linha
+   - [REMOVIDO] Texto "Entregue em mãos para... que abaixo assina"
+   - [TESTADO] Conferência funcional com scanner de código de barras
    
-   v9.9.0: Sistema de Conferência com Código de Barras (27/01/2026)
+   v9.9.1: Correções Críticas de Impressão e CSS (27/01/2026)
    
    v9.8.7: Layout e Impressão Profissional (26/01/2026)
    - [REMOVIDO] Texto "📦 Lotes para Despacho" removido (tela e impressão)
@@ -1394,17 +1393,17 @@ if (document.readyState === 'loading') {
             </tr>
           </table>
 
-          <!-- v9.9.0: Painel de Conferência com Leitor de Código de Barras -->
+          <!-- v9.9.2: Painel de Conferência Simplificado -->
           <?php if (!empty($lotes_array)): ?>
           <div class="painel-conferencia controle-conferencia" style="margin-top:15px;">
-            <h4>📦 Conferência de Lotes (Leitor de Código de Barras)</h4>
             <div class="campo-leitura">
-              <label for="input_conferencia_<?php echo e($codigo3); ?>">Leitura:</label>
+              <label for="input_conferencia_<?php echo e($codigo3); ?>">Leitura (código de barras 19 dígitos):</label>
               <input type="text" 
                      id="input_conferencia_<?php echo e($codigo3); ?>" 
                      class="input-conferencia"
-                     placeholder="Leia o código de barras do lote ou digite manualmente..."
+                     placeholder="Leia o código de barras ou digite o número do lote..."
                      autocomplete="off"
+                     maxlength="19"
                      onkeydown="if(event.keyCode===13){conferirLote('<?php echo e($codigo3); ?>');return false;}">
             </div>
             <div class="contador-conferencia">
@@ -1480,22 +1479,24 @@ if (document.readyState === 'loading') {
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
           <div style="flex-grow:1;"></div>
-
-          <div class="txtjust" style="margin-bottom:5px">
-            Entregue em maos para __________________________________________________,<br>
-            RG/CPF: _____________________________, que abaixo assina.
-          </div>
         </div>
       </div>
 
       <div class="cols100 border-1px p5">
-        <div class="cols50 fleft"><h4><b>Entregue por: </b><i>_________________</i></h4></div>
+        <div class="cols50 fleft"><h4><b>Entregue por: </b><i>_____________________</i></h4></div>
         <div class="cols50 fright"><h4><b>DATA: </b><i><?php echo date('d/m/Y'); ?></i></h4></div>
       </div>
 
       <div class="cols100 border-1px p5">
-        <div class="cols100"><h4><b>Assinatura:</b></h4></div>
-        <div class="cols100"><h4><b>Data:</b></h4></div>
+        <div class="cols100">
+          <h4 style="margin:5px 0;">
+            <b>Entregue para:</b> <i>_________________________________</i>
+            <span style="margin-left:20px;"><b>RG/CPF:</b> <i>_____________________________</i></span>
+          </h4>
+        </div>
+        <div class="cols100">
+          <h4 style="margin:5px 0;"><b>Data:</b> <i>____________________</i></h4>
+        </div>
       </div>
     </div>
   </div>
@@ -1542,13 +1543,23 @@ setTimeout(function() {
 
 <!-- v9.9.0: Sistema de Conferência de Lotes -->
 <script type="text/javascript">
-// v9.9.0: Função para conferir lote via código de barras
+// v9.9.2: Função para conferir lote via código de barras (extrai lote de 19 dígitos)
 function conferirLote(codigoPosto) {
     var input = document.getElementById('input_conferencia_' + codigoPosto);
     if (!input) return;
     
     var codigoLido = input.value.trim();
     if (codigoLido === '') return;
+    
+    // v9.9.2: Se código tem 19 dígitos, extrai o lote (posições 1-6)
+    var numeroLote = codigoLido;
+    if (codigoLido.length === 19 && /^\d{19}$/.test(codigoLido)) {
+        // Extrai caracteres da posição 0 a 5 (6 primeiros dígitos)
+        numeroLote = codigoLido.substring(0, 6);
+        // Remove zeros à esquerda
+        numeroLote = parseInt(numeroLote, 10).toString();
+        console.log('Código de barras 19 dígitos detectado. Lote extraído: ' + numeroLote);
+    }
     
     // Busca o lote na tabela
     var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
@@ -1561,12 +1572,12 @@ function conferirLote(codigoPosto) {
         var linha = linhas[i];
         var loteNaLinha = linha.getAttribute('data-lote');
         
-        if (loteNaLinha === codigoLido) {
+        if (loteNaLinha === numeroLote) {
             loteEncontrado = true;
             
             // Verifica se já foi conferido
             if (linha.classList.contains('conferido')) {
-                alert('⚠️ Este lote já foi conferido!');
+                alert('⚠️ Este lote ' + numeroLote + ' já foi conferido!');
                 input.value = '';
                 input.focus();
                 return;
@@ -1600,11 +1611,17 @@ function conferirLote(codigoPosto) {
         var tbody = tabela.getElementsByTagName('tbody')[0];
         if (!tbody) return;
         
+        // v9.9.2: Extrai quantidade do código de barras (dígitos 7-10)
+        var quantidadeExtraida = 0;
+        if (codigoLido.length === 19 && /^\d{19}$/.test(codigoLido)) {
+            quantidadeExtraida = parseInt(codigoLido.substring(6, 10), 10);
+        }
+        
         // Cria nova linha
         var novaLinha = document.createElement('tr');
         novaLinha.className = 'linha-lote nao-encontrado';
         novaLinha.setAttribute('data-posto', codigoPosto);
-        novaLinha.setAttribute('data-lote', codigoLido);
+        novaLinha.setAttribute('data-lote', numeroLote);
         novaLinha.setAttribute('data-checked', '0');
         
         // Checkbox (desmarcado)
@@ -1615,8 +1632,8 @@ function conferirLote(codigoPosto) {
         checkbox.type = 'checkbox';
         checkbox.className = 'checkbox-lote';
         checkbox.setAttribute('data-posto', codigoPosto);
-        checkbox.setAttribute('data-quantidade', '0');
-        checkbox.setAttribute('data-lote', codigoLido);
+        checkbox.setAttribute('data-quantidade', quantidadeExtraida.toString());
+        checkbox.setAttribute('data-lote', numeroLote);
         checkbox.checked = false;
         checkbox.onchange = function() { recalcularTotal(codigoPosto); };
         tdCheckbox.appendChild(checkbox);
@@ -1625,15 +1642,15 @@ function conferirLote(codigoPosto) {
         // Lote
         var tdLote = document.createElement('td');
         tdLote.style.cssText = 'text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;';
-        tdLote.textContent = codigoLido + ' (NÃO CADASTRADO)';
+        tdLote.textContent = numeroLote + ' (NÃO CADASTRADO)';
         novaLinha.appendChild(tdLote);
         
-        // Quantidade (editável)
+        // Quantidade (editável, preenchida com valor extraído)
         var tdQuantidade = document.createElement('td');
         tdQuantidade.style.cssText = 'text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;';
         var inputQtd = document.createElement('input');
         inputQtd.type = 'number';
-        inputQtd.value = '0';
+        inputQtd.value = quantidadeExtraida.toString();
         inputQtd.min = '0';
         inputQtd.style.cssText = 'width:80px; text-align:right; font-size:14px; padding:4px;';
         inputQtd.onchange = function() {
@@ -1663,7 +1680,8 @@ function conferirLote(codigoPosto) {
         input.focus();
         
         // Alerta visual
-        alert('⚠️ ATENÇÃO: Lote ' + codigoLido + ' NÃO estava na lista!\nLinha amarela criada. Informe a quantidade manualmente.');
+        var msgQuantidade = quantidadeExtraida > 0 ? '\nQuantidade extraída: ' + quantidadeExtraida : '\nInforme a quantidade manualmente.';
+        alert('⚠️ ATENÇÃO: Lote ' + numeroLote + ' NÃO estava na lista!\nLinha amarela criada.' + msgQuantidade);
     }
 }
 
