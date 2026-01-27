@@ -8,6 +8,14 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.15.0: CORREÇÃO CRÍTICA - Layout Vertical (27/01/2026)
+   - [CORRIGIDO] Páginas empilham verticalmente (uma embaixo da outra)
+   - [CORRIGIDO] Removido flex que causava páginas lado a lado
+   - [FORÇADO] display:block !important em .folha-a4-oficio
+   - [FORÇADO] clear:both !important para limpar floats
+   - [ADICIONADO] ::after pseudo-elemento para garantir limpeza
+   - [LAYOUT] Cada posto aparece em página separada vertical
+   
    v9.14.0: SPLIT Simplificado - Clonagem Manual (27/01/2026)
    - [NOVO] Botão "DIVIDIR EM MAIS MALOTES" centralizado no fim da página
    - [SIMPLES] Clica → clona página completa com todos os lotes
@@ -658,7 +666,20 @@ if (isset($id_despacho_post) && $id_despacho_post > 0) {
 table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%;}
 th,td{border:1px solid #000;padding:8px!important;text-align:center}
 th{background:#f2f2f2}
-body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
+body{
+    font-family:Arial,Helvetica,sans-serif;
+    background:#f0f0f0;
+    line-height:1.4;
+    margin:0;
+    padding:0;
+    display:block;
+}
+
+/* v9.15.0: Força container de formulário em layout vertical */
+form{
+    display:block;
+    width:100%;
+}
 
 /* Controles na tela (não imprime) */
 .controles-pagina{width:800px;margin:20px auto;padding:15px;background:#fff;border:1px dashed #ccc;text-align:center}
@@ -669,7 +690,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-/* Folha A4 - v8.15.7: Margem 10mm para não encostar nas bordas */
+/* Folha A4 - v9.15.0: Restaurado CSS funcional da v9.12.0 + Fix layout vertical */
 .folha-a4-oficio{
     width:210mm;
     min-height:297mm;
@@ -678,8 +699,9 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     background:#fff;
     box-shadow:0 0 10px rgba(0,0,0,.1);
     box-sizing:border-box;
-    display:flex;
     page-break-after:always;
+    display:block;
+    position:relative;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
 
