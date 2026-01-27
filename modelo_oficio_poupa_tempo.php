@@ -834,6 +834,11 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         display:none !important;
     }
     
+    /* v9.9.5: Ocultar linhas não cadastradas na impressão */
+    .linha-lote.nao-encontrado{
+        display:none !important;
+    }
+    
     /* v9.9.0: Remover cores de conferência na impressão */
     .linha-lote{
         background:transparent !important;
@@ -859,6 +864,14 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         width:100% !important;
         max-width:650px !important;
         margin:0 auto !important;
+    }
+    
+    /* v9.9.5: Na impressão, ocultar valor formatado e mostrar valor limpo */
+    .valor-tela{
+        display:none !important;
+    }
+    .valor-quantidade{
+        display:inline !important;
     }
     
     .lotes-detalhe th,
@@ -1404,6 +1417,7 @@ if (document.readyState === 'loading') {
                      class="input-conferencia"
                      placeholder="Leia código de barras (19 dígitos) ou digite lote (8 dígitos)..."
                      autocomplete="off"
+                     oninput="conferirLoteAutomatico('<?php echo e($codigo3); ?>', this.value)"
                      onkeydown="if(event.keyCode===13){conferirLote('<?php echo e($codigo3); ?>');return false;}">              
             </div>
             <div class="contador-conferencia">
@@ -1448,7 +1462,8 @@ if (document.readyState === 'loading') {
                     <?php echo e($lote_info['lote']); ?>
                   </td>
                   <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
-                    <?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?>
+                    <span class="valor-quantidade" style="display:none;"><?php echo number_format($lote_info['quantidade'], 0, '', ''); ?></span>
+                    <span class="valor-tela"><?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?></span>
                   </td>
                 </tr>
                 <?php endforeach; ?>
@@ -1478,22 +1493,22 @@ if (document.readyState === 'loading') {
           </div>
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
-          <div style="flex-grow:1;"></div>
+          <!-- v9.9.5: Espaçador flexível para empurrar rodapé para baixo -->
+          <div style="flex-grow:1; min-height:20px;"></div>
         </div>
       </div>
 
-      <!-- v9.9.4: Rodapé com 2 linhas físicas REAIS -->
-      <div class="cols100 border-1px p5">
-        <div class="cols50 fleft"><h4><b>Entregue por: </b><i>_____________________</i></h4></div>
-        <div class="cols50 fright"><h4><b>DATA: </b><i><?php echo date('d/m/Y'); ?></i></h4></div>
+      <!-- v9.9.5: Rodapé próximo ao final (2 linhas: linha 1=entregue por+para+RG, linha 2=Data) -->
+      <div class="cols100 border-1px p5" style="margin-top:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="flex:1;"><h4><b>Entregue por: </b><i>_____________________</i></h4></div>
+          <div style="flex:1;"><h4><b>Entregue para:</b> <i>_____________________</i></h4></div>
+          <div style="flex:1;"><h4><b>RG/CPF:</b> <i>____________________</i></h4></div>
+        </div>
       </div>
 
       <div class="cols100 border-1px p5">
-        <h4 style="margin:5px 0;">
-          <b>Entregue para:</b> <i>_________________________</i>
-          <span style="margin-left:15px;"><b>RG/CPF:</b> <i>____________________</i></span>
-          <span style="margin-left:15px;"><b>Data:</b> <i>_______________</i></span>
-        </h4>
+        <h4 style="margin:5px 0;"><b>Data:</b> <i>_______________________</i></h4>
       </div>
     </div>
   </div>
@@ -1540,7 +1555,19 @@ setTimeout(function() {
 
 <!-- v9.9.0: Sistema de Conferência de Lotes -->
 <script type="text/javascript">
-// v9.9.3: Função para conferir lote via código de barras (extrai lote de 8 dígitos)
+// v9.9.5: Conferência automática ao atingir 19 dígitos
+function conferirLoteAutomatico(codigoPosto, valor) {
+    // Remove espaços e valida
+    var codigo = valor.trim();
+    
+    // Se atingiu exatamente 19 dígitos numéricos, confere automaticamente
+    if (codigo.length === 19 && /^\d{19}$/.test(codigo)) {
+        console.log('✓ 19 dígitos detectados! Conferindo automaticamente...');
+        conferirLote(codigoPosto);
+    }
+}
+
+// v9.9.4: Função para conferir lote via código de barras (extrai lote de 8 dígitos)
 function conferirLote(codigoPosto) {
     var input = document.getElementById('input_conferencia_' + codigoPosto);
     if (!input) return;
@@ -1581,9 +1608,9 @@ function conferirLote(codigoPosto) {
             console.log('✓ LOTE ENCONTRADO! Linha ' + i);
             loteEncontrado = true;
             
-            // Verifica se já foi conferido
+            // v9.9.5: Verifica se já foi conferido (sem alert)
             if (linha.classList.contains('conferido')) {
-                alert('⚠️ Este lote ' + numeroLote + ' já foi conferido!');
+                console.log('⚠️ Lote ' + numeroLote + ' já conferido anteriormente.');
                 input.value = '';
                 input.focus();
                 return;
@@ -1649,24 +1676,35 @@ function conferirLote(codigoPosto) {
         // Lote
         var tdLote = document.createElement('td');
         tdLote.style.cssText = 'text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;';
-        tdLote.textContent = numeroLote + ' (NÃO CADASTRADO)';
+        tdLote.textContent = numeroLote; // v9.9.5: Removido '(NÃO CADASTRADO)'
         novaLinha.appendChild(tdLote);
         
         // Quantidade (editável, preenchida com valor extraído)
         var tdQuantidade = document.createElement('td');
         tdQuantidade.style.cssText = 'text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;';
+        
+        // v9.9.5: Input para tela + span para impressão
         var inputQtd = document.createElement('input');
         inputQtd.type = 'number';
         inputQtd.value = quantidadeExtraida.toString();
         inputQtd.min = '0';
         inputQtd.style.cssText = 'width:80px; text-align:right; font-size:14px; padding:4px;';
+        
+        var spanQtd = document.createElement('span');
+        spanQtd.className = 'valor-quantidade';
+        spanQtd.textContent = quantidadeExtraida.toString();
+        spanQtd.style.cssText = 'display:none;'; // Oculto na tela, visível na impressão
+        
         inputQtd.onchange = function() {
             checkbox.setAttribute('data-quantidade', this.value);
+            spanQtd.textContent = this.value; // Sincroniza span
             if (checkbox.checked) {
                 recalcularTotal(codigoPosto);
             }
         };
+        
         tdQuantidade.appendChild(inputQtd);
+        tdQuantidade.appendChild(spanQtd);
         novaLinha.appendChild(tdQuantidade);
         
         // Adiciona no final da tabela
@@ -1686,9 +1724,9 @@ function conferirLote(codigoPosto) {
         input.value = '';
         input.focus();
         
-        // Alerta visual
-        var msgQuantidade = quantidadeExtraida > 0 ? '\nQuantidade extraída: ' + quantidadeExtraida : '\nInforme a quantidade manualmente.';
-        alert('⚠️ ATENÇÃO: Lote ' + numeroLote + ' NÃO estava na lista!\nLinha amarela criada.' + msgQuantidade);
+        // v9.9.5: Mensagem simplificada (linha amarela, oculta na impressão)
+        var msgQuantidade = quantidadeExtraida > 0 ? '\nQuantidade: ' + quantidadeExtraida : '\nInforme a quantidade.';
+        alert('📦 Lote ' + numeroLote + ' adicionado à lista.' + msgQuantidade + '\n\n⚠️ Linha amarela não será impressa.');
     }
 }
 
