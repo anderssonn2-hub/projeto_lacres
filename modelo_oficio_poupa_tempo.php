@@ -1627,19 +1627,14 @@ if (document.readyState === 'loading') {
             <!-- v9.10.0: Bot\u00e3o SPLIT para dividir p\u00e1gina em m\u00faltiplos malotes -->
             <!-- v9.11.0: Botão SPLIT para dividir página em múltiplos malotes -->
             <div class="controle-split nao-imprimir" style="margin-top:15px; padding:10px; background:#fff3cd; border:2px solid #ffc107; border-radius:4px; text-align:center;">
-              <p style="margin:5px 0; font-weight:bold; color:#856404;">
-                Precisa dividir estes lotes em multiplos malotes?
-              </p>
+            <!-- v9.14.0: Botão SPLIT simplificado - clonagem de página -->
+            <div class="controle-split nao-imprimir" style="margin-top:20px; margin-bottom:10px; text-align:center;">
               <button type="button" 
                       class="btn-split nao-imprimir" 
-                      onclick="abrirModalSplit('<?php echo e($codigo3); ?>')"
-                      style="padding:10px 20px; background:#28a745; color:#fff; border:none; border-radius:4px; font-size:14px; font-weight:bold; cursor:pointer; margin-top:5px;">
-                DIVIDIR PAGINA EM MULTIPLOS MALOTES
+                      onclick="clonarPagina('<?php echo e($codigo3); ?>')"
+                      style="padding:6px 14px; background:#17a2b8; color:#fff; border:none; border-radius:3px; font-size:12px; font-weight:normal; cursor:pointer; opacity:0.85;">
+                ➕ ACRESCENTAR PÁGINA
               </button>
-              <p style="margin:5px 0; font-size:12px; color:#666;">
-              <p style="margin:5px 0 0 0; font-size:11px; color:#999; font-style:italic;">
-                Cria uma cópia desta página. Marque/desmarque lotes em cada uma.
-              </p>
             </div>
           </div>
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->

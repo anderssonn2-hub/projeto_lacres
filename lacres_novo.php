@@ -1,6 +1,17 @@
 <?php
-/* lacres_novo.php — Versão 9.12.0
+/* lacres_novo.php — Versão 9.14.0
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.14.0 (27/01/2026):
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.14.0
+ * - [CARREGAMENTO] Página inicia VAZIA sem datas pré-carregadas
+ * - [UX] Usuário escolhe período manualmente antes de buscar dados
+ * - [BOTÃO] "Aplicar Período" agora é o único necessário (filtro duplicado removido)
+ * - [SPLIT] Botão simplificado "ACRESCENTAR PÁGINA" discreto no fim
+ * - [SPLIT] Clonagem simples de página completa
+ * - [SPLIT] Usuário marca/desmarca lotes manualmente
+ * - [SPLIT] Botão "REMOVER ESTA PÁGINA" em páginas clonadas
+ * - [ANÁLISE] Painel mostra mensagem quando não há datas selecionadas
  * 
  * CHANGELOG v9.12.0 (27/01/2026):
  * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.12.0
@@ -2399,7 +2410,8 @@ while ($row = $stmt_datas->fetch(PDO::FETCH_ASSOC)) {
     $datas_expedicao[] = date('d-m-Y', strtotime($row['data']));
 }
 
-// v9.8.0: Processar filtro por intervalo de datas (calendário HTML5 + datas alternadas)
+// v9.14.0: Processar filtro por intervalo de datas (calendário HTML5 + datas alternadas)
+// MUDANÇA: Não carrega datas automaticamente - usuário deve escolher
 $datas_filtro = array();
 
 // Prioridade 1: Datas alternadas (específicas digitadas manualmente)
@@ -2446,18 +2458,22 @@ elseif (isset($_GET['data_inicial_cal']) && isset($_GET['data_final_cal']) &&
     
     $_SESSION['datas_filtro'] = $datas_filtro;
 }
-// Prioridade 3: Usar datas da sessão ou default
-else {
-    if (!empty($_SESSION['datas_filtro'])) {
-        $datas_filtro = $_SESSION['datas_filtro'];
-    } else {
-        $datas_filtro = $datas_expedicao;
-        $_SESSION['datas_filtro'] = $datas_filtro;
-    }
+// v9.14.0: Não carrega datas padrão - apenas se sessão já existir
+elseif (!empty($_SESSION['datas_filtro'])) {
+    $datas_filtro = $_SESSION['datas_filtro'];
 }
+// Senão, mantém array vazio (página inicia sem dados)
 
-// V7.9: Realizar análise de expedição com nova lógica de data
-$analise_expedicao = analisar_expedicao($pdo_controle, $pdo_servico, $datas_filtro);
+// v9.14.0: Realizar análise de expedição apenas se houver datas filtradas
+if (!empty($datas_filtro)) {
+    $analise_expedicao = analisar_expedicao($pdo_controle, $pdo_servico, $datas_filtro);
+} else {
+    // Array vazio quando página carrega sem filtro
+    $analise_expedicao = array(
+        'poupatempo' => array(),
+        'correios' => array()
+    );
+}
 
 // v8.14.9.1: Definir $responsavel ANTES de usar (corrige warning linha 2166)
 $responsavel = isset($_GET['responsavel']) ? $_GET['responsavel'] : 'Responsável Não Informado';
@@ -4339,7 +4355,7 @@ try {
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
-<div class="version-info">Versão 9.12.0</div>
+<div class="version-info">Versão 9.14.0</div>
 
 <!-- v9.8.1: Indicador de dias recolhível com badges coloridos e labels SEX/SÁB/DOM -->
 <div id="indicador-dias">
@@ -4409,12 +4425,17 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v9.12.0)
+        <span class="icone">📊</span> Análise de Expedição (v9.14.0)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
+    <?php if (!empty($datas_filtro)): ?>
     <p><strong>Para a(s) data(s) escolhida(s):</strong> <?php echo implode(', ', $datas_filtro) ?></p>
+    <?php else: ?>
+    <p style="color:#999;font-style:italic;">Selecione um período ou datas específicas para ver a análise de expedição.</p>
+    <?php endif; ?>
     
+    <?php if (!empty($datas_filtro)): ?>
     <div class="analise-grid">
         <div class="analise-item">
             <h4>Total de Carteiras Expedidas</h4>
@@ -4483,6 +4504,7 @@ try {
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
+    <?php endif; ?>  <!-- Fecha o if (!empty($datas_filtro)) da análise -->
     </div>
 </div>
 
@@ -4615,8 +4637,6 @@ try {
                 </div>
             </div>
         </div>
-        <br>
-        <button type="submit">Filtrar por data(s)</button>
     </form>
     
    
