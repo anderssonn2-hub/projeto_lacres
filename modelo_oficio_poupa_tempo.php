@@ -834,9 +834,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         display:none !important;
     }
     
-    /* v9.9.5: Ocultar linhas não cadastradas na impressão */
-    .linha-lote.nao-encontrado{
+    /* v9.9.6: Linhas não cadastradas: mostrar se marcadas, ocultar se desmarcadas */
+    .linha-lote.nao-encontrado[data-checked="0"]{
         display:none !important;
+    }
+    .linha-lote.nao-encontrado[data-checked="1"]{
+        display:table-row !important; /* Força exibição quando marcado */
+        background:transparent !important; /* Remove amarelo na impressão */
     }
     
     /* v9.9.0: Remover cores de conferência na impressão */
@@ -1428,6 +1432,12 @@ if (document.readyState === 'loading') {
           </div>
 
           <!-- v9.8.6: Tabela de Lotes Individuais com Checkboxes -->
+          <!-- TODO v9.10.0: Implementar layout 2 colunas quando count($lotes_array) > 15
+               - Dividir lotes em 2 arrays (metade em cada)
+               - Criar 2 divs lado a lado (cols50 fleft)
+               - Cada div com tabela de 50% width
+               - Exemplo: 30 lotes = 15 esquerda + 15 direita
+          -->
           <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px; max-height:400px; overflow-y:auto;">
             <table style="width:100%; max-width:650px; margin:0 auto; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>">
               <thead>
@@ -1493,13 +1503,13 @@ if (document.readyState === 'loading') {
           </div>
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
-          <!-- v9.9.5: Espaçador flexível para empurrar rodapé para baixo -->
-          <div style="flex-grow:1; min-height:20px;"></div>
+          <!-- v9.9.6: Espaçador ajustado para PDF (padding-top ao invés de flex-grow) -->
+          <div style="min-height:20px; padding-top:50px;"></div>
         </div>
       </div>
 
-      <!-- v9.9.5: Rodapé próximo ao final (2 linhas: linha 1=entregue por+para+RG, linha 2=Data) -->
-      <div class="cols100 border-1px p5" style="margin-top:auto;">
+      <!-- v9.9.6: Rodapé próximo ao final (padding ao invés de margin-top:auto) -->
+      <div class="cols100 border-1px p5" style="padding-top:10px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div style="flex:1;"><h4><b>Entregue por: </b><i>_____________________</i></h4></div>
           <div style="flex:1;"><h4><b>Entregue para:</b> <i>_____________________</i></h4></div>
@@ -1575,13 +1585,16 @@ function conferirLote(codigoPosto) {
     var codigoLido = input.value.trim();
     if (codigoLido === '') return;
     
-    // v9.9.3: Se código tem 19 dígitos, extrai o lote (posições 0-7 = 8 dígitos)
+    // v9.9.6: Se código tem 19 dígitos, extrai lote e quantidade
+    // Estrutura: [8 dígitos lote][6 dígitos outros][5 dígitos quantidade]
+    // Exemplo: 0075942402302300170 → Lote:00759424 Qtd:00170(170)
     var numeroLote = codigoLido;
     if (codigoLido.length === 19 && /^\d{19}$/.test(codigoLido)) {
-        // Extrai caracteres da posição 0 a 7 (8 primeiros dígitos)
+        // Extrai caracteres da posição 0 a 7 (8 primeiros dígitos = lote)
         numeroLote = codigoLido.substring(0, 8);
         // NÃO remove zeros à esquerda para preservar formato original
-        console.log('Código de barras 19 dígitos detectado. Lote extraído: ' + numeroLote);
+        console.log('Código de barras 19 dígitos detectado.');
+        console.log('Lote extraído (posições 0-7): ' + numeroLote);
         console.log('Código completo: ' + codigoLido);
     }
     
@@ -1644,11 +1657,13 @@ function conferirLote(codigoPosto) {
         var tbody = tabela.getElementsByTagName('tbody')[0];
         if (!tbody) return;
         
-        // v9.9.3: Extrai quantidade do código de barras (posições 8-11 = 4 dígitos)
+        // v9.9.6: Extrai quantidade do código de barras (ÚLTIMOS 5 dígitos)
+        // Estrutura: [8:lote][6:outros][5:quantidade]
+        // Exemplo: 0075942402302300170 → substring(14,19) = "00170" = 170
         var quantidadeExtraida = 0;
         if (codigoLido.length === 19 && /^\d{19}$/.test(codigoLido)) {
-            quantidadeExtraida = parseInt(codigoLido.substring(8, 12), 10);
-            console.log('Quantidade extraída: ' + quantidadeExtraida);
+            quantidadeExtraida = parseInt(codigoLido.substring(14, 19), 10);
+            console.log('Quantidade extraída (posições 14-18): ' + quantidadeExtraida);
         }
         
         // Cria nova linha
@@ -1669,7 +1684,11 @@ function conferirLote(codigoPosto) {
         checkbox.setAttribute('data-quantidade', quantidadeExtraida.toString());
         checkbox.setAttribute('data-lote', numeroLote);
         checkbox.checked = false;
-        checkbox.onchange = function() { recalcularTotal(codigoPosto); };
+        checkbox.onchange = function() { 
+            // v9.9.6: Atualiza data-checked para controlar visibilidade na impressão
+            novaLinha.setAttribute('data-checked', this.checked ? '1' : '0');
+            recalcularTotal(codigoPosto); 
+        };
         tdCheckbox.appendChild(checkbox);
         novaLinha.appendChild(tdCheckbox);
         
