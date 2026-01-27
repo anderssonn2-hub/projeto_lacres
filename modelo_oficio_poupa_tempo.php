@@ -854,6 +854,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         display:none !important;
     }
     
+    /* v9.11.0: Garantir que TODOS os controles administrativos sejam ocultos */
+    .controle-split,
+    .btn-split,
+    .nao-imprimir{
+        display:none !important;
+    }
+    
     /* v9.8.6: Remover completamente coluna de checkboxes na impressão */
     .col-checkbox{
         display:none !important;
@@ -1587,18 +1594,19 @@ if (document.readyState === 'loading') {
             <?php endif; ?>  <!-- Fecha o if/else de layout 2 colunas -->
             
             <!-- v9.10.0: Bot\u00e3o SPLIT para dividir p\u00e1gina em m\u00faltiplos malotes -->
+            <!-- v9.11.0: Botão SPLIT para dividir página em múltiplos malotes -->
             <div class="controle-split nao-imprimir" style="margin-top:15px; padding:10px; background:#fff3cd; border:2px solid #ffc107; border-radius:4px; text-align:center;">
               <p style="margin:5px 0; font-weight:bold; color:#856404;">
-                \ud83d\udce6 Precisa dividir estes lotes em m\u00faltiplos malotes?
+                Precisa dividir estes lotes em multiplos malotes?
               </p>
               <button type="button" 
-                      class="btn-split" 
+                      class="btn-split nao-imprimir" 
                       onclick="abrirModalSplit('<?php echo e($codigo3); ?>')"
                       style="padding:10px 20px; background:#28a745; color:#fff; border:none; border-radius:4px; font-size:14px; font-weight:bold; cursor:pointer; margin-top:5px;">
-                \u2702\ufe0f DIVIDIR P\u00c1GINA EM M\u00daLTIPLOS MALOTES
+                DIVIDIR PAGINA EM MULTIPLOS MALOTES
               </button>
               <p style="margin:5px 0; font-size:12px; color:#666;">
-                Clique para criar p\u00e1ginas separadas com lacres e totais diferentes
+                Clique para criar paginas separadas com lacres e totais diferentes
               </p>
             </div>
           </div>
@@ -1609,17 +1617,22 @@ if (document.readyState === 'loading') {
         </div>
       </div>
 
-      <!-- v9.9.6: Rodapé próximo ao final (padding ao invés de margin-top:auto) -->
+      <!-- v9.11.0: Rodapé reestruturado conforme solicitação -->
+      <!-- Linha 1: Feito por + Data de geração do ofício -->
       <div class="cols100 border-1px p5" style="padding-top:10px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="flex:1;"><h4><b>Entregue por: </b><i>_____________________</i></h4></div>
-          <div style="flex:1;"><h4><b>Entregue para:</b> <i>_____________________</i></h4></div>
-          <div style="flex:1;"><h4><b>RG/CPF:</b> <i>____________________</i></h4></div>
+          <div style="flex:2;"><h4><b>Feito por: </b><i>___________________________________</i></h4></div>
+          <div style="flex:1; text-align:right;"><h4><b>Data:</b> <i><?php echo date('d/m/Y'); ?></i></h4></div>
         </div>
       </div>
 
+      <!-- Linha 2: Entregue para + RG/CPF + Data de entrega -->
       <div class="cols100 border-1px p5">
-        <h4 style="margin:5px 0;"><b>Data:</b> <i>_______________________</i></h4>
+        <h4 style="margin:5px 0;">
+          <b>Entregue para:</b> <i>____________________________</i>
+          <span style="margin-left:20px;"><b>RG/CPF:</b> <i>_______________________</i></span>
+          <span style="margin-left:20px;"><b>Data:</b> <i>_______________</i></span>
+        </h4>
       </div>
     </div>
   </div>

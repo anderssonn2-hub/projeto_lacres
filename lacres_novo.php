@@ -1,6 +1,14 @@
 <?php
-/* lacres_novo.php — Versão 9.10.0
+/* lacres_novo.php — Versão 9.11.0
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.11.0 (27/01/2026):
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.11.0
+ * - [IMPRESSÃO] Controles administrativos 100% ocultos (.nao-imprimir)
+ * - [ENCODING] Corrigido emojis UTF-8 (texto limpo)
+ * - [RODAPÉ] Reestruturado: Linha 1 (Feito por + Data geração)
+ * - [RODAPÉ] Linha 2 (Entregue para + RG/CPF + Data entrega)
+ * - [CSS] Adicionado .controle-split, .btn-split {display:none !important}
  * 
  * CHANGELOG v9.10.0 (27/01/2026):
  * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.10.0
@@ -4323,7 +4331,7 @@ try {
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
-<div class="version-info">Versão 9.10.0</div>
+<div class="version-info">Versão 9.11.0</div>
 
 <!-- v9.8.1: Indicador de dias recolhível com badges coloridos e labels SEX/SÁB/DOM -->
 <div id="indicador-dias">
@@ -4393,7 +4401,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v9.10.0)
+        <span class="icone">📊</span> Análise de Expedição (v9.11.0)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
