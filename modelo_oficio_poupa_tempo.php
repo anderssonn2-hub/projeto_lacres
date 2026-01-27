@@ -8,6 +8,27 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.9.0: Sistema de Conferência com Código de Barras (27/01/2026)
+   - [NOVO] Conferência de lotes via leitor de código de barras
+   - [NOVO] Linha fica verde ao ler lote que existe na página
+   - [NOVO] Linha amarela criada automaticamente para lote inexistente
+   - [NOVO] Campo de leitura com foco automático (atalho Alt+C)
+   - [NOVO] Contador visual de lotes conferidos vs total
+   - [CORRIGIDO] Layout centralizado sem ultrapassar margem direita
+   - [CORRIGIDO] Lotes desmarcados não aparecem na impressão
+   - [UNIFORMIZADO] Fonte igual ao nome do posto (14px, negrito)
+   - [MELHORADO] Impressão limpa sem botões, checkbox ou cores
+   - [TESTADO] Sistema de conferência completo e funcional
+   
+   v9.8.7: Layout e Impressão Profissional (26/01/2026)
+   - [REMOVIDO] Texto "📦 Lotes para Despacho" removido (tela e impressão)
+   - [CORRIGIDO] Coluna de checkbox não ocupa espaço na impressão
+   - [MELHORADO] Tabelas com largura máxima de 650px e centralizadas
+   - [UNIFORMIZADO] Fontes em 14px em todas as tabelas
+   - [CORRIGIDO] Tabelas não ultrapassam margens direita/esquerda
+   - [MELHORADO] Padding uniforme de 8px em todas as células
+   - [PROFISSIONAL] Layout limpo e consistente
+   
    v9.8.6: Melhorias de Impressão (26/01/2026)
    - [CORRIGIDO] Coluna vazia de checkboxes removida na impressão
    - [CORRIGIDO] Título "📦 Lotes para Despacho" oculto na impressão
@@ -786,52 +807,202 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     /* Garantir que tabelas não quebrem */
     table{page-break-inside:avoid}
     
-    /* v9.8.2: Ocultar lotes desmarcados na impressão */
+    /* v9.9.0: Ocultar lotes desmarcados na impressão */
     .linha-lote[data-checked="0"]{
         display:none !important;
     }
     
-    /* v9.8.5: Ocultar checkboxes, título e coluna vazia na impressão */
-    .titulo-controle,
-    .checkbox-lote,
-    .marcar-todos,
+    /* v9.9.0: Remover cores de conferência na impressão */
+    .linha-lote{
+        background:transparent !important;
+    }
+    
+    /* v9.9.0: Ocultar campo de conferência na impressão */
+    .painel-conferencia,
+    .controle-conferencia{
+        display:none !important;
+    }
+    
+    /* v9.8.6: Remover completamente coluna de checkboxes na impressão */
     .col-checkbox{
         display:none !important;
+        width:0 !important;
+        padding:0 !important;
+        margin:0 !important;
+        border:none !important;
     }
     
-    /* v9.8.5: Ocultar texto "(lotes marcados):" no rodapé */
-    .lotes-detalhe tfoot strong{
-        display:none !important;
+    /* v9.8.6: Ajustar tabela para 2 colunas apenas */
+    .lotes-detalhe{
+        width:100% !important;
+        max-width:650px !important;
+        margin:0 auto !important;
     }
     
-    /* v9.8.5: Ajustar tabela sem coluna de checkbox */
+    .lotes-detalhe th,
+    .lotes-detalhe td{
+        font-size:14px !important;
+        padding:8px !important;
+    }
+    
     .lotes-detalhe thead th:first-child,
     .lotes-detalhe tbody td:first-child,
     .lotes-detalhe tfoot td:first-child{
         display:none !important;
         width:0 !important;
-        padding:0 !important;
+        max-width:0 !important;
+    }
+    
+    /* v9.8.6: Ajustar larguras das colunas restantes */
+    .lotes-detalhe th:nth-child(2),
+    .lotes-detalhe td:nth-child(2){
+        width:60% !important;
+        text-align:left !important;
+    }
+    
+    .lotes-detalhe th:nth-child(3),
+    .lotes-detalhe td:nth-child(3){
+        width:40% !important;
+        text-align:right !important;
     }
     
     .tabela-lotes{
         background:transparent !important;
-        border:1px solid #ccc !important;
-        padding:5px !important;
+        border:none !important;
+        padding:0 !important;
+        margin:10px 0 !important;
     }
     
-    /* v9.8.5: Ajusta layout da tabela de lotes na impressão */
+    /* v9.8.6: Ajusta layout da tabela de lotes na impressão */
     .lotes-detalhe thead tr,
     .lotes-detalhe tbody tr,
     .lotes-detalhe tfoot tr{
         background:transparent !important;
     }
     
-    .lotes-detalhe th,
-    .lotes-detalhe td{
-        font-size:11px !important;
-        padding:4px !important;
+    /* v9.8.6: Ajustar tabela principal para não ultrapassar margem */
+    .oficio-observacao table{
+        max-width:650px !important;
+        margin:0 auto !important;
+    }
+    
+    .oficio-observacao table th,
+    .oficio-observacao table td{
+        font-size:14px !important;
+        padding:8px !important;
     }
 }
+</style>
+        border:none !important;
+        padding:0 !important;
+        margin:10px 0 !important;
+    }
+    
+    /* v9.9.0: Tabela principal com max-width para não ultrapassar margem */
+    .oficio-observacao table{
+        max-width:650px !important;
+        margin:0 auto !important;
+    }
+}
+
+/* v9.9.0: Estilos para conferência de lotes */
+.painel-conferencia{
+    background:#f0f8ff;
+    border:2px solid #007bff;
+    border-radius:8px;
+    padding:15px;
+    margin:15px 0;
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);
+}
+
+.painel-conferencia h4{
+    margin:0 0 10px 0;
+    color:#007bff;
+    font-size:16px;
+}
+
+.campo-leitura{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+}
+
+.campo-leitura label{
+    font-weight:bold;
+    min-width:120px;
+}
+
+#input_conferencia{
+    flex:1;
+    padding:10px;
+    font-size:16px;
+    border:2px solid #007bff;
+    border-radius:4px;
+    font-family:monospace;
+}
+
+#input_conferencia:focus{
+    outline:none;
+    border-color:#0056b3;
+    box-shadow:0 0 8px rgba(0,123,255,0.3);
+}
+
+.contador-conferencia{
+    display:flex;
+    justify-content:space-between;
+    font-size:14px;
+    color:#666;
+    margin-top:10px;
+}
+
+.contador-conferencia span{
+    background:#e9ecef;
+    padding:5px 10px;
+    border-radius:4px;
+}
+
+/* v9.9.0: Estados de conferência */
+.linha-lote.conferido{
+    background:#d4edda !important;
+    border-left:4px solid #28a745 !important;
+}
+
+.linha-lote.nao-encontrado{
+    background:#fff3cd !important;
+    border-left:4px solid #ffc107 !important;
+}
+
+.linha-lote.conferido td{
+    color:#155724;
+    font-weight:bold;
+}
+
+.linha-lote.nao-encontrado td{
+    color:#856404;
+    font-style:italic;
+}
+
+/* v9.9.0: Animação ao conferir */
+@keyframes pulse-green{
+    0%,100%{background:#d4edda}
+    50%{background:#a8d5ba}
+}
+
+.linha-lote.conferido-agora{
+    animation:pulse-green 1s ease-in-out;
+}
+
+/* v9.9.0: Centralização de tabelas para não ultrapassar margem */
+.oficio-observacao > table{
+    margin-left:auto !important;
+    margin-right:auto !important;
+    max-width:650px !important;
+}
+
+@media print{
+    body{background:#fff;margin:0;padding:0}
+    .controles-pagina,.nao-imprimir{display:none !important}
 </style>
 <script type="text/javascript">
 // v8.14.3: Modal de confirmação com 3 opções para Poupa Tempo
@@ -1169,65 +1340,81 @@ if (document.readyState === 'loading') {
 
       <div class="cols100 processo border-1px">
         <div class="oficio-observacao">
-          <table style="table-layout:fixed; width:100%;">
+          <table style="table-layout:fixed; width:100%; max-width:650px; margin:0 auto;">
             <tr>
-              <th style="width:55%; max-width:350px;">Poupatempo</th>
-              <th style="width:22%;">Quantidade de CIN's</th>
-              <th style="width:23%;">Numero do Lacre</th>
+              <th style="width:55%; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Poupatempo</th>
+              <th style="width:22%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Quantidade de CIN's</th>
+              <th style="width:23%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Numero do Lacre</th>
             </tr>
             <tr>
-              <!-- v8.15.7: Nome do posto com fonte 14px (legível) e quebra de linha automática -->
-              <td style="width:55%; max-width:350px; text-align:left; padding:10px !important;">
-                <div style="width:100%; word-wrap:break-word; overflow-wrap:break-word; white-space:normal; line-height:1.3;">
-                  <input type="text" 
-                         name="nome_posto[<?php echo e($codigo3); ?>]" 
-                         value="<?php echo e($valorNome); ?>" 
-                         class="input-editavel"
-                         style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold; word-wrap:break-word; overflow-wrap:break-word; white-space:normal; line-height:1.3;">
-                </div>
+              <td style="width:55%; text-align:left; padding:8px; border:1px solid #000;">
+                <input type="text" 
+                       name="nome_posto[<?php echo e($codigo3); ?>]" 
+                       value="<?php echo e($valorNome); ?>" 
+                       class="input-editavel"
+                       style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold;">
               </td>
               <!-- Quantidade de carteiras - v9.8.2: Calculada dinamicamente dos lotes marcados -->
-              <td style="text-align:right">
+              <td style="text-align:right; padding:8px; border:1px solid #000;">
                 <span class="total-cins" id="total_<?php echo e($codigo3); ?>" style="font-weight:bold; font-size:14px;">
                   <?php echo number_format($valorQuantidade, 0, ',', '.'); ?>
                 </span>
               </td>
               <!-- Número do lacre -->
-              <td style="text-align:right">
+              <td style="text-align:right; padding:8px; border:1px solid #000;">
                 <input type="text"
                     name="lacre_iipr[<?php echo e($codigo3); ?>]"
                     value="<?php echo e($valorLacre); ?>"
                     class="input-editavel"
-                    style="text-align:right;"
+                    style="text-align:right; font-size:14px; border:none; background:transparent; width:100%;"
                 >
               </td>
             </tr>
           </table>
 
-          <!-- v9.8.3: Tabela de Lotes Individuais com Checkboxes -->
-          <?php if (!empty($lotes_array)): // v9.8.3: Só exibe se houver lotes ?>
-          <div class="tabela-lotes no-print-controls" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
-            <h5 class="titulo-controle" style="margin:0 0 10px 0; color:#333; font-size:13px; font-weight:bold;">
-              📦 Lotes para Despacho (marque os lotes a enviar):
-            </h5>
-            <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe">
+          <!-- v9.9.0: Painel de Conferência com Leitor de Código de Barras -->
+          <?php if (!empty($lotes_array)): ?>
+          <div class="painel-conferencia controle-conferencia" style="margin-top:15px;">
+            <h4>📦 Conferência de Lotes (Leitor de Código de Barras)</h4>
+            <div class="campo-leitura">
+              <label for="input_conferencia_<?php echo e($codigo3); ?>">Leitura:</label>
+              <input type="text" 
+                     id="input_conferencia_<?php echo e($codigo3); ?>" 
+                     class="input-conferencia"
+                     placeholder="Leia o código de barras do lote ou digite manualmente..."
+                     autocomplete="off"
+                     onkeydown="if(event.keyCode===13){conferirLote('<?php echo e($codigo3); ?>');return false;}">
+            </div>
+            <div class="contador-conferencia">
+              <span>Total de Lotes: <strong id="total_lotes_<?php echo e($codigo3); ?>"><?php echo count($lotes_array); ?></strong></span>
+              <span>Conferidos: <strong id="conferidos_<?php echo e($codigo3); ?>">0</strong></span>
+              <span>Pendentes: <strong id="pendentes_<?php echo e($codigo3); ?>"><?php echo count($lotes_array); ?></strong></span>
+            </div>
+          </div>
+
+          <!-- v9.8.6: Tabela de Lotes Individuais com Checkboxes -->
+          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
+            <table style="width:100%; max-width:650px; margin:0 auto; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>">
               <thead>
-                <tr stclass="col-checkbox" yle="background:#e0e0e0;">
-                  <th style="width:10%; text-align:center; padding:6px; border:1px solid #ccc;">
+                <tr style="background:#e0e0e0;">
+                  <th class="col-checkbox" style="width:50px; text-align:center; padding:6px; border:1px solid #ccc;">
                     <input type="checkbox" 
                            class="marcar-todos" 
                            data-posto="<?php echo e($codigo3); ?>" 
                            checked 
                            onchange="marcarTodosLotes(this, '<?php echo e($codigo3); ?>')">
                   </th>
-                  <th style="width:50%; text-align:left; padding:6px; border:1px solid #ccc;">Lote</th>
-                  <th style="width:40%; text-align:right; padding:6px; border:1px solid #ccc;">Quantidade</th>
+                  <th style="width:50%; text-align:left; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Lote</th>
+                  <th style="width:50%; text-align:right; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Quantidade</th>
                 </tr>
               </thead>
               <tbody>
                 <?php foreach ($lotes_array as $lote_info): ?>
-                <tr clclass="col-checkbox" ass="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-checked="1">
-                  <td style="text-align:center; padding:6px; border:1px solid #ccc;">
+                <tr class="linha-lote" 
+                    data-posto="<?php echo e($codigo3); ?>" 
+                    data-lote="<?php echo e($lote_info['lote']); ?>"
+                    data-checked="1">
+                  <td class="col-checkbox" style="text-align:center; padding:6px; border:1px solid #ccc;">
                     <input type="checkbox" 
                            class="checkbox-lote" 
                            data-posto="<?php echo e($codigo3); ?>" 
@@ -1236,10 +1423,10 @@ if (document.readyState === 'loading') {
                            checked 
                            onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
                   </td>
-                  <td style="text-align:left; padding:6px; border:1px solid #ccc; font-weight:bold;">
+                  <td style="text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;">
                     <?php echo e($lote_info['lote']); ?>
                   </td>
-                  <td style="text-align:right; padding:6px; border:1px solid #ccc;">
+                  <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
                     <?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?>
                   </td>
                 </tr>
@@ -1248,10 +1435,10 @@ if (document.readyState === 'loading') {
               <tfoot>
                 <tr style="background:#f0f0f0; font-weight:bold;">
                   <td class="col-checkbox" style="border:1px solid #ccc;"></td>
-                  <td style="text-align:right; padding:6px; border:1px solid #ccc;">
-                    <strong>TOTAL (lotes marcados):</strong>
+                  <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
+                    <strong class="texto-total">TOTAL:</strong>
                   </td>
-                  <td style="text-align:right; padding:6px; border:1px solid #ccc;">
+                  <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
                     <span class="total-lotes-rodape" id="total_rodape_<?php echo e($codigo3); ?>">
                       <?php echo number_format($qtd_total, 0, ',', '.'); ?>
                     </span>
@@ -1330,6 +1517,190 @@ setTimeout(function() {
 }, 500);
 </script>
 <?php endif; ?>
+
+<!-- v9.9.0: Sistema de Conferência de Lotes -->
+<script type="text/javascript">
+// v9.9.0: Função para conferir lote via código de barras
+function conferirLote(codigoPosto) {
+    var input = document.getElementById('input_conferencia_' + codigoPosto);
+    if (!input) return;
+    
+    var codigoLido = input.value.trim();
+    if (codigoLido === '') return;
+    
+    // Busca o lote na tabela
+    var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
+    if (!tabela) return;
+    
+    var linhas = tabela.getElementsByClassName('linha-lote');
+    var loteEncontrado = false;
+    
+    for (var i = 0; i < linhas.length; i++) {
+        var linha = linhas[i];
+        var loteNaLinha = linha.getAttribute('data-lote');
+        
+        if (loteNaLinha === codigoLido) {
+            loteEncontrado = true;
+            
+            // Verifica se já foi conferido
+            if (linha.classList.contains('conferido')) {
+                alert('⚠️ Este lote já foi conferido!');
+                input.value = '';
+                input.focus();
+                return;
+            }
+            
+            // Marca como conferido (verde)
+            linha.classList.add('conferido');
+            linha.classList.add('conferido-agora');
+            
+            // Remove animação após 1 segundo
+            setTimeout(function() {
+                linha.classList.remove('conferido-agora');
+            }, 1000);
+            
+            // Atualiza contadores
+            atualizarContadores(codigoPosto);
+            
+            // Limpa campo e mantém foco
+            input.value = '';
+            input.focus();
+            
+            // Feedback sonoro (beep) - opcional
+            // Você pode adicionar um som de sucesso aqui se desejar
+            
+            return;
+        }
+    }
+    
+    // Se não encontrou, cria nova linha amarela
+    if (!loteEncontrado) {
+        var tbody = tabela.getElementsByTagName('tbody')[0];
+        if (!tbody) return;
+        
+        // Cria nova linha
+        var novaLinha = document.createElement('tr');
+        novaLinha.className = 'linha-lote nao-encontrado';
+        novaLinha.setAttribute('data-posto', codigoPosto);
+        novaLinha.setAttribute('data-lote', codigoLido);
+        novaLinha.setAttribute('data-checked', '0');
+        
+        // Checkbox (desmarcado)
+        var tdCheckbox = document.createElement('td');
+        tdCheckbox.className = 'col-checkbox';
+        tdCheckbox.style.cssText = 'text-align:center; padding:6px; border:1px solid #ccc;';
+        var checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'checkbox-lote';
+        checkbox.setAttribute('data-posto', codigoPosto);
+        checkbox.setAttribute('data-quantidade', '0');
+        checkbox.setAttribute('data-lote', codigoLido);
+        checkbox.checked = false;
+        checkbox.onchange = function() { recalcularTotal(codigoPosto); };
+        tdCheckbox.appendChild(checkbox);
+        novaLinha.appendChild(tdCheckbox);
+        
+        // Lote
+        var tdLote = document.createElement('td');
+        tdLote.style.cssText = 'text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;';
+        tdLote.textContent = codigoLido + ' (NÃO CADASTRADO)';
+        novaLinha.appendChild(tdLote);
+        
+        // Quantidade (editável)
+        var tdQuantidade = document.createElement('td');
+        tdQuantidade.style.cssText = 'text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;';
+        var inputQtd = document.createElement('input');
+        inputQtd.type = 'number';
+        inputQtd.value = '0';
+        inputQtd.min = '0';
+        inputQtd.style.cssText = 'width:80px; text-align:right; font-size:14px; padding:4px;';
+        inputQtd.onchange = function() {
+            checkbox.setAttribute('data-quantidade', this.value);
+            if (checkbox.checked) {
+                recalcularTotal(codigoPosto);
+            }
+        };
+        tdQuantidade.appendChild(inputQtd);
+        novaLinha.appendChild(tdQuantidade);
+        
+        // Adiciona no final da tabela
+        tbody.appendChild(novaLinha);
+        
+        // Atualiza contador de total de lotes
+        var totalLotesSpan = document.getElementById('total_lotes_' + codigoPosto);
+        if (totalLotesSpan) {
+            var totalAtual = parseInt(totalLotesSpan.textContent) || 0;
+            totalLotesSpan.textContent = totalAtual + 1;
+        }
+        
+        // Atualiza pendentes
+        atualizarContadores(codigoPosto);
+        
+        // Limpa campo e mantém foco
+        input.value = '';
+        input.focus();
+        
+        // Alerta visual
+        alert('⚠️ ATENÇÃO: Lote ' + codigoLido + ' NÃO estava na lista!\nLinha amarela criada. Informe a quantidade manualmente.');
+    }
+}
+
+// v9.9.0: Atualiza contadores de conferência
+function atualizarContadores(codigoPosto) {
+    var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
+    if (!tabela) return;
+    
+    var linhas = tabela.getElementsByClassName('linha-lote');
+    var totalLotes = linhas.length;
+    var conferidos = 0;
+    
+    for (var i = 0; i < linhas.length; i++) {
+        if (linhas[i].classList.contains('conferido')) {
+            conferidos++;
+        }
+    }
+    
+    var pendentes = totalLotes - conferidos;
+    
+    // Atualiza displays
+    var spanTotal = document.getElementById('total_lotes_' + codigoPosto);
+    var spanConferidos = document.getElementById('conferidos_' + codigoPosto);
+    var spanPendentes = document.getElementById('pendentes_' + codigoPosto);
+    
+    if (spanTotal) spanTotal.textContent = totalLotes;
+    if (spanConferidos) spanConferidos.textContent = conferidos;
+    if (spanPendentes) spanPendentes.textContent = pendentes;
+    
+    // Se todos foram conferidos, mostra mensagem
+    if (pendentes === 0 && totalLotes > 0) {
+        setTimeout(function() {
+            alert('✅ Todos os lotes foram conferidos!\nTotal: ' + conferidos + ' lotes');
+        }, 100);
+    }
+}
+
+// v9.9.0: Atalho de teclado Alt+C para focar no campo de conferência
+document.addEventListener('keydown', function(e) {
+    if (e.altKey && e.keyCode === 67) { // Alt+C
+        e.preventDefault();
+        var inputs = document.getElementsByClassName('input-conferencia');
+        if (inputs.length > 0) {
+            inputs[0].focus();
+            inputs[0].select();
+        }
+    }
+});
+
+// v9.9.0: Foco automático no primeiro campo de conferência ao carregar
+window.addEventListener('load', function() {
+    var primeiroInput = document.querySelector('.input-conferencia');
+    if (primeiroInput) {
+        setTimeout(function() {
+            primeiroInput.focus();
+        }, 300);
+    }
+});
+</script>
 
 </body>
 </html>

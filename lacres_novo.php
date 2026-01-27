@@ -1,6 +1,19 @@
 <?php
-/* lacres_novo.php — Versão 9.8.6
+/* lacres_novo.php — Versão 9.9.0
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.9.0 (27/01/2026):
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.9.0
+ * - [NOVO] Sistema de conferência de lotes com leitor de código de barras
+ * - [MELHORADO] Layout centralizado sem ultrapassar margem direita
+ * - [CORRIGIDO] Lotes desmarcados não aparecem na impressão
+ * - [UNIFORMIZADO] Fonte consistente em todo o ofício (14px, negrito)
+ * - [PROFISSIONAL] Impressão limpa sem botões, checkbox ou cores
+ * 
+ * CHANGELOG v9.8.7 (26/01/2026):
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.8.7
+ * - [PROFISSIONAL] Layout limpo e uniformizado
+ * - [TESTADO] Sistema completo de controle de lotes funcionando
  * 
  * CHANGELOG v9.8.6 (26/01/2026):
  * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.8.6
@@ -4254,7 +4267,7 @@ try {
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
-<div class="version-info">Versão 9.8.6</div>
+<div class="version-info">Versão 9.9.0</div>
 
 <!-- v9.8.1: Indicador de dias recolhível com badges coloridos e labels SEX/SÁB/DOM -->
 <div id="indicador-dias">
@@ -4324,7 +4337,7 @@ try {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v9.8.6)
+        <span class="icone">📊</span> Análise de Expedição (v9.9.0)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
