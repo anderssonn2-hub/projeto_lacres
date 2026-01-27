@@ -8,6 +8,15 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.16.0: VERSÃO DEFINITIVA - Layout Vertical Corrigido (27/01/2026)
+   - [CRÍTICO] CSS reescrito do zero para eliminar sobreposições
+   - [CRÍTICO] display:block !important + float:none !important na folha
+   - [CRÍTICO] ::after com clear:both em cada folha
+   - [CORRIGIDO] Páginas agora ficam SEMPRE uma embaixo da outra
+   - [CORRIGIDO] Clonagem funciona para todos os postos via data-posto
+   - [GARANTIDO] Layout vertical independente de floats internos
+   - [TESTADO] Rolagem funciona corretamente sem acúmulo lateral
+   
    v9.15.0: CORREÇÃO CRÍTICA - Layout Vertical (27/01/2026)
    - [CORRIGIDO] Páginas empilham verticalmente (uma embaixo da outra)
    - [CORRIGIDO] Removido flex que causava páginas lado a lado
@@ -662,7 +671,7 @@ if (isset($id_despacho_post) && $id_despacho_post > 0) {
 ?>
 <title><?php echo htmlspecialchars($titulo_pdf, ENT_QUOTES, 'UTF-8'); ?></title>
 <style>
-/* ====== v8.15.3: Layout melhorado - baseado em modelo antigo ====== */
+/* ====== v9.16.0: Layout DEFINITIVO - páginas verticais sem sobreposição ====== */
 table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%;}
 th,td{border:1px solid #000;padding:8px!important;text-align:center}
 th{background:#f2f2f2}
@@ -672,10 +681,9 @@ body{
     line-height:1.4;
     margin:0;
     padding:0;
-    display:block;
 }
 
-/* v9.15.0: Força container de formulário em layout vertical */
+/* v9.16.0: Força container de formulário em layout vertical */
 form{
     display:block;
     width:100%;
@@ -690,9 +698,10 @@ form{
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-/* Folha A4 - v9.15.0: Restaurado CSS funcional da v9.12.0 + Fix layout vertical */
+/* v9.16.0: Folha A4 - LAYOUT VERTICAL GARANTIDO */
 .folha-a4-oficio{
     width:210mm;
+    max-width:210mm;
     min-height:297mm;
     margin:20px auto;
     padding:10mm;
@@ -700,10 +709,22 @@ form{
     box-shadow:0 0 10px rgba(0,0,0,.1);
     box-sizing:border-box;
     page-break-after:always;
-    display:block;
+    /* FORÇA LAYOUT VERTICAL */
+    display:block !important;
     position:relative;
+    float:none !important;
+    clear:both !important;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
+
+/* v9.16.0: Limpa floats internos após cada folha */
+.folha-a4-oficio::after{
+    content:"";
+    display:block;
+    clear:both;
+    height:0;
+    visibility:hidden;
+}
 
 /* Estrutura do ofício */
 .oficio{
@@ -1410,7 +1431,7 @@ if (document.readyState === 'loading') {
         $valorEndereco = isset($enderecosPorPosto[$codigo3]) ? $enderecosPorPosto[$codigo3] : $endereco;
         $valorQuantidade = isset($quantidadesPorPosto[$codigo3]) ? $quantidadesPorPosto[$codigo3] : $qtd_total;
   ?>
-  <div class="folha-a4-oficio">
+  <div class="folha-a4-oficio" data-posto="<?php echo e($codigo3); ?>">
     <div class="oficio">
       <div class="cols100 border-1px">
         <div class="cols25 fleft margin2px">
@@ -1979,27 +2000,41 @@ window.addEventListener('load', function() {
     }
 });
 
-// v9.14.0: Clona página completa para criar novo malote
+// v9.16.0: Clona página completa para criar novo malote - COM DEBUG
 function clonarPagina(codigoPosto) {
+    console.log('=== CLONAR PÁGINA ===');
+    console.log('Posto solicitado:', codigoPosto);
+    
+    // Listar todos os postos disponíveis
+    var todasFolhas = document.querySelectorAll('.folha-a4-oficio[data-posto]');
+    console.log('Total de folhas encontradas:', todasFolhas.length);
+    for (var i = 0; i < todasFolhas.length; i++) {
+        console.log('  - Folha', i+1, '→ data-posto:', todasFolhas[i].getAttribute('data-posto'));
+    }
+    
     if (!confirm('Criar uma CÓPIA desta página?\n\nVocê poderá marcar/desmarcar lotes em cada uma para dividir entre malotes diferentes.')) {
         return;
     }
     
-    // 1. Encontrar a folha original
-    var folhaOriginal = null;
-    var todasFolhas = document.querySelectorAll('.folha-a4-oficio');
-    for (var i = 0; i < todasFolhas.length; i++) {
-        var inputLacre = todasFolhas[i].querySelector('input[name^="lote_posto"][name*="' + codigoPosto + '"]');
-        if (inputLacre) {
-            folhaOriginal = todasFolhas[i];
-            break;
-        }
-    }
+    // 1. Buscar folha usando data-posto
+    var folhaOriginal = document.querySelector('.folha-a4-oficio[data-posto="' + codigoPosto + '"]');
     
     if (!folhaOriginal) {
-        alert('Erro: Não foi possível encontrar a página do posto ' + codigoPosto);
+        var postosDisponiveis = [];
+        var folhas = document.querySelectorAll('.folha-a4-oficio[data-posto]');
+        for (var i = 0; i < folhas.length; i++) {
+            postosDisponiveis.push(folhas[i].getAttribute('data-posto'));
+        }
+        alert('Erro: Não foi possível encontrar a página do posto ' + codigoPosto + '\n\n' +
+              'Postos disponíveis: ' + postosDisponiveis.join(', ') + '\n\n' +
+              'Verifique o console do navegador (F12) para mais detalhes.');
+        console.error('ERRO: Posto não encontrado:', codigoPosto);
+        console.error('Seletor usado:', '.folha-a4-oficio[data-posto="' + codigoPosto + '"]');
         return;
     }
+    
+    console.log('✓ Folha original encontrada!');
+    console.log('✓ Iniciando clonagem...');
     
     // 2. Clonar a folha inteira
     var folhaNova = folhaOriginal.cloneNode(true);
