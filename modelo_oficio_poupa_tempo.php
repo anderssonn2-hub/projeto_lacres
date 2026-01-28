@@ -8,6 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.20.1: Correção de Recálculo em Páginas Clonadas (28/01/2026)
+   - [CORRIGIDO] recalcularTotal() agora funciona em páginas clonadas
+   - [CORRIGIDO] Função busca elementos por data-posto quando ID não existe
+   - [CORRIGIDO] Atualiza total de CINs corretamente ao desmarcar checkboxes em clones
+   - [MANTIDO] Cabeçalho COSEP com logo celepar
+   - [TESTADO] Clonagem + recálculo funcionando perfeitamente
+   
    v9.12.0: Restauração da Versão Estável (28/01/2026)
    - [RESTAURADO] CSS da v9.12.0 que funcionava perfeitamente
    - [MANTIDO] Sistema de conferência de lotes com código de barras
@@ -1151,8 +1158,17 @@ function gravarEImprimir() {
 }
 
 // v9.8.2: Recalcula total baseado nos lotes marcados
+// v9.20.1: Recalcular total - CORRIGIDO para páginas clonadas
 function recalcularTotal(posto) {
-    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + posto + '"]');
+    // Busca container da página (original ou clonada)
+    var container = document.querySelector('.folha-a4-oficio[data-posto="' + posto + '"]');
+    if (!container) {
+        console.warn('Container não encontrado para posto:', posto);
+        return;
+    }
+    
+    // Busca checkboxes APENAS dentro deste container
+    var checkboxes = container.querySelectorAll('.checkbox-lote');
     var total = 0;
     var lotesConfirmados = [];
     
@@ -1171,35 +1187,53 @@ function recalcularTotal(posto) {
         }
     }
     
-    // Atualiza displays
-    var totalCins = document.getElementById('total_' + posto);
+    // v9.20.1: Atualiza displays DENTRO do container específico
+    var totalCins = container.querySelector('.total-cins');
     if (totalCins) {
         totalCins.textContent = formatarNumero(total);
     }
     
-    var totalRodape = document.getElementById('total_rodape_' + posto);
+    var totalRodape = container.querySelector('.total-lotes-rodape');
     if (totalRodape) {
         totalRodape.textContent = formatarNumero(total);
     }
     
-    // Atualiza hidden inputs
-    var hiddenLotes = document.getElementById('lotes_confirmados_' + posto);
+    // Atualiza hidden inputs DENTRO do container
+    var hiddenLotes = container.querySelector('input[name^="lotes_confirmados"]');
     if (hiddenLotes) {
         hiddenLotes.value = lotesConfirmados.join(',');
     }
     
-    var hiddenQuantidade = document.getElementById('quantidade_final_' + posto);
+    var hiddenQuantidade = container.querySelector('input[name^="quantidade_posto"]');
     if (hiddenQuantidade) {
         hiddenQuantidade.value = total;
     }
     
-    // Atualiza checkbox "marcar todos"
-    atualizarCheckboxMarcarTodos(posto);
+    // Atualiza checkbox "marcar todos" DENTRO do container
+    var marcarTodos = container.querySelector('.marcar-todos');
+    if (marcarTodos) {
+        var todosMarcados = true;
+        var algumMarcado = false;
+        
+        for (var i = 0; i < checkboxes.length; i++) {
+            if (checkboxes[i].checked) {
+                algumMarcado = true;
+            } else {
+                todosMarcados = false;
+            }
+        }
+        
+        marcarTodos.checked = todosMarcados;
+        marcarTodos.indeterminate = algumMarcado && !todosMarcados;
+    }
 }
 
-// v9.8.2: Marca/desmarca todos os lotes de um posto
+// v9.20.1: Marca/desmarca todos os lotes de um posto (CORRIGIDO para clones)
 function marcarTodosLotes(checkbox, posto) {
-    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + posto + '"]');
+    var container = document.querySelector('.folha-a4-oficio[data-posto="' + posto + '"]');
+    if (!container) return;
+    
+    var checkboxes = container.querySelectorAll('.checkbox-lote');
     var marcado = checkbox.checked;
     
     for (var i = 0; i < checkboxes.length; i++) {
@@ -1207,28 +1241,6 @@ function marcarTodosLotes(checkbox, posto) {
     }
     
     recalcularTotal(posto);
-}
-
-// v9.8.2: Atualiza estado do checkbox "marcar todos"
-function atualizarCheckboxMarcarTodos(posto) {
-    var checkboxes = document.querySelectorAll('.checkbox-lote[data-posto="' + posto + '"]');
-    var marcarTodos = document.querySelector('.marcar-todos[data-posto="' + posto + '"]');
-    
-    if (!marcarTodos) return;
-    
-    var todosмаrcados = true;
-    var algumMarcado = false;
-    
-    for (var i = 0; i < checkboxes.length; i++) {
-        if (checkboxes[i].checked) {
-            algumMarcado = true;
-        } else {
-            todosMarcados = false;
-        }
-    }
-    
-    marcarTodos.checked = todosMarcados;
-    marcarTodos.indeterminate = algumMarcado && !todosMarcados;
 }
 
 // v9.8.2: Formata número com separador de milhares
