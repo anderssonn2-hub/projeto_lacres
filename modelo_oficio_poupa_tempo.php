@@ -8,50 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v9.18.0: FIX DEFINITIVO - Layout Folha-a-Folha (28/01/2026)
-   - [CRÍTICO] display:block na .folha-a4-oficio (NÃO display:flex)
-   - [CRÍTICO] Clearfix robusto (::before + ::after) para conter floats
-   - [GARANTIDO] body e form forçados como display:block
-   - [TESTADO] Páginas renderizam verticalmente sem sobreposição
-   - [MANTIDO] Layout interno flex-direction:column funcionando
-   
-   v9.17.0: CSS RESTAURADO + Clonagem Funcional (27/01/2026)
-   - [RESTAURADO] CSS original da v8.15.3 que funcionava perfeitamente
-   - [REMOVIDO] Todas as mudanças de CSS das v9.13-9.16 que causaram problemas
-   - [MANTIDO] Função clonarPagina() funcional com data-posto
-   - [CORRIGIDO] Código JavaScript residual removido completamente
-   - [GARANTIDO] Layout uma página embaixo da outra como antes
-   - [FUNCIONAL] Botão "ACRESCENTAR PÁGINA" clona corretamente
-   
-   v9.16.0: VERSÃO DEFINITIVA - Layout Vertical Corrigido (27/01/2026)
-   - [CRÍTICO] CSS reescrito do zero para eliminar sobreposições
-   - [CRÍTICO] display:block !important + float:none !important na folha
-   - [CRÍTICO] ::after com clear:both em cada folha
-   - [CORRIGIDO] Páginas agora ficam SEMPRE uma embaixo da outra
-   - [CORRIGIDO] Clonagem funciona para todos os postos via data-posto
-   - [GARANTIDO] Layout vertical independente de floats internos
-   - [TESTADO] Rolagem funciona corretamente sem acúmulo lateral
-   
-   v9.15.0: CORREÇÃO CRÍTICA - Layout Vertical (27/01/2026)
-   - [CORRIGIDO] Páginas empilham verticalmente (uma embaixo da outra)
-   - [CORRIGIDO] Removido flex que causava páginas lado a lado
-   - [FORÇADO] display:block !important em .folha-a4-oficio
-   - [FORÇADO] clear:both !important para limpar floats
-   - [ADICIONADO] ::after pseudo-elemento para garantir limpeza
-   - [LAYOUT] Cada posto aparece em página separada vertical
-   
-   v9.14.0: SPLIT Simplificado - Clonagem Manual (27/01/2026)
-   - [NOVO] Botão "DIVIDIR EM MAIS MALOTES" centralizado no fim da página
-   - [SIMPLES] Clica → clona página completa com todos os lotes
-   - [MANUAL] Usuário marca/desmarca checkboxes em cada página
-   - [FLEXÍVEL] Pode criar múltiplas páginas (não limitado a 2)
-   - [REMOVE] Botão "REMOVER ESTA PÁGINA" em páginas clonadas
-   - [TOTAIS] Recalculados automaticamente ao marcar/desmarcar
-   - [PRÁTICO] Controle total do usuário sobre divisão
-   - [VISUAL] Interface intuitiva sem complexidade
-   
-   v9.13.0: SPLIT Automático com Duplicação Real (27/01/2026)
-   - [DESCONTINUADO] Substituído por abordagem mais simples em v9.14.0
+   v9.12.0: Restauração da Versão Estável (28/01/2026)
+   - [RESTAURADO] CSS da v9.12.0 que funcionava perfeitamente
+   - [MANTIDO] Sistema de conferência de lotes com código de barras
+   - [MANTIDO] Layout 2 colunas para >12 lotes
+   - [MANTIDO] Recálculo dinâmico de totais
+   - [LAYOUT] Páginas renderizam corretamente uma abaixo da outra
+   - Esta é a versão ESTÁVEL para partir e evoluir aos poucos
    
    v9.12.0: Sistema SPLIT Funcional + Conferência 2 Colunas (27/01/2026)
    - [CORRIGIDO] Conferência busca em _col1 e _col2 simultaneamente
@@ -690,21 +653,7 @@ if (isset($id_despacho_post) && $id_despacho_post > 0) {
 table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%;}
 th,td{border:1px solid #000;padding:8px!important;text-align:center}
 th{background:#f2f2f2}
-
-/* v9.18.0: FORÇA layout vertical - páginas uma abaixo da outra */
-html,body{
-    font-family:Arial,Helvetica,sans-serif;
-    background:#f0f0f0;
-    line-height:1.4;
-    margin:0;
-    padding:0;
-    display:block !important;
-}
-
-form{
-    display:block !important;
-    width:100%;
-}
+body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 
 /* Controles na tela (não imprime) */
 .controles-pagina{width:800px;margin:20px auto;padding:15px;background:#fff;border:1px dashed #ccc;text-align:center}
@@ -715,7 +664,7 @@ form{
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-/* v9.18.0: Folha A4 - LAYOUT VERTICAL DEFINITIVO */
+/* Folha A4 - v8.15.7: Margem 10mm para não encostar nas bordas */
 .folha-a4-oficio{
     width:210mm;
     min-height:297mm;
@@ -724,24 +673,10 @@ form{
     background:#fff;
     box-shadow:0 0 10px rgba(0,0,0,.1);
     box-sizing:border-box;
-    
-    /* FIX CRÍTICO: display:block (NÃO flex) para empilhar verticalmente */
-    display:block !important;
-    position:relative;
-    clear:both;
-    overflow:hidden;
-    
+    display:flex;
     page-break-after:always;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
-
-/* v9.18.0: Clearfix robusto para conter floats internos */
-.folha-a4-oficio::before,
-.folha-a4-oficio::after{
-    content:"";
-    display:table;
-    clear:both;
-}
 
 /* Estrutura do ofício */
 .oficio{
@@ -816,26 +751,29 @@ form{
     background:#ffffcc;
 }
 
-/* v9.14.0: Botão de remover página clonada */
+/* v9.20.0: Botão de remover página clonada - DENTRO da página */
 .btn-remover-pagina{
-    position:absolute;
-    top:10px;
-    right:10px;
-    padding:6px 12px;
+    display:inline-block;
+    margin:10px auto 20px auto;
+    padding:8px 16px;
     background:#dc3545;
     color:#fff;
-    border:none;
-    border-radius:4px;
-    font-size:12px;
+    border:2px solid #bd2130;
+    border-radius:6px;
+    font-size:13px;
     font-weight:bold;
     cursor:pointer;
-    z-index:1000;
+    text-align:center;
+    box-shadow:0 2px 5px rgba(220,53,69,0.3);
     transition:all 0.2s;
-    box-shadow:0 2px 4px rgba(0,0,0,0.2);
+    width:100%;
+    max-width:300px;
 }
 .btn-remover-pagina:hover{
     background:#c82333;
-    transform:scale(1.05);
+    border-color:#a71d2a;
+    transform:translateY(-2px);
+    box-shadow:0 4px 8px rgba(220,53,69,0.4);
 }
 
 /* Moldura */
