@@ -8,6 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.18.0: FIX DEFINITIVO - Layout Folha-a-Folha (28/01/2026)
+   - [CRÍTICO] display:block na .folha-a4-oficio (NÃO display:flex)
+   - [CRÍTICO] Clearfix robusto (::before + ::after) para conter floats
+   - [GARANTIDO] body e form forçados como display:block
+   - [TESTADO] Páginas renderizam verticalmente sem sobreposição
+   - [MANTIDO] Layout interno flex-direction:column funcionando
+   
    v9.17.0: CSS RESTAURADO + Clonagem Funcional (27/01/2026)
    - [RESTAURADO] CSS original da v8.15.3 que funcionava perfeitamente
    - [REMOVIDO] Todas as mudanças de CSS das v9.13-9.16 que causaram problemas
@@ -679,51 +686,36 @@ if (isset($id_despacho_post) && $id_despacho_post > 0) {
 ?>
 <title><?php echo htmlspecialchars($titulo_pdf, ENT_QUOTES, 'UTF-8'); ?></title>
 <style>
-/* ====== v9.17.0: Layout melhorado - baseado em modelo antigo ====== */
+/* ====== v8.15.3: Layout melhorado - baseado em modelo antigo ====== */
 table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%;}
-th,td{border:1px solid #000;padding:8px!important;text-align:center}
-/* ====== v9.17.1: CSS ULTRA SIMPLIFICADO - PÁGINAS VERTICAIS ====== */
-*{box-sizing:border-box}
-table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%}
 th,td{border:1px solid #000;padding:8px!important;text-align:center}
 th{background:#f2f2f2}
 
-/* FORÇAR layout vertical absoluto */
+/* v9.18.0: FORÇA layout vertical - páginas uma abaixo da outra */
 html,body{
-    width:100%;
-    margin:0;
-    padding:0;
     font-family:Arial,Helvetica,sans-serif;
     background:#f0f0f0;
     line-height:1.4;
+    margin:0;
+    padding:0;
+    display:block !important;
 }
 
-/* Controles na tela */
-.controles-pagina{
-    width:800px;
-    margin:20px auto;
-    padding:15px;
-    background:#fff;
-    border:1px dashed #ccc;
-    text-align:center;
+form{
+    display:block !important;
+    width:100%;
 }
-.controles-pagina button{
-    padding:10px 20px;
-    font-size:16px;
-    background:#007bff;
-    color:#fff;
-    border:none;
-    border-radius:5px;
-    cursor:pointer;
-    margin:5px;
-}
+
+/* Controles na tela (não imprime) */
+.controles-pagina{width:800px;margin:20px auto;padding:15px;background:#fff;border:1px dashed #ccc;text-align:center}
+.controles-pagina button{padding:10px 20px;font-size:16px;background:#007bff;color:#fff;border:none;border-radius:5px;cursor:pointer;margin:5px}
 .controles-pagina button:hover{background:#0056b3}
 .controles-pagina button.btn-sucesso{background:#28a745}
 .controles-pagina button.btn-sucesso:hover{background:#1e7e34}
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-/* PÁGINAS A4 - UMA EMBAIXO DA OUTRA */
+/* v9.18.0: Folha A4 - LAYOUT VERTICAL DEFINITIVO */
 .folha-a4-oficio{
     width:210mm;
     min-height:297mm;
@@ -733,32 +725,36 @@ html,body{
     box-shadow:0 0 10px rgba(0,0,0,.1);
     box-sizing:border-box;
     
-    display:block;          /* <<< mantém uma folha abaixo da outra */
-    clear:both;             /* <<< impede "escapar" para o lado */
-    overflow:hidden;        /* <<< contém floats internos */
+    /* FIX CRÍTICO: display:block (NÃO flex) para empilhar verticalmente */
+    display:block !important;
+    position:relative;
+    clear:both;
+    overflow:hidden;
     
     page-break-after:always;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
 
-/* Limpar floats DENTRO de cada página */
+/* v9.18.0: Clearfix robusto para conter floats internos */
 .folha-a4-oficio::before,
 .folha-a4-oficio::after{
     content:"";
-    display:block;
+    display:table;
     clear:both;
-    height:0;
-    overflow:hidden;
 }
 
-/* Estrutura interna do ofício */
+/* Estrutura do ofício */
 .oficio{
     width:100%;
-    min-height:277mm;
+    display:flex;
+    flex-direction:column;
+    min-height:calc(297mm - 40mm);
+    position:relative;
 }
+.oficio *{box-sizing:border-box}
 
-/* Classes de layout INTERNAS (só funcionam dentro da página) */
-.cols100{width:100%;margin-bottom:10px;overflow:hidden}
+/* Classes de layout */
+.cols100{width:100%;margin-bottom:10px;clear:both;position:relative}
 .cols65{width:65%}
 .cols50{width:50%}
 .cols25{width:25%}
@@ -771,21 +767,26 @@ html,body{
 .p5{padding:5px}
 .nometit{font-weight:bold}
 
-/* Limpar floats em cols100 */
-.cols100::after{content:"";display:block;clear:both}
-
-/* Área de processo */
+/* Área de processo (elástica) */
 .processo{
-    width:100%;
-    min-height:150mm;
+    flex-grow:1;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    z-index:1;
 }
 .oficio-observacao{
-    width:100%;
-    min-height:inherit;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    position:relative;
 }
 
 /* Títulos */
 .oficio h3,.oficio h4{margin:5px 0}
+
+/* Clear floats */
+.cols100:after{content:"";display:table;clear:both}
 
 /* Campos editáveis */
 [contenteditable="true"]{
