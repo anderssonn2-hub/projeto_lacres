@@ -8,6 +8,14 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.17.0: CSS RESTAURADO + Clonagem Funcional (27/01/2026)
+   - [RESTAURADO] CSS original da v8.15.3 que funcionava perfeitamente
+   - [REMOVIDO] Todas as mudanças de CSS das v9.13-9.16 que causaram problemas
+   - [MANTIDO] Função clonarPagina() funcional com data-posto
+   - [CORRIGIDO] Código JavaScript residual removido completamente
+   - [GARANTIDO] Layout uma página embaixo da outra como antes
+   - [FUNCIONAL] Botão "ACRESCENTAR PÁGINA" clona corretamente
+   
    v9.16.0: VERSÃO DEFINITIVA - Layout Vertical Corrigido (27/01/2026)
    - [CRÍTICO] CSS reescrito do zero para eliminar sobreposições
    - [CRÍTICO] display:block !important + float:none !important na folha
@@ -671,73 +679,86 @@ if (isset($id_despacho_post) && $id_despacho_post > 0) {
 ?>
 <title><?php echo htmlspecialchars($titulo_pdf, ENT_QUOTES, 'UTF-8'); ?></title>
 <style>
-/* ====== v9.16.0: Layout DEFINITIVO - páginas verticais sem sobreposição ====== */
+/* ====== v9.17.0: Layout melhorado - baseado em modelo antigo ====== */
 table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%;}
 th,td{border:1px solid #000;padding:8px!important;text-align:center}
+/* ====== v9.17.1: CSS ULTRA SIMPLIFICADO - PÁGINAS VERTICAIS ====== */
+*{box-sizing:border-box}
+table{border:1px solid #000;border-collapse:collapse;margin:10px;width:100%}
+th,td{border:1px solid #000;padding:8px!important;text-align:center}
 th{background:#f2f2f2}
-body{
+
+/* FORÇAR layout vertical absoluto */
+html,body{
+    width:100%;
+    margin:0;
+    padding:0;
     font-family:Arial,Helvetica,sans-serif;
     background:#f0f0f0;
     line-height:1.4;
-    margin:0;
-    padding:0;
 }
 
-/* v9.16.0: Força container de formulário em layout vertical */
-form{
-    display:block;
-    width:100%;
+/* Controles na tela */
+.controles-pagina{
+    width:800px;
+    margin:20px auto;
+    padding:15px;
+    background:#fff;
+    border:1px dashed #ccc;
+    text-align:center;
 }
-
-/* Controles na tela (não imprime) */
-.controles-pagina{width:800px;margin:20px auto;padding:15px;background:#fff;border:1px dashed #ccc;text-align:center}
-.controles-pagina button{padding:10px 20px;font-size:16px;background:#007bff;color:#fff;border:none;border-radius:5px;cursor:pointer;margin:5px}
+.controles-pagina button{
+    padding:10px 20px;
+    font-size:16px;
+    background:#007bff;
+    color:#fff;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+    margin:5px;
+}
 .controles-pagina button:hover{background:#0056b3}
 .controles-pagina button.btn-sucesso{background:#28a745}
 .controles-pagina button.btn-sucesso:hover{background:#1e7e34}
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-/* v9.16.0: Folha A4 - LAYOUT VERTICAL GARANTIDO */
+/* PÁGINAS A4 - UMA EMBAIXO DA OUTRA */
 .folha-a4-oficio{
     width:210mm;
-    max-width:210mm;
     min-height:297mm;
     margin:20px auto;
     padding:10mm;
     background:#fff;
     box-shadow:0 0 10px rgba(0,0,0,.1);
     box-sizing:border-box;
+    
+    display:block;          /* <<< mantém uma folha abaixo da outra */
+    clear:both;             /* <<< impede "escapar" para o lado */
+    overflow:hidden;        /* <<< contém floats internos */
+    
     page-break-after:always;
-    /* FORÇA LAYOUT VERTICAL */
-    display:block !important;
-    position:relative;
-    float:none !important;
-    clear:both !important;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
 
-/* v9.16.0: Limpa floats internos após cada folha */
+/* Limpar floats DENTRO de cada página */
+.folha-a4-oficio::before,
 .folha-a4-oficio::after{
     content:"";
     display:block;
     clear:both;
     height:0;
-    visibility:hidden;
+    overflow:hidden;
 }
 
-/* Estrutura do ofício */
+/* Estrutura interna do ofício */
 .oficio{
     width:100%;
-    display:flex;
-    flex-direction:column;
-    min-height:calc(297mm - 40mm);
-    position:relative;
+    min-height:277mm;
 }
-.oficio *{box-sizing:border-box}
 
-/* Classes de layout */
-.cols100{width:100%;margin-bottom:10px;clear:both;position:relative}
+/* Classes de layout INTERNAS (só funcionam dentro da página) */
+.cols100{width:100%;margin-bottom:10px;overflow:hidden}
 .cols65{width:65%}
 .cols50{width:50%}
 .cols25{width:25%}
@@ -750,26 +771,21 @@ form{
 .p5{padding:5px}
 .nometit{font-weight:bold}
 
-/* Área de processo (elástica) */
+/* Limpar floats em cols100 */
+.cols100::after{content:"";display:block;clear:both}
+
+/* Área de processo */
 .processo{
-    flex-grow:1;
-    display:flex;
-    flex-direction:column;
-    position:relative;
-    z-index:1;
+    width:100%;
+    min-height:150mm;
 }
 .oficio-observacao{
-    height:100%;
-    display:flex;
-    flex-direction:column;
-    position:relative;
+    width:100%;
+    min-height:inherit;
 }
 
 /* Títulos */
 .oficio h3,.oficio h4{margin:5px 0}
-
-/* Clear floats */
-.cols100:after{content:"";display:table;clear:both}
 
 /* Campos editáveis */
 [contenteditable="true"]{
@@ -2118,23 +2134,5 @@ function clonarPagina(codigoPosto) {
 }
 
 </script>
-</body>
-</html>
-        if (spanTotalNovo) {
-            spanTotalNovo.textContent = formatarNumero(totalNovo);
-        }
-        var spanRodapeNovo = folhaNova.querySelector('.total-lotes-rodape');
-        if (spanRodapeNovo) {
-            spanRodapeNovo.textContent = formatarNumero(totalNovo);
-        }
-    }, 100);
-    
-    var qtdPagina1 = linhaIndex;
-    var qtdPagina2 = linhasOriginais.length - linhaIndex;
-    
-    alert('✅ Página dividida automaticamente!\n\n📄 PÁGINA 1: ' + qtdPagina1 + ' lotes\n📄 PÁGINA 2: ' + qtdPagina2 + ' lotes (nova página criada abaixo)\n\nCada página tem:\n✓ Seus próprios lotes\n✓ Total independente\n✓ Campo de lacre próprio\n✓ Rodapé com assinaturas\n\nDigite os lacres e imprima cada página separadamente!');
-}
-</script>
-
 </body>
 </html>
