@@ -1,6 +1,12 @@
 <?php
-/* lacres_novo.php — Versão 9.21.1
+/* lacres_novo.php — Versão 9.21.2
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.21.2 (29/01/2026):
+ * - [RESTAURADO] Botão "Aplicar Lacres" que aplica valores dos inputs Capital/Central/Regionais
+ * - [NOVO] Função aplicarLacresDigitados() - preenche campos com valores dos inputs superiores
+ * - [FUNCIONA] CAPITAL recebe lacre_capital_input, CENTRAL recebe lacre_central_input, REGIONAIS recebe lacre_regionais_input
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.21.2
  * 
  * CHANGELOG v9.21.1 (29/01/2026):
  * - [RESTAURADO] Botão "Atribuir Lacres" para numeração sequencial automática
@@ -4717,8 +4723,10 @@ try {
 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
     <button type="button" class="btn-imprimir" onclick="confirmarGravarEImprimir();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir Correios</button>
     <button type="button" class="btn-imprimir" onclick="prepararEImprimir();" style="background:#6c757d;"><i>🖨️</i> Apenas Imprimir</button>
+    <!-- v9.21.2: Botão para aplicar lacres dos inputs Capital/Central/Regionais -->
+    <button type="button" class="btn-aplicar-lacres" onclick="aplicarLacresDigitados();" style="background:#ffc107; color:#000;"><i>📋</i> Aplicar Lacres</button>
     <!-- v9.21.1: Botão restaurado para atribuir lacres sequencialmente -->
-    <button type="button" class="btn-atribuir-lacres" onclick="atribuirLacresSequencial();" style="background:#ffc107; color:#000;"><i>🔢</i> Atribuir Lacres</button>
+    <button type="button" class="btn-atribuir-lacres" onclick="atribuirLacresSequencial();" style="background:#17a2b8; color:#fff;"><i>🔢</i> Atribuir Sequencial</button>
     <!-- v9.8.0: Botão oculto - funcionalidade integrada ao "Gravar e Imprimir" -->
     <!-- <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()" style="display:none;"><i>💾</i> Salvar Etiquetas Correios</button> -->
 </div>
@@ -5605,6 +5613,99 @@ function limparEtiquetasCentral() {
 }
 
 // v9.21.1: Função para atribuir lacres sequencialmente
+/**
+ * v9.21.2: Aplica lacres digitados nos inputs Capital/Central/Regionais
+ * para todos os postos dos respectivos grupos (exceto POUPA TEMPO)
+ */
+function aplicarLacresDigitados() {
+    // Pega os valores dos inputs superiores
+    var lacreCapital = document.getElementById('lacre_capital_input');
+    var lacreCentral = document.getElementById('lacre_central_input');
+    var lacreRegionais = document.getElementById('lacre_regionais_input');
+    
+    var valorCapital = lacreCapital ? lacreCapital.value.trim() : '';
+    var valorCentral = lacreCentral ? lacreCentral.value.trim() : '';
+    var valorRegionais = lacreRegionais ? lacreRegionais.value.trim() : '';
+    
+    // Verifica se pelo menos um campo foi preenchido
+    if (!valorCapital && !valorCentral && !valorRegionais) {
+        alert('⚠️ Digite pelo menos um valor de lacre nos campos:\n• Lacre Capital\n• Lacre Central\n• Lacre Regionais');
+        return;
+    }
+    
+    var confirmacao = confirm(
+        'Isso irá aplicar os seguintes valores:\n\n' +
+        (valorCapital ? '• Lacre Capital: ' + valorCapital + ' (para CAPITAL)\n' : '') +
+        (valorCentral ? '• Lacre Central: ' + valorCentral + ' (para CENTRAL IIPR)\n' : '') +
+        (valorRegionais ? '• Lacre Regionais: ' + valorRegionais + ' (para REGIONAIS)\n' : '') +
+        '\nDeseja continuar?'
+    );
+    
+    if (!confirmacao) {
+        return;
+    }
+    
+    var totalAplicados = 0;
+    var detalhes = { capital: 0, central: 0, regionais: 0 };
+    
+    // Buscar todas as tabelas (exceto POUPA TEMPO)
+    var tabelas = document.querySelectorAll('table[data-grupo]');
+    
+    for (var t = 0; t < tabelas.length; t++) {
+        var tabela = tabelas[t];
+        var grupo = tabela.getAttribute('data-grupo');
+        
+        // Determinar qual valor aplicar conforme o grupo
+        var valorAplicar = null;
+        var chaveDetalhe = null;
+        
+        if (grupo === 'CAPITAL' && valorCapital) {
+            valorAplicar = valorCapital;
+            chaveDetalhe = 'capital';
+        } else if (grupo === 'CENTRAL IIPR' && valorCentral) {
+            valorAplicar = valorCentral;
+            chaveDetalhe = 'central';
+        } else if (grupo === 'REGIONAIS' && valorRegionais) {
+            valorAplicar = valorRegionais;
+            chaveDetalhe = 'regionais';
+        } else {
+            continue; // Pula este grupo
+        }
+        
+        // Buscar todas as linhas com posto-codigo neste grupo
+        var linhas = tabela.querySelectorAll('tr[data-posto-codigo]');
+        
+        for (var i = 0; i < linhas.length; i++) {
+            var linha = linhas[i];
+            
+            // Lacre IIPR
+            var inputIIPR = linha.querySelector('input[name^="lacre_iipr"]');
+            if (inputIIPR && !inputIIPR.disabled && !inputIIPR.readOnly) {
+                inputIIPR.value = valorAplicar;
+                totalAplicados++;
+                detalhes[chaveDetalhe]++;
+            }
+            
+            // Lacre Correios (mesmo valor)
+            var inputCorreios = linha.querySelector('input[name^="lacre_correios"]');
+            if (inputCorreios && !inputCorreios.disabled && !inputCorreios.readOnly) {
+                inputCorreios.value = valorAplicar;
+            }
+        }
+    }
+    
+    var mensagem = '✅ Lacres aplicados com sucesso!\n\n';
+    if (detalhes.capital > 0) mensagem += '• CAPITAL: ' + detalhes.capital + ' postos\n';
+    if (detalhes.central > 0) mensagem += '• CENTRAL IIPR: ' + detalhes.central + ' postos\n';
+    if (detalhes.regionais > 0) mensagem += '• REGIONAIS: ' + detalhes.regionais + ' postos\n';
+    mensagem += '\nTotal: ' + totalAplicados + ' lacres aplicados';
+    
+    alert(mensagem);
+    
+    // Marcar como não salvo
+    marcarComoNaoSalvo();
+}
+
 function atribuirLacresSequencial() {
     var lacreInicial = prompt('Digite o número do primeiro lacre IIPR:\n(Os lacres Correios serão numerados automaticamente a partir do mesmo valor)', '');
     

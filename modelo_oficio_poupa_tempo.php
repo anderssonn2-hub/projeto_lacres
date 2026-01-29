@@ -8,6 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
+   v9.21.2: Refinamentos Finais ✅ CONCLUÍDO (29/01/2026)
+   - [CONCLUÍDO] ✅ Total fixo removido do rodapé da tabela de lotes
+   - [CONCLUÍDO] ✅ Número do posto corrigido no input editável (sempre mostra "POUPA TEMPO XXX - NOME")
+   - [CONCLUÍDO] ✅ Recálculo dinâmico preservado na coluna "Quantidade de CIN's"
+   - [MANTIDO] ✅ Rodapé "Conferido por / Recebido por" já estava correto
+   - [SINCRONIZADO] ✅ Com lacres_novo.php v9.21.2 (botão Aplicar Lacres implementado)
+   
    v9.21.1: Ajustes Finais de Layout e Funcionalidade (29/01/2026)
    - [CORRIGIDO] Margem da tabela posto/qtd/lacre (não encosta na borda direita)
    - [CORRIGIDO] Recálculo de totais em páginas clonadas (estava quebrado)
@@ -1259,15 +1266,10 @@ function recalcularTotal(posto) {
         }
     }
     
-    // v9.21.1: Atualiza displays DENTRO do container específico
+    // v9.21.2: Atualiza apenas a coluna "Quantidade de CIN's"
     var totalCins = container.querySelector('.total-cins');
     if (totalCins) {
         totalCins.textContent = formatarNumero(total);
-    }
-    
-    var totalRodape = container.querySelector('.total-lotes-rodape');
-    if (totalRodape) {
-        totalRodape.textContent = formatarNumero(total);
     }
     
     // Atualiza hidden inputs DENTRO do container
@@ -1510,9 +1512,10 @@ if (document.readyState === 'loading') {
             </tr>
             <tr>
               <td style="width:55%; text-align:left; padding:8px; border:1px solid #000;">
+                <!-- v9.21.2: Corrigido para sempre exibir o número do posto -->
                 <input type="text" 
                        name="nome_posto[<?php echo e($codigo3); ?>]" 
-                       value="<?php echo e($valorNome); ?>" 
+                       value="<?php echo e($nomeComNumero); ?>" 
                        class="input-editavel"
                        style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold;">
               </td>
@@ -1647,13 +1650,6 @@ if (document.readyState === 'loading') {
                 </tr>
                 <?php endfor; ?>
               </tbody>
-              <tfoot>
-                <tr style="background:#f0f0f0; font-weight:bold;">
-                  <td colspan="9" style="text-align:right; padding:8px; border:1px solid #000; font-size:14px;">
-                    TOTAL: <span class="total-lotes-rodape" id="total_rodape_<?php echo e($codigo3); ?>" style="margin-left:10px;"><?php echo number_format($qtd_total, 0, ',', '.'); ?></span> CIN's
-                  </td>
-                </tr>
-              </tfoot>
             </table>
             <input type="hidden" 
                    name="lotes_confirmados[<?php echo e($codigo3); ?>]" 
