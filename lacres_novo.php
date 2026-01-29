@@ -1,6 +1,13 @@
 <?php
-/* lacres_novo.php — Versão 9.14.0
+/* lacres_novo.php — Versão 9.21.1
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ * 
+ * CHANGELOG v9.21.1 (29/01/2026):
+ * - [RESTAURADO] Botão "Atribuir Lacres" para numeração sequencial automática
+ * - [NOVO] Função atribuirLacresSequencial() - preenche lacres IIPR e Correios automaticamente
+ * - [MELHORADO] Prompt interativo solicita número inicial e confirma antes de atribuir
+ * - [COMPATÍVEL] Funciona com CAPITAL, CENTRAL IIPR e REGIONAIS (ignora POUPA TEMPO)
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.21.1
  * 
  * CHANGELOG v9.14.0 (27/01/2026):
  * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.14.0
@@ -4710,6 +4717,8 @@ try {
 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
     <button type="button" class="btn-imprimir" onclick="confirmarGravarEImprimir();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir Correios</button>
     <button type="button" class="btn-imprimir" onclick="prepararEImprimir();" style="background:#6c757d;"><i>🖨️</i> Apenas Imprimir</button>
+    <!-- v9.21.1: Botão restaurado para atribuir lacres sequencialmente -->
+    <button type="button" class="btn-atribuir-lacres" onclick="atribuirLacresSequencial();" style="background:#ffc107; color:#000;"><i>🔢</i> Atribuir Lacres</button>
     <!-- v9.8.0: Botão oculto - funcionalidade integrada ao "Gravar e Imprimir" -->
     <!-- <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()" style="display:none;"><i>💾</i> Salvar Etiquetas Correios</button> -->
 </div>
@@ -5593,6 +5602,78 @@ function limparEtiquetasCentral() {
     marcarComoNaoSalvo();
 
     alert('Etiquetas da Central IIPR foram limpas com sucesso!');
+}
+
+// v9.21.1: Função para atribuir lacres sequencialmente
+function atribuirLacresSequencial() {
+    var lacreInicial = prompt('Digite o número do primeiro lacre IIPR:\n(Os lacres Correios serão numerados automaticamente a partir do mesmo valor)', '');
+    
+    if (!lacreInicial || lacreInicial.trim() === '') {
+        return; // Cancelou ou não preencheu
+    }
+    
+    var numeroInicial = parseInt(lacreInicial.trim());
+    if (isNaN(numeroInicial) || numeroInicial < 1) {
+        alert('Número inválido! Digite um número inteiro positivo.');
+        return;
+    }
+    
+    var confirmacao = confirm(
+        'Isso irá atribuir lacres sequenciais a partir de ' + numeroInicial + ' para:\n\n' +
+        '• Lacres IIPR (CAPITAL, CENTRAL IIPR, REGIONAIS)\n' +
+        '• Lacres Correios (mesma numeração)\n\n' +
+        'Deseja continuar?'
+    );
+    
+    if (!confirmacao) {
+        return;
+    }
+    
+    var lacreAtual = numeroInicial;
+    var totalAtribuidos = 0;
+    
+    // Buscar todas as tabelas (exceto POUPA TEMPO)
+    var tabelas = document.querySelectorAll('table[data-grupo]');
+    
+    for (var t = 0; t < tabelas.length; t++) {
+        var tabela = tabelas[t];
+        var grupo = tabela.getAttribute('data-grupo');
+        
+        // Pular POUPA TEMPO
+        if (grupo === 'POUPA TEMPO') {
+            continue;
+        }
+        
+        // Buscar todas as linhas com posto-codigo
+        var linhas = tabela.querySelectorAll('tr[data-posto-codigo]');
+        
+        for (var i = 0; i < linhas.length; i++) {
+            var linha = linhas[i];
+            
+            // Lacre IIPR
+            var inputIIPR = linha.querySelector('input[name^="lacre_iipr"]');
+            if (inputIIPR && !inputIIPR.disabled && !inputIIPR.readOnly) {
+                inputIIPR.value = lacreAtual;
+                totalAtribuidos++;
+            }
+            
+            // Lacre Correios (mesmo número)
+            var inputCorreios = linha.querySelector('input[name^="lacre_correios"]');
+            if (inputCorreios && !inputCorreios.disabled && !inputCorreios.readOnly) {
+                inputCorreios.value = lacreAtual;
+            }
+            
+            lacreAtual++;
+        }
+    }
+    
+    alert('✅ Atribuição concluída!\n\n' +
+          'Total de lacres atribuídos: ' + totalAtribuidos + '\n' +
+          'Faixa utilizada: ' + numeroInicial + ' a ' + (lacreAtual - 1) + '\n\n' +
+          'Próximo lacre disponível: ' + lacreAtual);
+    
+    // Marcar como não salvo
+    marcarComoNaoSalvo();
 }
 
 // VERSAO 3: Variavel global para controlar estado de salvamento

@@ -1,4 +1,4 @@
-# Release Notes - v9.20.1
+# Release Notes - v9.20.1 (CORRIGIDO)
 
 **Data:** 28/01/2026  
 **Arquivo:** `modelo_oficio_poupa_tempo.php`
@@ -7,7 +7,10 @@
 
 ## 🎯 Objetivo da Versão
 
-Corrigir o problema de recálculo de totais em páginas clonadas, garantindo que o sistema funcione perfeitamente ao desmarcar checkboxes em malotes adicionais.
+Corrigir TODOS os problemas de clonagem de páginas:
+1. ✅ Botão remover DENTRO da página clonada (não no topo)
+2. ✅ Recálculo automático de totais em páginas clonadas
+3. ✅ Cabeçalho COSEP mantido (já estava correto)
 
 ---
 

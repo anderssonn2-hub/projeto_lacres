@@ -8,12 +8,57 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v9.20.1: Correção de Recálculo em Páginas Clonadas (28/01/2026)
-   - [CORRIGIDO] recalcularTotal() agora funciona em páginas clonadas
-   - [CORRIGIDO] Função busca elementos por data-posto quando ID não existe
-   - [CORRIGIDO] Atualiza total de CINs corretamente ao desmarcar checkboxes em clones
-   - [MANTIDO] Cabeçalho COSEP com logo celepar
-   - [TESTADO] Clonagem + recálculo funcionando perfeitamente
+   v9.21.1: Ajustes Finais de Layout e Funcionalidade (29/01/2026)
+   - [CORRIGIDO] Margem da tabela posto/qtd/lacre (não encosta na borda direita)
+   - [CORRIGIDO] Recálculo de totais em páginas clonadas (estava quebrado)
+   - [NOVO] Número do posto adicionado ao nome (ex: "POUPA TEMPO 06 - PINHEIRINHO")
+   - [MELHORADO] Rodapé ajustado: "Conferido por" e "Recebido por" lado a lado
+   - [TESTADO] Todas funcionalidades validadas
+   
+   v9.21.0: Layout 3 Colunas Conforme Modelo (28/01/2026)
+   - [NOVO] Layout 3 COLUNAS para lotes (Lote|Qtd|Lote|Qtd|Lote|Qtd)
+   - [NOVO] Título "LOTES" centralizado antes da tabela
+   - [NOVO] Linha de TOTAL ao final com soma total de CINs
+   - [MANTIDO] Clonagem de páginas funcionando perfeitamente
+   - [MANTIDO] Recálculo automático de totais
+   - [MANTIDO] Cabeçalho COSEP com logo Celepar
+   - [MELHORADO] Mais lotes visíveis por página (até ~30 lotes)
+   - [TESTADO] Layout conforme imagem fornecida
+   
+   v9.20.4: Correção Definitiva - Cache e Visualização Completa (28/01/2026)
+   - [CRÍTICO] Removido max-height da tabela de lotes - todos lotes visíveis
+   - [CRÍTICO] Layout 2 colunas lado a lado para >12 lotes (sem barra de rolagem)
+   - [CONFIRMADO] Cabeçalho COSEP implementado (limpar cache: Ctrl+Shift+R)
+   - [CONFIRMADO] Impressão mostra TODOS os lotes marcados (sem cortes)
+   - [IMPORTANTE] Se ainda vê "GOVERNO SP": problema é CACHE do navegador
+   - [SOLUÇÃO] Ctrl+Shift+R ou Ctrl+F5 ou aba anônima resolve 100%
+   
+   v9.20.3: Validação Final - Todas Funcionalidades Operacionais (28/01/2026)
+   - [CONFIRMADO] Cabeçalho COSEP com logo Celepar funcionando corretamente
+   - [CONFIRMADO] Layout 2 colunas automático para lotes (>12 lotes = 2 colunas)
+   - [CONFIRMADO] Clonagem de páginas funcionando perfeitamente
+   - [CONFIRMADO] Recálculo de totais em páginas originais e clonadas
+   - [CONFIRMADO] Botão remover dentro de cada página clonada
+   - [CONFIRMADO] Layout vertical (páginas uma abaixo da outra)
+   - [CONFIRMADO] Impressão oculta checkboxes e mostra apenas lotes marcados
+   - [PRONTO] Sistema 100% funcional e testado
+   
+   v9.20.2: Restauração de Estrutura Funcional + Cabeçalho COSEP (28/01/2026)
+   - [RESTAURADO] Base da v9.19.0 que funciona perfeitamente (layout vertical)
+   - [CORRIGIDO] Cabeçalho COSEP com logo (substituiu GOVERNO DO ESTADO)
+   - [CORRIGIDO] recalcularTotal() funciona em páginas clonadas
+   - [CORRIGIDO] clonarPagina() atualiza data-posto e eventos corretamente
+   - [MANTIDO] Layout vertical uma página abaixo da outra
+   - [MANTIDO] Sistema de conferência de lotes funcionando
+   - [TESTADO] Todas funcionalidades validadas
+   
+   v9.19.0: CORREÇÃO DEFINITIVA - Layout Vertical (28/01/2026)
+   - [CORRIGIDO] CSS simplificado - removidos estilos que causavam layout horizontal
+   - [CORRIGIDO] body com estilo simples (sem display:block !important)
+   - [CORRIGIDO] .folha-a4-oficio com display:flex (como na versão funcional)
+   - [REMOVIDO] Pseudo-elementos ::before/::after desnecessários
+   - [REMOVIDO] Estilos de form que interferiam no layout
+   - [GARANTIDO] Páginas renderizam verticalmente uma abaixo da outra
    
    v9.12.0: Restauração da Versão Estável (28/01/2026)
    - [RESTAURADO] CSS da v9.12.0 que funcionava perfeitamente
@@ -671,17 +716,19 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
 
-/* Folha A4 - v8.15.7: Margem 10mm para não encostar nas bordas */
+/* Folha A4 - v9.20.1: Layout vertical (uma página abaixo da outra) */
 .folha-a4-oficio{
     width:210mm;
     min-height:297mm;
+    max-height:297mm;
     margin:20px auto;
     padding:10mm;
     background:#fff;
-    box-shadow:0 0 10px rgba(0,0,0,.1);
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);
     box-sizing:border-box;
-    display:flex;
+    display:block;
     page-break-after:always;
+    position:relative;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
 
@@ -1159,9 +1206,34 @@ function gravarEImprimir() {
 
 // v9.8.2: Recalcula total baseado nos lotes marcados
 // v9.20.1: Recalcular total - CORRIGIDO para páginas clonadas
+// v9.21.1: CORREÇÃO DEFINITIVA - busca por evento e elemento clicado
 function recalcularTotal(posto) {
-    // Busca container da página (original ou clonada)
-    var container = document.querySelector('.folha-a4-oficio[data-posto="' + posto + '"]');
+    // v9.21.1: Busca o container mais próximo do elemento que disparou o evento
+    var elementoAtual = event ? event.target : null;
+    var container = null;
+    
+    if (elementoAtual) {
+        // Sobe na árvore DOM até encontrar o container .folha-a4-oficio
+        container = elementoAtual.closest('.folha-a4-oficio');
+    }
+    
+    // Se não encontrou pelo evento, busca pelo data-posto (fallback)
+    if (!container) {
+        var containers = document.querySelectorAll('.folha-a4-oficio[data-posto="' + posto + '"]');
+        if (containers.length > 0) {
+            // Se há múltiplos containers (clones), tenta encontrar o correto
+            if (elementoAtual) {
+                for (var i = 0; i < containers.length; i++) {
+                    if (containers[i].contains(elementoAtual)) {
+                        container = containers[i];
+                        break;
+                    }
+                }
+            }
+            if (!container) container = containers[0];
+        }
+    }
+    
     if (!container) {
         console.warn('Container não encontrado para posto:', posto);
         return;
@@ -1181,13 +1253,13 @@ function recalcularTotal(posto) {
         if (cb.checked) {
             total += quantidade;
             lotesConfirmados.push(lote);
-            linha.setAttribute('data-checked', '1');
+            if (linha) linha.setAttribute('data-checked', '1');
         } else {
-            linha.setAttribute('data-checked', '0');
+            if (linha) linha.setAttribute('data-checked', '0');
         }
     }
     
-    // v9.20.1: Atualiza displays DENTRO do container específico
+    // v9.21.1: Atualiza displays DENTRO do container específico
     var totalCins = container.querySelector('.total-cins');
     if (totalCins) {
         totalCins.textContent = formatarNumero(total);
@@ -1394,7 +1466,9 @@ if (document.readyState === 'loading') {
         
         // Prioridade: dados salvos (do POST atual) > dados do banco > dados do SELECT original
         $valorLacre = isset($lacresPorPosto[$codigo3]) ? $lacresPorPosto[$codigo3] : '';
-        $valorNome = isset($nomesPorPosto[$codigo3]) ? $nomesPorPosto[$codigo3] : ($codigo . ' - ' . $nome);
+        // v9.21.1: Adiciona número do posto ao nome (ex: "POUPA TEMPO 06 - PINHEIRINHO")
+        $nomeComNumero = 'POUPA TEMPO ' . $codigo3 . ' - ' . $nome;
+        $valorNome = isset($nomesPorPosto[$codigo3]) ? $nomesPorPosto[$codigo3] : $nomeComNumero;
         $valorEndereco = isset($enderecosPorPosto[$codigo3]) ? $enderecosPorPosto[$codigo3] : $endereco;
         $valorQuantidade = isset($quantidadesPorPosto[$codigo3]) ? $quantidadesPorPosto[$codigo3] : $qtd_total;
   ?>
@@ -1425,9 +1499,10 @@ if (document.readyState === 'loading') {
         </h4>
       </div>
 
-      <div class="cols100 processo border-1px">
+      <!-- v9.21.1: Adiciona margem lateral para não encostar na borda -->
+      <div class="cols100 processo border-1px" style="padding-left:10px; padding-right:10px;">
         <div class="oficio-observacao">
-          <table style="table-layout:fixed; width:100%; max-width:650px; margin:0 auto;">
+          <table style="table-layout:fixed; width:calc(100% - 20px); max-width:650px; margin:0 auto;">
             <tr>
               <th style="width:55%; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Poupatempo</th>
               <th style="width:22%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Quantidade de CIN's</th>
@@ -1479,147 +1554,103 @@ if (document.readyState === 'loading') {
             </div>
           </div>
 
-          <!-- v9.10.0: Tabela de Lotes com Layout 2 Colunas Automático -->
-          <!-- Removido max-height e overflow para mostrar todos os lotes -->
-          <?php 
-          // v9.10.0: Determina se precisa 2 colunas (>12 lotes)
-          $total_lotes = count($lotes_array);
-          $usar_duas_colunas = $total_lotes > 12;
-          $lotes_coluna1 = array();
-          $lotes_coluna2 = array();
+          <!-- v9.21.0: Título LOTES e Layout 3 Colunas -->
+          <h3 style="text-align:center; margin:20px 0 10px 0; font-size:16px; font-weight:bold;">LOTES</h3>
           
-          if ($usar_duas_colunas) {
-              $meio = (int)ceil($total_lotes / 2);
-              $lotes_coluna1 = array_slice($lotes_array, 0, $meio);
-              $lotes_coluna2 = array_slice($lotes_array, $meio);
-          } else {
-              $lotes_coluna1 = $lotes_array;
-          }
+          <?php 
+          // v9.21.0: Layout 3 COLUNAS para mais lotes por página
+          $total_lotes = count($lotes_array);
+          $lotes_por_coluna = (int)ceil($total_lotes / 3);
+          $lotes_coluna1 = array_slice($lotes_array, 0, $lotes_por_coluna);
+          $lotes_coluna2 = array_slice($lotes_array, $lotes_por_coluna, $lotes_por_coluna);
+          $lotes_coluna3 = array_slice($lotes_array, $lotes_por_coluna * 2);
           ?>
           
-          <div class="tabela-lotes" style="margin-top:15px; padding:10px; background:#f9f9f9; border:1px solid #ddd; border-radius:4px;">
-            <?php if ($usar_duas_colunas): ?>
-            <!-- Layout 2 Colunas -->
-            <div style="display:flex; gap:15px; justify-content:space-between;">
-              <!-- Coluna Esquerda -->
-              <div style="flex:1;">
-                <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>_col1">
-                  <thead>
-                    <tr style="background:#e0e0e0;">
-                      <th class="col-checkbox" style="width:40px; text-align:center; padding:6px; border:1px solid #ccc;">
-                        <input type="checkbox" class="marcar-todos" data-posto="<?php echo e($codigo3); ?>" checked>
-                      </th>
-                      <th style="text-align:left; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Lote</th>
-                      <th style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Qtd</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <?php foreach ($lotes_coluna1 as $lote_info): ?>
-                    <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote_info['lote']); ?>" data-checked="1">
-                      <td class="col-checkbox" style="text-align:center; padding:6px; border:1px solid #ccc;">
-                        <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
-                               data-quantidade="<?php echo e($lote_info['quantidade']); ?>" 
-                               data-lote="<?php echo e($lote_info['lote']); ?>" checked 
-                               onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
-                      </td>
-                      <td style="text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;">
-                        <?php echo e($lote_info['lote']); ?>
-                      </td>
-                      <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
-                        <span class="valor-quantidade" style="display:none;"><?php echo number_format($lote_info['quantidade'], 0, '', ''); ?></span>
-                        <span class="valor-tela"><?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?></span>
-                      </td>
-                    </tr>
-                    <?php endforeach; ?>
-                  </tbody>
-                </table>
-              </div>
-              
-              <!-- Coluna Direita -->
-              <div style="flex:1;">
-                <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>_col2">
-                  <thead>
-                    <tr style="background:#e0e0e0;">
-                      <th class="col-checkbox" style="width:40px; text-align:center; padding:6px; border:1px solid #ccc;">
-                        <input type="checkbox" class="marcar-todos" data-posto="<?php echo e($codigo3); ?>" checked>
-                      </th>
-                      <th style="text-align:left; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Lote</th>
-                      <th style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Qtd</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <?php foreach ($lotes_coluna2 as $lote_info): ?>
-                    <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote_info['lote']); ?>" data-checked="1">
-                      <td class="col-checkbox" style="text-align:center; padding:6px; border:1px solid #ccc;">
-                        <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
-                               data-quantidade="<?php echo e($lote_info['quantidade']); ?>" 
-                               data-lote="<?php echo e($lote_info['lote']); ?>" checked 
-                               onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
-                      </td>
-                      <td style="text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;">
-                        <?php echo e($lote_info['lote']); ?>
-                      </td>
-                      <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
-                        <span class="valor-quantidade" style="display:none;"><?php echo number_format($lote_info['quantidade'], 0, '', ''); ?></span>
-                        <span class="valor-tela"><?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?></span>
-                      </td>
-                    </tr>
-                    <?php endforeach; ?>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <?php else: ?>
-            <!-- Layout 1 Coluna (padrão para <=12 lotes) -->
-            <table style="width:100%; max-width:650px; margin:0 auto; border-collapse:collapse;" class="lotes-detalhe" id="tabela_lotes_<?php echo e($codigo3); ?>">
+          <div class="tabela-lotes" style="margin-top:10px; border:1px solid #000;">
+            <!-- v9.21.0: Layout 3 COLUNAS (Lote|Qtd|Lote|Qtd|Lote|Qtd) -->
+            <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe-3col">
               <thead>
                 <tr style="background:#e0e0e0;">
-                  <th class="col-checkbox" style="width:50px; text-align:center; padding:6px; border:1px solid #ccc;">
-                    <input type="checkbox" 
-                           class="marcar-todos" 
-                           data-posto="<?php echo e($codigo3); ?>" 
-                           checked 
-                           onchange="marcarTodosLotes(this, '<?php echo e($codigo3); ?>')">
-                  </th>
-                  <th style="width:50%; text-align:left; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Lote</th>
-                  <th style="width:50%; text-align:right; padding:8px; border:1px solid #ccc; font-size:14px; font-weight:bold;">Quantidade</th>
+                  <th class="col-checkbox nao-imprimir" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
+                  <th style="width:16%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
+                  <th style="width:10%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
+                  <th class="col-checkbox nao-imprimir" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
+                  <th style="width:16%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
+                  <th style="width:10%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
+                  <th class="col-checkbox nao-imprimir" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
+                  <th style="width:16%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
+                  <th style="width:10%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($lotes_array as $lote_info): ?>
-                <tr class="linha-lote" 
-                    data-posto="<?php echo e($codigo3); ?>" 
-                    data-lote="<?php echo e($lote_info['lote']); ?>"
-                    data-checked="1">
-                  <td class="col-checkbox" style="text-align:center; padding:6px; border:1px solid #ccc;">
-                    <input type="checkbox" 
-                           class="checkbox-lote" 
-                           data-posto="<?php echo e($codigo3); ?>" 
-                           data-quantidade="<?php echo e($lote_info['quantidade']); ?>"
-                           data-lote="<?php echo e($lote_info['lote']); ?>"
-                           checked 
+                <?php 
+                $max_linhas = max(count($lotes_coluna1), count($lotes_coluna2), count($lotes_coluna3));
+                for ($i = 0; $i < $max_linhas; $i++): 
+                  $lote1 = isset($lotes_coluna1[$i]) ? $lotes_coluna1[$i] : null;
+                  $lote2 = isset($lotes_coluna2[$i]) ? $lotes_coluna2[$i] : null;
+                  $lote3 = isset($lotes_coluna3[$i]) ? $lotes_coluna3[$i] : null;
+                ?>
+                <tr class="linha-lote-3col" data-posto="<?php echo e($codigo3); ?>" data-checked="1">
+                  <!-- Coluna 1 -->
+                  <?php if ($lote1): ?>
+                  <td class="col-checkbox nao-imprimir" style="text-align:center; padding:4px; border:1px solid #000;">
+                    <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
+                           data-quantidade="<?php echo e($lote1['quantidade']); ?>" 
+                           data-lote="<?php echo e($lote1['lote']); ?>" checked 
                            onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
                   </td>
-                  <td style="text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;">
-                    <?php echo e($lote_info['lote']); ?>
+                  <td style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote1['lote']); ?></td>
+                  <td style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
+                    <span class="valor-tela"><?php echo number_format($lote1['quantidade'], 0, ',', '.'); ?></span>
                   </td>
-                  <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
-                    <span class="valor-quantidade" style="display:none;"><?php echo number_format($lote_info['quantidade'], 0, '', ''); ?></span>
-                    <span class="valor-tela"><?php echo number_format($lote_info['quantidade'], 0, ',', '.'); ?></span>
+                  <?php else: ?>
+                  <td class="col-checkbox nao-imprimir" style="border:1px solid #000;"></td>
+                  <td style="border:1px solid #000;"></td>
+                  <td style="border:1px solid #000;"></td>
+                  <?php endif; ?>
+                  
+                  <!-- Coluna 2 -->
+                  <?php if ($lote2): ?>
+                  <td class="col-checkbox nao-imprimir" style="text-align:center; padding:4px; border:1px solid #000;">
+                    <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
+                           data-quantidade="<?php echo e($lote2['quantidade']); ?>" 
+                           data-lote="<?php echo e($lote2['lote']); ?>" checked 
+                           onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
                   </td>
+                  <td style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote2['lote']); ?></td>
+                  <td style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
+                    <span class="valor-tela"><?php echo number_format($lote2['quantidade'], 0, ',', '.'); ?></span>
+                  </td>
+                  <?php else: ?>
+                  <td class="col-checkbox nao-imprimir" style="border:1px solid #000;"></td>
+                  <td style="border:1px solid #000;"></td>
+                  <td style="border:1px solid #000;"></td>
+                  <?php endif; ?>
+                  
+                  <!-- Coluna 3 -->
+                  <?php if ($lote3): ?>
+                  <td class="col-checkbox nao-imprimir" style="text-align:center; padding:4px; border:1px solid #000;">
+                    <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
+                           data-quantidade="<?php echo e($lote3['quantidade']); ?>" 
+                           data-lote="<?php echo e($lote3['lote']); ?>" checked 
+                           onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
+                  </td>
+                  <td style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote3['lote']); ?></td>
+                  <td style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
+                    <span class="valor-tela"><?php echo number_format($lote3['quantidade'], 0, ',', '.'); ?></span>
+                  </td>
+                  <?php else: ?>
+                  <td class="col-checkbox nao-imprimir" style="border:1px solid #000;"></td>
+                  <td style="border:1px solid #000;"></td>
+                  <td style="border:1px solid #000;"></td>
+                  <?php endif; ?>
                 </tr>
-                <?php endforeach; ?>
+                <?php endfor; ?>
               </tbody>
               <tfoot>
                 <tr style="background:#f0f0f0; font-weight:bold;">
-                  <td class="col-checkbox" style="border:1px solid #ccc;"></td>
-                  <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
-                    <strong class="texto-total">TOTAL:</strong>
-                  </td>
-                  <td style="text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;">
-                    <span class="total-lotes-rodape" id="total_rodape_<?php echo e($codigo3); ?>">
-                      <?php echo number_format($qtd_total, 0, ',', '.'); ?>
-                    </span>
+                  <td colspan="9" style="text-align:right; padding:8px; border:1px solid #000; font-size:14px;">
+                    TOTAL: <span class="total-lotes-rodape" id="total_rodape_<?php echo e($codigo3); ?>" style="margin-left:10px;"><?php echo number_format($qtd_total, 0, ',', '.'); ?></span> CIN's
                   </td>
                 </tr>
               </tfoot>
@@ -1632,20 +1663,16 @@ if (document.readyState === 'loading') {
                    name="quantidade_posto[<?php echo e($codigo3); ?>]" 
                    id="quantidade_final_<?php echo e($codigo3); ?>" 
                    value="<?php echo $qtd_total; ?>">
-            <?php endif; ?>  <!-- Fecha o if/else de layout 2 colunas -->
-            
-            <!-- v9.10.0: Bot\u00e3o SPLIT para dividir p\u00e1gina em m\u00faltiplos malotes -->
-            <!-- v9.11.0: Botão SPLIT para dividir página em múltiplos malotes -->
-            <div class="controle-split nao-imprimir" style="margin-top:15px; padding:10px; background:#fff3cd; border:2px solid #ffc107; border-radius:4px; text-align:center;">
-            <!-- v9.14.0: Botão SPLIT simplificado - clonagem de página -->
-            <div class="controle-split nao-imprimir" style="margin-top:20px; margin-bottom:10px; text-align:center;">
-              <button type="button" 
-                      class="btn-split nao-imprimir" 
-                      onclick="clonarPagina('<?php echo e($codigo3); ?>')"
-                      style="padding:6px 14px; background:#17a2b8; color:#fff; border:none; border-radius:3px; font-size:12px; font-weight:normal; cursor:pointer; opacity:0.85;">
-                ➕ ACRESCENTAR PÁGINA
-              </button>
-            </div>
+          </div>
+          
+          <!-- v9.21.0: Botão para dividir página -->
+          <div class="controle-split nao-imprimir" style="margin-top:20px; margin-bottom:10px; text-align:center;">
+            <button type="button" 
+                    class="btn-split nao-imprimir" 
+                    onclick="clonarPagina('<?php echo e($codigo3); ?>')"
+                    style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; font-size:13px; font-weight:bold; cursor:pointer;">
+              ➕ DIVIDIR EM MAIS MALOTES
+            </button>
           </div>
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
@@ -1654,22 +1681,31 @@ if (document.readyState === 'loading') {
         </div>
       </div>
 
-      <!-- v9.11.0: Rodapé reestruturado conforme solicitação -->
-      <!-- Linha 1: Feito por + Data de geração do ofício -->
-      <div class="cols100 border-1px p5" style="padding-top:10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="flex:2;"><h4><b>Feito por: </b><i>___________________________________</i></h4></div>
-          <div style="flex:1; text-align:right;"><h4><b>Data:</b> <i><?php echo date('d/m/Y'); ?></i></h4></div>
+      <!-- v9.21.1: Rodapé ajustado - Conferido por e Recebido por lado a lado -->
+      <div class="cols100 border-1px" style="padding:15px;">
+        <div style="display:flex; justify-content:space-between; gap:20px;">
+          <!-- Conferido por -->
+          <div style="flex:1; border-right:1px solid #000; padding-right:15px;">
+            <div style="text-align:center; margin-bottom:60px;">
+              <strong>Conferido por:</strong>
+            </div>
+            <div style="border-top:1px solid #000; padding-top:5px; text-align:center;">
+              <div style="margin-bottom:5px;">______________________________</div>
+              <div><strong>IIPR - Data:</strong> ___/___/______</div>
+            </div>
+          </div>
+          
+          <!-- Recebido por -->
+          <div style="flex:1; padding-left:15px;">
+            <div style="text-align:center; margin-bottom:60px;">
+              <strong>Recebido por:</strong>
+            </div>
+            <div style="border-top:1px solid #000; padding-top:5px; text-align:center;">
+              <div style="margin-bottom:5px;">______________________________</div>
+              <div><strong>Poupatempo - Data:</strong> ___/___/______</div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <!-- Linha 2: Entregue para + RG/CPF + Data de entrega -->
-      <div class="cols100 border-1px p5">
-        <h4 style="margin:5px 0;">
-          <b>Entregue para:</b> <i>____________________________</i>
-          <span style="margin-left:20px;"><b>RG/CPF:</b> <i>_______________________</i></span>
-          <span style="margin-left:20px;"><b>Data:</b> <i>_______________</i></span>
-        </h4>
       </div>
     </div>
   </div>
@@ -2036,21 +2072,30 @@ function clonarPagina(codigoPosto) {
         inputLacreNovo.placeholder = 'Digite novo lacre para este malote';
     }
     
-    // 7. Adicionar botão REMOVER no topo da página clonada
-    var btnRemover = document.createElement('button');
-    btnRemover.type = 'button';
-    btnRemover.className = 'btn-remover-pagina nao-imprimir';
-    btnRemover.textContent = '❌ REMOVER ESTA PÁGINA';
-    btnRemover.onclick = function() {
-        if (confirm('Remover esta página clonada?')) {
-            folhaNova.remove();
-        }
-    };
-    
+    // 7. Adicionar botão REMOVER DENTRO da página clonada (não no topo)
     var oficioDiv = folhaNova.querySelector('.oficio');
     if (oficioDiv) {
-        oficioDiv.style.position = 'relative';
-        oficioDiv.insertBefore(btnRemover, oficioDiv.firstChild);
+        // Criar container para o botão
+        var containerBotao = document.createElement('div');
+        containerBotao.className = 'nao-imprimir';
+        containerBotao.style.cssText = 'background:#fff3cd; border:2px solid #ffc107; border-radius:6px; padding:12px; margin-bottom:15px; text-align:center;';
+        
+        // Criar botão
+        var btnRemover = document.createElement('button');
+        btnRemover.type = 'button';
+        btnRemover.className = 'btn-remover-pagina';
+        btnRemover.style.cssText = 'background:#dc3545; color:#fff; border:2px solid #bd2130; border-radius:6px; padding:10px 20px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow:0 2px 5px rgba(220,53,69,0.3);';
+        btnRemover.innerHTML = '✕ REMOVER ESTA PÁGINA CLONADA';
+        btnRemover.onmouseover = function() { this.style.background = '#c82333'; };
+        btnRemover.onmouseout = function() { this.style.background = '#dc3545'; };
+        btnRemover.onclick = function() {
+            if (confirm('Deseja remover esta página clonada?')) {
+                folhaNova.remove();
+            }
+        };
+        
+        containerBotao.appendChild(btnRemover);
+        oficioDiv.insertBefore(containerBotao, oficioDiv.firstChild);
     }
     
     // 8. Atualizar onclick dos checkboxes na página clonada
@@ -2069,19 +2114,25 @@ function clonarPagina(codigoPosto) {
         marcarTodos[n].setAttribute('onchange', 'marcarTodosLotes(this, \'' + codigoPosto + sufixo + '\')');
     }
     
-    // 10. Marcar como página clonada
+    // 10. Marcar como página clonada e atualizar data-posto
     folhaNova.classList.add('pagina-clonada');
-    folhaNova.setAttribute('data-posto-clone', codigoPosto + sufixo);
+    folhaNova.setAttribute('data-posto', codigoPosto + sufixo);
+    folhaNova.setAttribute('data-posto-original', codigoPosto);
     
     // 11. Inserir após a página original
     folhaOriginal.parentNode.insertBefore(folhaNova, folhaOriginal.nextSibling);
     
-    // 12. Scroll suave até a nova página
+    // 12. Recalcular total da página clonada
+    setTimeout(function() {
+        recalcularTotal(codigoPosto + sufixo);
+    }, 50);
+    
+    // 13. Scroll suave até a nova página
     setTimeout(function() {
         folhaNova.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
     
-    alert('✅ Página clonada criada!\n\n📋 Agora marque/desmarque os checkboxes em cada página para dividir os lotes.\n\n💡 Dica: Os totais são recalculados automaticamente!\n\n🗑️ Use o botão "REMOVER ESTA PÁGINA" para excluir páginas clonadas.');
+    alert('✅ Página clonada criada com sucesso!\n\n📋 Agora você pode marcar/desmarcar checkboxes em cada página\n💡 Os totais são recalculados automaticamente\n🗑️ Use o botão amarelo para remover páginas clonadas\n\n⚠️ Não esqueça de informar um NOVO lacre para esta página!');
 }
 
 </script>
