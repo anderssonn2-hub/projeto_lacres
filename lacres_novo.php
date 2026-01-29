@@ -1,14 +1,14 @@
 <?php
-/* lacres_novo.php — Versão 9.21.3
+/* lacres_novo.php — Versão 9.21.4
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
  * 
- * CHANGELOG v9.21.3 (29/01/2026):
- * - [REMOVIDO] ❌ Função aplicarLacresDigitados() - estava ERRADA (repetia lacres)
- * - [REMOVIDO] ❌ Botão "Aplicar Lacres" amarelo - lógica incorreta
- * - [MANTIDO] ✅ Botão "Aplicar Período" (📅 filtro por datas) - correto e funcionando
- * - [MANTIDO] ✅ Botão "Atribuir Sequencial" (🔢) - numeração automática única
- * - [CRÍTICO] ⚠️ Lacres são ÚNICOS - não podem repetir entre postos diferentes
- * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.21.3
+ * CHANGELOG v9.21.4 (29/01/2026):
+ * - [RESTAURADO] ✅ Botão "Filtrar por data(s)" com recálculo automático de lacres
+ * - [RESTAURADO] ✅ Lógica correta v9.13.0: CAPITAL (+2), CENTRAL (+1 IIPR, último+1 Correios), REGIONAIS (+2)
+ * - [NOVO] 🎯 Botão ativa flag recalculo_por_lacre=1 automaticamente
+ * - [MANTIDO] ✅ Botão "Aplicar Período" (📅 sem recálculo) para filtro simples
+ * - [MANTIDO] ✅ Botão "Atribuir Sequencial" (🔢) manual
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.21.4
  * 
  * CHANGELOG v9.21.1 (29/01/2026):
  * - [RESTAURADO] Botão "Atribuir Lacres" para numeração sequencial automática
@@ -4610,6 +4610,12 @@ try {
             <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>" required></label>
             <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo (isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') ? '1' : '0' ?>">
             <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
+            
+            <!-- v9.21.4: Botão Filtrar por data(s) - ativa recálculo automático de lacres -->
+            <button type="submit" onclick="ativarRecalculoLacres();" 
+                    style="padding:8px 16px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;margin-left:10px;">
+                🎯 Filtrar por data(s)
+            </button>
             <!-- v8.14.9.3: Exibir último lacre usado -->
             <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
                 <strong style="color:#1976d2;">Últimos Lacres:</strong><br>
@@ -5488,6 +5494,18 @@ function limparColuna(grupo, tipoColuna) {
     marcarComoNaoSalvo();
     
     alert('Coluna "' + nomeColuna + '" do grupo "' + grupo + '" foi limpa com sucesso!');
+}
+
+// v9.21.4: Ativa recálculo automático de lacres ao filtrar (botão verde "Filtrar por data(s)")
+// Esta função ativa a flag que dispara a lógica v9.13.0:
+// - CAPITAL: lacre_iipr=N, lacre_correios=N+1, incremento +2 (N, N+2, N+4...)
+// - CENTRAL: lacre_iipr sequencial +1 (5,6,7...), lacre_correios = último+1 para TODOS
+// - REGIONAIS: lacre_iipr=N, lacre_correios=N+1, incremento +2 (igual Capital)
+function ativarRecalculoLacres() {
+    var recalEl = document.getElementById('recalculo_por_lacre');
+    if (recalEl) {
+        recalEl.value = '1';
+    }
 }
 
 // v8.11.2: Limpar lacres de forma silenciosa (sem confirmacao) quando ha recalculo por lacre

@@ -8,13 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v9.21.3: Correções de Layout CRÍTICAS (29/01/2026)
-   - [CORRIGIDO] ✅ Tabela de lotes centralizada sem ultrapassar bordas
-   - [CORRIGIDO] ✅ Margens laterais ajustadas (15px cada lado)
-   - [MANTIDO] ✅ Layout 3 colunas funcionando
-   - [MANTIDO] ✅ Recálculo dinâmico funcionando
-   - [MANTIDO] ✅ Rodapé "Conferido por / Recebido por" perfeito
-   - [SINCRONIZADO] ✅ Com lacres_novo.php v9.21.3
+   v9.21.4: Restauração Lógica v9.13.0 + Layout Conforme Imagem (29/01/2026)
+   - [CONFIRMADO] ✅ Layout 3 colunas lado a lado funcionando (v9.21.0)
+   - [CONFIRMADO] ✅ Botão "DIVIDIR EM MAIS MALOTES" centralizado
+   - [CONFIRMADO] ✅ Recálculo de checkboxes funcionando perfeitamente
+   - [CONFIRMADO] ✅ Sem barra TOTAL redundante (removida v9.21.2)
+   - [CONFIRMADO] ✅ Tabela centralizada com margens (v9.21.3)
+   - [SINCRONIZADO] ✅ Com lacres_novo.php v9.21.4 (botão Filtrar + lógica correta)
    
    v9.21.1: Ajustes Finais de Layout e Funcionalidade (29/01/2026)
    - [CORRIGIDO] Margem da tabela posto/qtd/lacre (não encosta na borda direita)
