@@ -8,12 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v9.21.2: Refinamentos Finais ✅ CONCLUÍDO (29/01/2026)
-   - [CONCLUÍDO] ✅ Total fixo removido do rodapé da tabela de lotes
-   - [CONCLUÍDO] ✅ Número do posto corrigido no input editável (sempre mostra "POUPA TEMPO XXX - NOME")
-   - [CONCLUÍDO] ✅ Recálculo dinâmico preservado na coluna "Quantidade de CIN's"
-   - [MANTIDO] ✅ Rodapé "Conferido por / Recebido por" já estava correto
-   - [SINCRONIZADO] ✅ Com lacres_novo.php v9.21.2 (botão Aplicar Lacres implementado)
+   v9.21.3: Correções de Layout CRÍTICAS (29/01/2026)
+   - [CORRIGIDO] ✅ Tabela de lotes centralizada sem ultrapassar bordas
+   - [CORRIGIDO] ✅ Margens laterais ajustadas (15px cada lado)
+   - [MANTIDO] ✅ Layout 3 colunas funcionando
+   - [MANTIDO] ✅ Recálculo dinâmico funcionando
+   - [MANTIDO] ✅ Rodapé "Conferido por / Recebido por" perfeito
+   - [SINCRONIZADO] ✅ Com lacres_novo.php v9.21.3
    
    v9.21.1: Ajustes Finais de Layout e Funcionalidade (29/01/2026)
    - [CORRIGIDO] Margem da tabela posto/qtd/lacre (não encosta na borda direita)
@@ -1569,9 +1570,10 @@ if (document.readyState === 'loading') {
           $lotes_coluna3 = array_slice($lotes_array, $lotes_por_coluna * 2);
           ?>
           
-          <div class="tabela-lotes" style="margin-top:10px; border:1px solid #000;">
+          <!-- v9.21.3: Container centralizado com margens laterais -->
+          <div class="tabela-lotes" style="margin:10px 15px; padding:0; max-width:calc(100% - 30px);">
             <!-- v9.21.0: Layout 3 COLUNAS (Lote|Qtd|Lote|Qtd|Lote|Qtd) -->
-            <table style="width:100%; border-collapse:collapse;" class="lotes-detalhe-3col">
+            <table style="width:100%; border-collapse:collapse; border:1px solid #000;" class="lotes-detalhe-3col">
               <thead>
                 <tr style="background:#e0e0e0;">
                   <th class="col-checkbox nao-imprimir" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
