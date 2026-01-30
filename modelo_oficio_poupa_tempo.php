@@ -854,11 +854,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 /* Moldura */
 .moldura{outline:1px solid #000;padding:8px}
 
-/* v9.21.6: Oculta células desmarcadas também na tela */
-td.lote-desmarcado,
-td.lote-vazio{
-    display:none;
-}
 
 /* Modal de confirmação */
 .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9998;display:none}
@@ -1096,6 +1091,13 @@ td.lote-vazio{
     padding:15px;
     margin:15px 0;
     box-shadow:0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* v9.21.7: Realce verde para lote conferido no layout 3 colunas */
+.lote-conferido{
+    background:#d4edda !important;
+    border-color:#28a745 !important;
+    font-weight:bold;
 }
 
 .painel-conferencia h4{
@@ -1584,11 +1586,19 @@ if (document.readyState === 'loading') {
                                                     style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold; resize:none; overflow:hidden; line-height:1.2;"><?php echo e($nomeComNumero); ?></textarea>
                             </td>
               <!-- Quantidade de carteiras - v9.8.2: Calculada dinamicamente dos lotes marcados -->
-              <td style="text-align:right; padding:8px; border:1px solid #000;">
-                                <span class="total-cins" id="total_<?php echo e($codigo3); ?>" style="font-weight:bold; font-size:14px;">
-                                    <?php echo ($valorQuantidade === '' ? '' : number_format((int)$valorQuantidade, 0, ',', '.')); ?>
-                                </span>
-              </td>
+                            <td style="text-align:right; padding:8px; border:1px solid #000;">
+                                <?php if ($modo_branco): ?>
+                                    <input type="text"
+                                            name="quantidade_posto[<?php echo e($codigo3); ?>]"
+                                            value=""
+                                            class="input-editavel"
+                                            style="text-align:right; font-size:14px; border:none; background:transparent; width:100%;">
+                                <?php else: ?>
+                                    <span class="total-cins" id="total_<?php echo e($codigo3); ?>" style="font-weight:bold; font-size:14px;">
+                                        <?php echo ($valorQuantidade === '' ? '' : number_format((int)$valorQuantidade, 0, ',', '.')); ?>
+                                    </span>
+                                <?php endif; ?>
+                            </td>
               <!-- Número do lacre -->
               <td style="text-align:right; padding:8px; border:1px solid #000;">
                 <input type="text"
@@ -1720,10 +1730,12 @@ if (document.readyState === 'loading') {
                    name="lotes_confirmados[<?php echo e($codigo3); ?>]" 
                    id="lotes_confirmados_<?php echo e($codigo3); ?>" 
                    value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_array)); ?>">
-            <input type="hidden" 
-                   name="quantidade_posto[<?php echo e($codigo3); ?>]" 
-                   id="quantidade_final_<?php echo e($codigo3); ?>" 
-                   value="<?php echo $qtd_total; ?>">
+                 <?php if (!$modo_branco): ?>
+                 <input type="hidden" 
+                     name="quantidade_posto[<?php echo e($codigo3); ?>]" 
+                     id="quantidade_final_<?php echo e($codigo3); ?>" 
+                     value="<?php echo $qtd_total; ?>">
+                 <?php endif; ?>
           </div>
           
           <!-- v9.21.5: Botão centralizado horizontalmente na página -->
@@ -1846,11 +1858,19 @@ function conferirLote(codigoPosto) {
         console.log('Código completo: ' + codigoLido);
     }
     
-    // v9.12.0: Busca o lote na tabela (suporta layout 1 ou 2 colunas)
+    // v9.12.0: Busca o lote na tabela (suporta layout 1, 2 ou 3 colunas)
     var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
     var tabela_col1 = document.getElementById('tabela_lotes_' + codigoPosto + '_col1');
     var tabela_col2 = document.getElementById('tabela_lotes_' + codigoPosto + '_col2');
+    var container3 = document.querySelector('.folha-a4-oficio[data-posto="' + codigoPosto + '"]');
     
+    // Se não encontrou nenhum container de tabela, aborta
+    if (!tabela && !tabela_col1 && !tabela_col2 && !container3) {
+        console.log('ERRO: Tabela não encontrada para posto: ' + codigoPosto);
+        alert('Erro: Tabela de lotes não encontrada.');
+        return;
+    }
+
     // Se tem 2 colunas, procura em ambas
     var linhas = [];
     if (tabela_col1 && tabela_col2) {
@@ -1861,10 +1881,6 @@ function conferirLote(codigoPosto) {
     } else if (tabela) {
         linhas = Array.from(tabela.getElementsByClassName('linha-lote'));
         console.log('Layout 1 coluna detectado. Total linhas: ' + linhas.length);
-    } else {
-        console.log('ERRO: Tabela não encontrada para posto: ' + codigoPosto);
-        alert('Erro: Tabela de lotes não encontrada.');
-        return;
     }
     
     var loteEncontrado = false;
@@ -1911,6 +1927,35 @@ function conferirLote(codigoPosto) {
         }
     }
     
+    // v9.21.7: Fallback para layout 3 colunas usando checkboxes
+    if (!loteEncontrado && container3) {
+        var cbs = container3.querySelectorAll('.checkbox-lote');
+        for (var j = 0; j < cbs.length; j++) {
+            var cb3 = cbs[j];
+            var loteCb = (cb3.getAttribute('data-lote') || '').trim();
+            if (loteCb === numeroLote) {
+                var tdCheck = cb3.closest('td');
+                var tdLote = tdCheck ? tdCheck.nextElementSibling : null;
+                var tdQtd = tdLote ? tdLote.nextElementSibling : null;
+                if (cb3.getAttribute('data-conferido') === '1') {
+                    input.value = '';
+                    input.focus();
+                    return;
+                }
+                cb3.setAttribute('data-conferido', '1');
+                cb3.checked = true;
+                if (tdLote) tdLote.classList.add('lote-conferido');
+                if (tdQtd) tdQtd.classList.add('lote-conferido');
+                recalcularTotal(codigoPosto);
+                // Atualiza contadores
+                atualizarContadores(codigoPosto);
+                input.value = '';
+                input.focus();
+                return;
+            }
+        }
+    }
+
     // Se não encontrou, cria nova linha amarela
     if (!loteEncontrado) {
         var tbody = tabela.getElementsByTagName('tbody')[0];
@@ -2011,18 +2056,30 @@ function conferirLote(codigoPosto) {
 // v9.9.0: Atualiza contadores de conferência
 function atualizarContadores(codigoPosto) {
     var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
-    if (!tabela) return;
-    
-    var linhas = tabela.getElementsByClassName('linha-lote');
-    var totalLotes = linhas.length;
+    var container3 = document.querySelector('.folha-a4-oficio[data-posto="' + codigoPosto + '"]');
+    var totalLotes = 0;
     var conferidos = 0;
-    
-    for (var i = 0; i < linhas.length; i++) {
-        if (linhas[i].classList.contains('conferido')) {
-            conferidos++;
+
+    if (tabela) {
+        var linhas = tabela.getElementsByClassName('linha-lote');
+        totalLotes = linhas.length;
+        for (var i = 0; i < linhas.length; i++) {
+            if (linhas[i].classList.contains('conferido')) {
+                conferidos++;
+            }
         }
+    } else if (container3) {
+        var cbs = container3.querySelectorAll('.checkbox-lote');
+        totalLotes = cbs.length;
+        for (var j = 0; j < cbs.length; j++) {
+            if (cbs[j].getAttribute('data-conferido') === '1') {
+                conferidos++;
+            }
+        }
+    } else {
+        return;
     }
-    
+
     var pendentes = totalLotes - conferidos;
     
     // Atualiza displays

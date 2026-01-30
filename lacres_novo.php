@@ -4469,9 +4469,7 @@ try {
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
-    <?php if (!empty($datas_filtro)): ?>
-    <p><strong>Para a(s) data(s) escolhida(s):</strong> <?php echo implode(', ', $datas_filtro) ?></p>
-    <?php else: ?>
+    <?php if (empty($datas_filtro)): ?>
     <p style="color:#999;font-style:italic;">Selecione um período ou datas específicas para ver a análise de expedição.</p>
     <?php endif; ?>
     
@@ -4629,26 +4627,6 @@ try {
         <button type="submit" name="limpar_sessao" class="btn-limpar">Limpar Sessão</button>
     </form>
     <form method="get" action="<?php echo $_SERVER['PHP_SELF'] ?>" id="formFiltroData" onsubmit="limparLacresPorRecalculo(); salvarEstadoEtiquetasCorreios();">
-        <div class="topo-formulario">
-            <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>" required></label>
-            <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>" required></label>
-            <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>" required></label>
-            <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo (isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') ? '1' : '0' ?>">
-            <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
-            
-            <!-- v9.21.6: Botão Aplicar Lacres (recálculo automático) -->
-            <button type="submit" onclick="ativarRecalculoLacres();" 
-                    style="padding:8px 16px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;margin-left:10px;">
-                🎯 Aplicar Lacres
-            </button>
-            <!-- v8.14.9.3: Exibir último lacre usado -->
-            <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
-                <strong style="color:#1976d2;">Últimos Lacres:</strong><br>
-                <span style="color:#0d47a1;">IIPR: <strong><?php echo number_format($ultimo_lacre_iipr, 0, ',', '.'); ?></strong></span> | 
-                <span style="color:#0d47a1;">Correios: <strong><?php echo number_format($ultimo_lacre_correios, 0, ',', '.'); ?></strong></span>
-            </div>
-        </div>
-        
         <!-- v9.8.0: Calendário para seleção de datas -->
         <div style="margin:15px 0;padding:12px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;">
             <strong style="color:#495057;">📅 Selecionar Datas:</strong>
@@ -4681,6 +4659,26 @@ try {
                 <div style="margin-top:5px;font-size:11px;color:#6c757d;">
                     💡 Digite datas específicas separadas por vírgula (formato: dd/mm/aaaa)
                 </div>
+            </div>
+        </div>
+
+        <div class="topo-formulario">
+            <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>" required></label>
+            <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>" required></label>
+            <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>" required></label>
+            <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo (isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') ? '1' : '0' ?>">
+            <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
+            
+            <!-- v9.21.6: Botão Aplicar Lacres (recálculo automático) -->
+            <button type="submit" onclick="ativarRecalculoLacres();" 
+                    style="padding:8px 16px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;margin-left:10px;">
+                🎯 Aplicar Lacres
+            </button>
+            <!-- v8.14.9.3: Exibir último lacre usado -->
+            <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
+                <strong style="color:#1976d2;">Últimos Lacres:</strong><br>
+                <span style="color:#0d47a1;">IIPR: <strong><?php echo number_format($ultimo_lacre_iipr, 0, ',', '.'); ?></strong></span> | 
+                <span style="color:#0d47a1;">Correios: <strong><?php echo number_format($ultimo_lacre_correios, 0, ',', '.'); ?></strong></span>
             </div>
         </div>
     </form>
