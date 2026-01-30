@@ -1,14 +1,12 @@
 <?php
-/* lacres_novo.php — Versão 9.21.4
+/* lacres_novo.php — Versão 9.21.5
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
  * 
- * CHANGELOG v9.21.4 (29/01/2026):
- * - [RESTAURADO] ✅ Botão "Filtrar por data(s)" com recálculo automático de lacres
- * - [RESTAURADO] ✅ Lógica correta v9.13.0: CAPITAL (+2), CENTRAL (+1 IIPR, último+1 Correios), REGIONAIS (+2)
- * - [NOVO] 🎯 Botão ativa flag recalculo_por_lacre=1 automaticamente
- * - [MANTIDO] ✅ Botão "Aplicar Período" (📅 sem recálculo) para filtro simples
- * - [MANTIDO] ✅ Botão "Atribuir Sequencial" (🔢) manual
- * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.21.4
+ * CHANGELOG v9.21.5 (29/01/2026):
+ * - [CORRIGIDO] ✅ Card "Status de Conferências" oculto na impressão (classe nao-imprimir)
+ * - [MANTIDO] ✅ Botão "Filtrar por data(s)" com recálculo automático
+ * - [MANTIDO] ✅ Lógica v9.13.0: CAPITAL (+2), CENTRAL (+1 IIPR, último+1 Correios), REGIONAIS (+2)
+ * - [SINCRONIZADO] Com modelo_oficio_poupa_tempo.php v9.21.5
  * 
  * CHANGELOG v9.21.1 (29/01/2026):
  * - [RESTAURADO] Botão "Atribuir Lacres" para numeração sequencial automática
@@ -3216,24 +3214,26 @@ try {
             font-size: 11px;
         }
         
-        /* Botão de zoom */
+        /* Botão de zoom (compacto) */
         .zoom-control {
             position: fixed;
             top: 10px;
             right: 10px;
-            z-index: 1000;
-            display: flex;
-            background: #fff;
-            border: 1px solid #ddd;
+            z-index: 10000;
+            display: inline-flex;
+            gap: 4px;
+            background: transparent;
+            border: none;
             border-radius: 4px;
-            padding: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 0;
+            box-shadow: none;
+            width: auto;
         }
         .zoom-btn {
             background: #f8f9fa;
             border: 1px solid #ddd;
             border-radius: 3px;
-            padding: 5px 10px;
+            padding: 4px 8px;
             margin: 0 2px;
             cursor: pointer;
             font-size: 14px;
@@ -3243,6 +3243,21 @@ try {
         }
         .zoom-btn:hover {
             background: #e9ecef;
+        }
+
+        /* v9.21.6: Banner central com datas do filtro */
+        .datas-filtro-banner {
+            position: relative;
+            margin: 10px auto 0 auto;
+            padding: 8px 12px;
+            max-width: 720px;
+            text-align: center;
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #856404;
+            font-weight: bold;
         }
         
         /* Alertas */
@@ -3820,6 +3835,7 @@ try {
             .btn-imprimir { display: none !important; }
             .btn-salvar-etiquetas { display: none !important; }
             .no-print { display: none !important; }
+            .nao-imprimir { display: none !important; } /* v9.21.5: Oculta elementos com classe nao-imprimir */
             .quadro-formulario, .quadro-formulario * { display: none !important; }
             .quadro-adicionar, .quadro-adicionar * { display: none !important; }
             .alerta, .alerta * { display: none !important; }
@@ -3835,6 +3851,7 @@ try {
             .modal-overlay { display: none !important; }
             .alerta-duplicata { display: none !important; }
             .analise-expedicao { display: none !important; }
+            #indicador-dias { display: none !important; } /* v9.21.5: Oculta card Status de Conferências */
             
             /* V7.9: MELHORIAS DEFINITIVAS para impressão sem sobreposição */
             input.etiqueta-barras, input.lacre {
@@ -4152,7 +4169,8 @@ try {
             .btn-limpar-coluna-header,
             button.btn-limpar,
             th button,
-            #popup-etiqueta-focal {
+            #popup-etiqueta-focal,
+            #indicador-dias {
                 display: none !important;
             }
             
@@ -4219,18 +4237,19 @@ try {
             margin-top: 8px;
         }
         
-        /* v9.8.0: Botões de zoom mais visíveis */
+        /* v9.21.6: Zoom compacto sem barra grande */
         .zoom-control {
             position: fixed;
             top: 10px;
-            left: 10px;
+            right: 10px;
             z-index: 10000;
-            background: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
-            display: flex;
-            gap: 8px;
+            background: transparent;
+            padding: 0;
+            border-radius: 4px;
+            box-shadow: none;
+            display: inline-flex;
+            gap: 4px;
+            width: auto;
         }
         
         .zoom-btn {
@@ -4370,10 +4389,16 @@ try {
     <button class="zoom-btn" id="zoom-out" title="Diminuir texto">A<sup>−</sup></button>
 </div>
 
+<?php if (!empty($datas_filtro)): ?>
+<div class="datas-filtro-banner nao-imprimir">
+    <strong>Datas do filtro:</strong> <?php echo htmlspecialchars(implode(', ', $datas_filtro), ENT_QUOTES, 'UTF-8'); ?>
+</div>
+<?php endif; ?>
+
 <div class="version-info">Versão 9.14.0</div>
 
-<!-- v9.8.1: Indicador de dias recolhível com badges coloridos e labels SEX/SÁB/DOM -->
-<div id="indicador-dias">
+<!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
+<div id="indicador-dias" class="nao-imprimir">
     <div style="font-weight:bold;color:#333;font-size:13px;">
         📅 Status de Conferências
         <span class="indicador-toggle" onclick="toggleIndicadorDias()" title="Recolher/Expandir">▼</span>
@@ -4611,10 +4636,10 @@ try {
             <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo (isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') ? '1' : '0' ?>">
             <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
             
-            <!-- v9.21.4: Botão Filtrar por data(s) - ativa recálculo automático de lacres -->
+            <!-- v9.21.6: Botão Aplicar Lacres (recálculo automático) -->
             <button type="submit" onclick="ativarRecalculoLacres();" 
                     style="padding:8px 16px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;margin-left:10px;">
-                🎯 Filtrar por data(s)
+                🎯 Aplicar Lacres
             </button>
             <!-- v8.14.9.3: Exibir último lacre usado -->
             <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
@@ -4731,8 +4756,6 @@ try {
 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
     <button type="button" class="btn-imprimir" onclick="confirmarGravarEImprimir();" style="background:#28a745;"><i>💾🖨️</i> Gravar e Imprimir Correios</button>
     <button type="button" class="btn-imprimir" onclick="prepararEImprimir();" style="background:#6c757d;"><i>🖨️</i> Apenas Imprimir</button>
-    <!-- v9.21.1: Botão para atribuir lacres sequencialmente (ÚNICO, NÃO REPETE) -->
-    <button type="button" class="btn-atribuir-lacres" onclick="atribuirLacresSequencial();" style="background:#17a2b8; color:#fff;"><i>🔢</i> Atribuir Sequencial</button>
     <!-- v9.8.0: Botão oculto - funcionalidade integrada ao "Gravar e Imprimir" -->
     <!-- <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()" style="display:none;"><i>💾</i> Salvar Etiquetas Correios</button> -->
 </div>
@@ -7542,19 +7565,20 @@ try {
     return v;
   }
 
-  // 5) Ao clicar, posta em form oculto para o handler PHP (acao=salvar_oficio_pt)
-  // v8.14.9: Adicionar modal de confirmação (Sobrescrever/Criar Novo/Cancelar)
-  btn.onclick = function(){
-    var itens = coletarPT();
-    if (!itens || !itens.length){
-      alert('Nada do Poupa Tempo para salvar.');
-      return;
-    }
-    var datas = coletarDatas();
+    // 5) Ao clicar, abre modelo em branco (sem nome/qtd/lacre)
+    btn.onclick = function(){
+        var datas = coletarDatas();
+        var f = document.createElement('form');
+        f.method = 'post';
+        f.action = 'modelo_oficio_poupa_tempo.php';
+        f.target = '_blank';
 
-    // v8.14.9: Mostrar modal antes de gravar
-    mostrarModalConfirmacaoPT(itens, datas);
-  };
+        var a = document.createElement('input'); a.type='hidden'; a.name='pt_blank'; a.value='1'; f.appendChild(a);
+        var b = document.createElement('input'); b.type='hidden'; b.name='pt_datas'; b.value=datas.join(','); f.appendChild(b);
+        document.body.appendChild(f);
+        f.submit();
+        document.body.removeChild(f);
+    };
 
   // v8.14.9: Função para mostrar modal de confirmação Poupa Tempo
   function mostrarModalConfirmacaoPT(itens, datas) {

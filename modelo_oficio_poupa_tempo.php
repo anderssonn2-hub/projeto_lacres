@@ -8,13 +8,13 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v9.21.4: Restauração Lógica v9.13.0 + Layout Conforme Imagem (29/01/2026)
-   - [CONFIRMADO] ✅ Layout 3 colunas lado a lado funcionando (v9.21.0)
-   - [CONFIRMADO] ✅ Botão "DIVIDIR EM MAIS MALOTES" centralizado
-   - [CONFIRMADO] ✅ Recálculo de checkboxes funcionando perfeitamente
-   - [CONFIRMADO] ✅ Sem barra TOTAL redundante (removida v9.21.2)
-   - [CONFIRMADO] ✅ Tabela centralizada com margens (v9.21.3)
-   - [SINCRONIZADO] ✅ Com lacres_novo.php v9.21.4 (botão Filtrar + lógica correta)
+   v9.21.5: Ajustes Finais de Layout e UX (29/01/2026)
+   - [CORRIGIDO] ✅ Rodapé reduzido para caber na página (padding menor)
+   - [CORRIGIDO] ✅ Botão "DIVIDIR" 100% centralizado horizontalmente
+   - [CORRIGIDO] ✅ Lotes desmarcados ocultos na impressão (células vazias removidas)
+   - [CORRIGIDO] ✅ Layout reorganiza à esquerda automaticamente na impressão
+   - [MANTIDO] ✅ Todas funcionalidades anteriores preservadas
+   - [SINCRONIZADO] ✅ Com lacres_novo.php v9.21.5
    
    v9.21.1: Ajustes Finais de Layout e Funcionalidade (29/01/2026)
    - [CORRIGIDO] Margem da tabela posto/qtd/lacre (não encosta na borda direita)
@@ -506,8 +506,9 @@ if (isset($_GET['debug_pt'])) {
    ============================================================ */
 
 $paginas = array();  // Cada elemento = array('codigo','nome','qtd','endereco')
+$modo_branco = (isset($_POST['pt_blank']) && $_POST['pt_blank'] === '1') || (isset($_GET['pt_blank']) && $_GET['pt_blank'] === '1');
 
-if ($pdo_controle && !empty($datasNorm)) {
+if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
 
     $in = "'" . implode("','", array_map('strval', $datasNorm)) . "'";
 
@@ -584,6 +585,18 @@ if ($pdo_controle && !empty($datasNorm)) {
     } catch (Exception $e) {
         // error_log("Erro SQL Poupatempo: " . $e->getMessage());
     }
+}
+
+// v9.21.6: Modo em branco (modelo para preenchimento manual)
+if ($modo_branco) {
+    $paginas = array(array(
+        'codigo'   => '000',
+        'nome'     => '',
+        'endereco' => '',
+        'usuario'  => '',
+        'lotes'    => array(),
+        'qtd_total' => 0
+    ));
 }
 
 if (isset($_GET['debug_pt'])) {
@@ -841,6 +854,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 /* Moldura */
 .moldura{outline:1px solid #000;padding:8px}
 
+/* v9.21.6: Oculta células desmarcadas também na tela */
+td.lote-desmarcado,
+td.lote-vazio{
+    display:none;
+}
+
 /* Modal de confirmação */
 .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9998;display:none}
 .modal-box{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:25px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;max-width:500px;text-align:center}
@@ -861,9 +880,17 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 /* Classe para ocultar na impressão */
 .nao-imprimir{display:block}
 
+/* v9.21.6: Rodapé oculto na tela e visível apenas na impressão */
+.rodape-oficio{display:none}
+
+/* v9.21.6: Espaçador ajustável do rodapé */
+.espacador-rodape{min-height:10px;padding-top:10px}
+
 @media print{
     body{background:#fff;margin:0;padding:0}
     .controles-pagina,.nao-imprimir{display:none !important}
+    .rodape-oficio{display:block !important}
+    .espacador-rodape{min-height:10px;padding-top:20px}
     
     .folha-a4-oficio{
         width:210mm;
@@ -915,6 +942,17 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     .oficio .cols100.border-1px.p5:last-of-type{
         page-break-inside:avoid;
         break-inside:avoid;
+    }
+    
+    /* v9.21.6: Ocultar apenas células desmarcadas na impressão */
+    td.lote-desmarcado,
+    th.lote-desmarcado{
+        display:none !important;
+    }
+
+    /* v9.21.6: Ocultar células sem lote na impressão */
+    td.lote-vazio{
+        display:none !important;
     }
     
     /* Garantir que tabelas não quebrem */
@@ -973,6 +1011,10 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
         display:none !important;
     }
     .valor-quantidade{
+        display:inline !important;
+    }
+    /* v9.21.6: Lotes em 3 colunas devem mostrar quantidade formatada */
+    .lotes-detalhe-3col .valor-tela{
         display:inline !important;
     }
     
@@ -1251,19 +1293,31 @@ function recalcularTotal(posto) {
     var checkboxes = container.querySelectorAll('.checkbox-lote');
     var total = 0;
     var lotesConfirmados = [];
+
+    // Resetar marcação por linha
+    var linhas = container.querySelectorAll('tr.linha-lote-3col');
+    for (var r = 0; r < linhas.length; r++) {
+        linhas[r].setAttribute('data-checked', '0');
+    }
     
     for (var i = 0; i < checkboxes.length; i++) {
         var cb = checkboxes[i];
         var quantidade = parseInt(cb.getAttribute('data-quantidade')) || 0;
         var lote = cb.getAttribute('data-lote');
         var linha = cb.closest('tr');
-        
+        var tdCheck = cb.closest('td');
+        var tdLote = tdCheck ? tdCheck.nextElementSibling : null;
+        var tdQtd = tdLote ? tdLote.nextElementSibling : null;
+
         if (cb.checked) {
             total += quantidade;
             lotesConfirmados.push(lote);
             if (linha) linha.setAttribute('data-checked', '1');
+            if (tdLote) tdLote.classList.remove('lote-desmarcado');
+            if (tdQtd) tdQtd.classList.remove('lote-desmarcado');
         } else {
-            if (linha) linha.setAttribute('data-checked', '0');
+            if (tdLote) tdLote.classList.add('lote-desmarcado');
+            if (tdQtd) tdQtd.classList.add('lote-desmarcado');
         }
     }
     
@@ -1464,16 +1518,26 @@ if (document.readyState === 'loading') {
         $lotes_array = isset($p['lotes']) && is_array($p['lotes']) ? $p['lotes'] : array();  // v9.8.3: Validação
         $endereco = isset($p['endereco']) ? $p['endereco'] : '';
 
+        if ($modo_branco) {
+            $nome = '';
+            $qtd_total = '';
+            $lotes_array = array();
+            $endereco = '';
+        }
+
         // garante código com 3 dígitos
         $codigo3 = str_pad($codigo, 3, '0', STR_PAD_LEFT);
         
         // Prioridade: dados salvos (do POST atual) > dados do banco > dados do SELECT original
         $valorLacre = isset($lacresPorPosto[$codigo3]) ? $lacresPorPosto[$codigo3] : '';
         // v9.21.1: Adiciona número do posto ao nome (ex: "POUPA TEMPO 06 - PINHEIRINHO")
-        $nomeComNumero = 'POUPA TEMPO ' . $codigo3 . ' - ' . $nome;
-        $valorNome = isset($nomesPorPosto[$codigo3]) ? $nomesPorPosto[$codigo3] : $nomeComNumero;
-        $valorEndereco = isset($enderecosPorPosto[$codigo3]) ? $enderecosPorPosto[$codigo3] : $endereco;
-        $valorQuantidade = isset($quantidadesPorPosto[$codigo3]) ? $quantidadesPorPosto[$codigo3] : $qtd_total;
+        $nomeComNumero = $modo_branco ? '' : ('POUPA TEMPO ' . $codigo3 . ' - ' . $nome);
+        $valorNome = $modo_branco ? '' : (isset($nomesPorPosto[$codigo3]) ? $nomesPorPosto[$codigo3] : $nomeComNumero);
+        $valorEndereco = $modo_branco ? '' : (isset($enderecosPorPosto[$codigo3]) ? $enderecosPorPosto[$codigo3] : $endereco);
+        $valorQuantidade = $modo_branco ? '' : (isset($quantidadesPorPosto[$codigo3]) ? $quantidadesPorPosto[$codigo3] : $qtd_total);
+        if ($modo_branco) {
+            $valorLacre = '';
+        }
   ?>
   <div class="folha-a4-oficio" data-posto="<?php echo e($codigo3); ?>">
     <div class="oficio">
@@ -1512,19 +1576,18 @@ if (document.readyState === 'loading') {
               <th style="width:23%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Numero do Lacre</th>
             </tr>
             <tr>
-              <td style="width:55%; text-align:left; padding:8px; border:1px solid #000;">
-                <!-- v9.21.2: Corrigido para sempre exibir o número do posto -->
-                <input type="text" 
-                       name="nome_posto[<?php echo e($codigo3); ?>]" 
-                       value="<?php echo e($nomeComNumero); ?>" 
-                       class="input-editavel"
-                       style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold;">
-              </td>
+                            <td style="width:55%; text-align:left; padding:8px; border:1px solid #000;">
+                                <!-- v9.21.6: Nome pode quebrar em até 2 linhas -->
+                                <textarea name="nome_posto[<?php echo e($codigo3); ?>]"
+                                                    class="input-editavel"
+                                                    rows="2"
+                                                    style="width:100%; border:none; background:transparent; font-size:14px; font-weight:bold; resize:none; overflow:hidden; line-height:1.2;"><?php echo e($nomeComNumero); ?></textarea>
+                            </td>
               <!-- Quantidade de carteiras - v9.8.2: Calculada dinamicamente dos lotes marcados -->
               <td style="text-align:right; padding:8px; border:1px solid #000;">
-                <span class="total-cins" id="total_<?php echo e($codigo3); ?>" style="font-weight:bold; font-size:14px;">
-                  <?php echo number_format($valorQuantidade, 0, ',', '.'); ?>
-                </span>
+                                <span class="total-cins" id="total_<?php echo e($codigo3); ?>" style="font-weight:bold; font-size:14px;">
+                                    <?php echo ($valorQuantidade === '' ? '' : number_format((int)$valorQuantidade, 0, ',', '.')); ?>
+                                </span>
               </td>
               <!-- Número do lacre -->
               <td style="text-align:right; padding:8px; border:1px solid #000;">
@@ -1609,9 +1672,9 @@ if (document.readyState === 'loading') {
                     <span class="valor-tela"><?php echo number_format($lote1['quantidade'], 0, ',', '.'); ?></span>
                   </td>
                   <?php else: ?>
-                  <td class="col-checkbox nao-imprimir" style="border:1px solid #000;"></td>
-                  <td style="border:1px solid #000;"></td>
-                  <td style="border:1px solid #000;"></td>
+                  <td class="col-checkbox nao-imprimir lote-vazio" style="border:1px solid #000;"></td>
+                  <td class="lote-vazio" style="border:1px solid #000;"></td>
+                  <td class="lote-vazio" style="border:1px solid #000;"></td>
                   <?php endif; ?>
                   
                   <!-- Coluna 2 -->
@@ -1627,9 +1690,9 @@ if (document.readyState === 'loading') {
                     <span class="valor-tela"><?php echo number_format($lote2['quantidade'], 0, ',', '.'); ?></span>
                   </td>
                   <?php else: ?>
-                  <td class="col-checkbox nao-imprimir" style="border:1px solid #000;"></td>
-                  <td style="border:1px solid #000;"></td>
-                  <td style="border:1px solid #000;"></td>
+                  <td class="col-checkbox nao-imprimir lote-vazio" style="border:1px solid #000;"></td>
+                  <td class="lote-vazio" style="border:1px solid #000;"></td>
+                  <td class="lote-vazio" style="border:1px solid #000;"></td>
                   <?php endif; ?>
                   
                   <!-- Coluna 3 -->
@@ -1645,9 +1708,9 @@ if (document.readyState === 'loading') {
                     <span class="valor-tela"><?php echo number_format($lote3['quantidade'], 0, ',', '.'); ?></span>
                   </td>
                   <?php else: ?>
-                  <td class="col-checkbox nao-imprimir" style="border:1px solid #000;"></td>
-                  <td style="border:1px solid #000;"></td>
-                  <td style="border:1px solid #000;"></td>
+                  <td class="col-checkbox nao-imprimir lote-vazio" style="border:1px solid #000;"></td>
+                  <td class="lote-vazio" style="border:1px solid #000;"></td>
+                  <td class="lote-vazio" style="border:1px solid #000;"></td>
                   <?php endif; ?>
                 </tr>
                 <?php endfor; ?>
@@ -1663,44 +1726,44 @@ if (document.readyState === 'loading') {
                    value="<?php echo $qtd_total; ?>">
           </div>
           
-          <!-- v9.21.0: Botão para dividir página -->
-          <div class="controle-split nao-imprimir" style="margin-top:20px; margin-bottom:10px; text-align:center;">
+          <!-- v9.21.5: Botão centralizado horizontalmente na página -->
+          <div class="controle-split nao-imprimir" style="margin-top:20px; margin-bottom:10px; display:flex; justify-content:center; width:100%;">
             <button type="button" 
                     class="btn-split nao-imprimir" 
                     onclick="clonarPagina('<?php echo e($codigo3); ?>')"
-                    style="padding:8px 16px; background:#17a2b8; color:#fff; border:none; border-radius:4px; font-size:13px; font-weight:bold; cursor:pointer;">
+                    style="padding:10px 20px; background:#17a2b8; color:#fff; border:none; border-radius:4px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.2);">
               ➕ DIVIDIR EM MAIS MALOTES
             </button>
           </div>
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
-          <!-- v9.9.6: Espaçador ajustado para PDF (padding-top ao invés de flex-grow) -->
-          <div style="min-height:20px; padding-top:50px;"></div>
+          <!-- v9.21.6: Espaçador ajustado para tela e impressão -->
+          <div class="espacador-rodape"></div>
         </div>
       </div>
 
-      <!-- v9.21.1: Rodapé ajustado - Conferido por e Recebido por lado a lado -->
-      <div class="cols100 border-1px" style="padding:15px;">
-        <div style="display:flex; justify-content:space-between; gap:20px;">
+    <!-- v9.21.6: Rodapé visível apenas na impressão -->
+    <div class="cols100 border-1px rodape-oficio" style="padding:8px 15px;">
+        <div style="display:flex; justify-content:space-between; gap:15px;">
           <!-- Conferido por -->
-          <div style="flex:1; border-right:1px solid #000; padding-right:15px;">
-            <div style="text-align:center; margin-bottom:60px;">
+          <div style="flex:1; border-right:1px solid #000; padding-right:12px;">
+            <div style="text-align:center; margin-bottom:40px;">
               <strong>Conferido por:</strong>
             </div>
-            <div style="border-top:1px solid #000; padding-top:5px; text-align:center;">
-              <div style="margin-bottom:5px;">______________________________</div>
-              <div><strong>IIPR - Data:</strong> ___/___/______</div>
+            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+              <div style="margin-bottom:3px;">______________________________</div>
+              <div style="font-size:12px;"><strong>IIPR - Data:</strong> ___/___/______</div>
             </div>
           </div>
           
           <!-- Recebido por -->
-          <div style="flex:1; padding-left:15px;">
-            <div style="text-align:center; margin-bottom:60px;">
+          <div style="flex:1; padding-left:12px;">
+            <div style="text-align:center; margin-bottom:40px;">
               <strong>Recebido por:</strong>
             </div>
-            <div style="border-top:1px solid #000; padding-top:5px; text-align:center;">
-              <div style="margin-bottom:5px;">______________________________</div>
-              <div><strong>Poupatempo - Data:</strong> ___/___/______</div>
+            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+              <div style="margin-bottom:3px;">______________________________</div>
+              <div style="font-size:12px;"><strong>Poupatempo - Data:</strong> ___/___/______</div>
             </div>
           </div>
         </div>
