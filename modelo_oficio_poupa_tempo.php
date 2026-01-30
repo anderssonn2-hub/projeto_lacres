@@ -887,7 +887,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 @media print{
     body{background:#fff;margin:0;padding:0}
     .controles-pagina,.nao-imprimir{display:none !important}
-    body.imprimir-selecionados .folha-a4-oficio:not(.posto-selecionado){
+    body.imprimir-selecionados .folha-a4-oficio:not(.folha-selecionada){
         display:none !important;
     }
     .rodape-oficio{display:block !important}
@@ -1014,8 +1014,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
     .valor-quantidade{
         display:inline !important;
     }
-    /* v9.21.6: Lotes em 3 colunas devem mostrar quantidade formatada */
-    .lotes-detalhe-3col .valor-tela{
+    /* v9.22.0: Lotes em 1 coluna devem mostrar quantidade formatada */
+    .lotes-detalhe-1col .valor-tela{
         display:inline !important;
     }
     
@@ -1303,7 +1303,7 @@ function recalcularTotal(posto) {
     var lotesConfirmados = [];
 
     // Resetar marcação por linha
-    var linhas = container.querySelectorAll('tr.linha-lote-3col');
+    var linhas = container.querySelectorAll('tr.linha-lote');
     for (var r = 0; r < linhas.length; r++) {
         linhas[r].setAttribute('data-checked', '0');
     }
@@ -1395,7 +1395,7 @@ function apenasImprimir() {
     window.print();
 }
 
-// v9.21.8: Imprimir apenas postos selecionados
+// v9.22.0: Imprimir apenas folhas selecionadas
 function imprimirSelecionados() {
     document.body.classList.add('imprimir-selecionados');
     window.print();
@@ -1404,29 +1404,29 @@ function imprimirSelecionados() {
     }, 500);
 }
 
-// v9.21.8: Atualiza seleção visual dos postos
-function atualizarSelecaoPostos() {
-    var checks = document.querySelectorAll('.selecionar-posto');
+// v9.22.0: Atualiza seleção visual das folhas
+function atualizarSelecaoFolhas() {
+    var checks = document.querySelectorAll('.selecionar-folha');
     for (var i = 0; i < checks.length; i++) {
         var cb = checks[i];
-        var posto = cb.getAttribute('data-posto');
-        if (!posto) continue;
-        var folha = document.querySelector('.folha-a4-oficio[data-posto="' + posto + '"]');
+        var folhaId = cb.getAttribute('data-folha');
+        if (!folhaId) continue;
+        var folha = document.querySelector('.folha-a4-oficio[data-folha-id="' + folhaId + '"]');
         if (!folha) continue;
         if (cb.checked) {
-            folha.classList.add('posto-selecionado');
+            folha.classList.add('folha-selecionada');
         } else {
-            folha.classList.remove('posto-selecionado');
+            folha.classList.remove('folha-selecionada');
         }
     }
 }
 
 document.addEventListener('DOMContentLoaded', function(){
-    var checks = document.querySelectorAll('.selecionar-posto');
+    var checks = document.querySelectorAll('.selecionar-folha');
     for (var i = 0; i < checks.length; i++) {
-        checks[i].addEventListener('change', atualizarSelecaoPostos);
+        checks[i].addEventListener('change', atualizarSelecaoFolhas);
     }
-    atualizarSelecaoPostos();
+    atualizarSelecaoFolhas();
 });
 
 // ============================================================
@@ -1585,8 +1585,19 @@ if (document.readyState === 'loading') {
         if ($modo_branco) {
             $valorLacre = '';
         }
+
+        // v9.22.0: 1 lote por linha com paginação automática
+        $max_lotes_por_pagina = 20;
+        $lotes_paginas = $modo_branco ? array(array()) : array_chunk($lotes_array, $max_lotes_por_pagina);
+        foreach ($lotes_paginas as $pagina_idx => $lotes_pagina):
+            $folha_id = $codigo3 . '_' . ($pagina_idx + 1);
+            $qtd_pagina = 0;
+            foreach ($lotes_pagina as $lp) {
+                $qtd_pagina += isset($lp['quantidade']) ? (int)$lp['quantidade'] : 0;
+            }
+            $valorQuantidade = $modo_branco ? '' : $qtd_pagina;
   ?>
-  <div class="folha-a4-oficio" data-posto="<?php echo e($codigo3); ?>">
+  <div class="folha-a4-oficio" data-posto="<?php echo e($codigo3); ?>" data-folha-id="<?php echo e($folha_id); ?>">
     <div class="oficio">
       <div class="cols100 border-1px">
         <div class="cols25 fleft margin2px">
@@ -1656,11 +1667,11 @@ if (document.readyState === 'loading') {
             </tr>
           </table>
 
-                    <!-- v9.21.8: Seleção de postos para impressão -->
+                    <!-- v9.22.1: Seleção de folha para impressão (só marca se tiver lacre) -->
                     <div class="nao-imprimir" style="margin:8px 0;">
                         <label style="font-size:12px; font-weight:bold;">
-                            <input type="checkbox" class="selecionar-posto" data-posto="<?php echo e($codigo3); ?>" checked>
-                            Imprimir este posto
+                            <input type="checkbox" class="selecionar-folha" data-folha="<?php echo e($folha_id); ?>" <?php echo (!empty($valorLacre) ? 'checked' : ''); ?>>
+                            Imprimir esta folha
                         </label>
                     </div>
 
@@ -1684,115 +1695,46 @@ if (document.readyState === 'loading') {
             </div>
           </div>
 
-          <!-- v9.21.0: Título LOTES e Layout 3 Colunas -->
-          <h3 style="text-align:center; margin:20px 0 10px 0; font-size:16px; font-weight:bold;">LOTES</h3>
-          
-          <?php 
-          // v9.21.0: Layout 3 COLUNAS para mais lotes por página
-          $total_lotes = count($lotes_array);
-          $lotes_por_coluna = (int)ceil($total_lotes / 3);
-          $lotes_coluna1 = array_slice($lotes_array, 0, $lotes_por_coluna);
-          $lotes_coluna2 = array_slice($lotes_array, $lotes_por_coluna, $lotes_por_coluna);
-          $lotes_coluna3 = array_slice($lotes_array, $lotes_por_coluna * 2);
-          $col1_vazia = count($lotes_coluna1) === 0;
-          $col2_vazia = count($lotes_coluna2) === 0;
-          $col3_vazia = count($lotes_coluna3) === 0;
-          ?>
-          
-          <!-- v9.21.3: Container centralizado com margens laterais -->
-          <div class="tabela-lotes" style="margin:10px 15px; padding:0; max-width:calc(100% - 30px);">
-            <!-- v9.21.0: Layout 3 COLUNAS (Lote|Qtd|Lote|Qtd|Lote|Qtd) -->
-            <table style="width:100%; border-collapse:collapse; border:1px solid #000;" class="lotes-detalhe-3col">
-              <thead>
-                <tr style="background:#e0e0e0;">
-                  <th class="col-checkbox nao-imprimir <?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
-                  <th class="<?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="width:16%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
-                  <th class="<?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="width:10%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
-                  <th class="col-checkbox nao-imprimir <?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
-                  <th class="<?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="width:16%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
-                  <th class="<?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="width:10%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
-                  <th class="col-checkbox nao-imprimir <?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
-                  <th class="<?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="width:16%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
-                  <th class="<?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="width:10%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php 
-                $max_linhas = max(count($lotes_coluna1), count($lotes_coluna2), count($lotes_coluna3));
-                for ($i = 0; $i < $max_linhas; $i++): 
-                  $lote1 = isset($lotes_coluna1[$i]) ? $lotes_coluna1[$i] : null;
-                  $lote2 = isset($lotes_coluna2[$i]) ? $lotes_coluna2[$i] : null;
-                  $lote3 = isset($lotes_coluna3[$i]) ? $lotes_coluna3[$i] : null;
-                ?>
-                <tr class="linha-lote-3col" data-posto="<?php echo e($codigo3); ?>" data-checked="1">
-                  <!-- Coluna 1 -->
-                  <?php if ($lote1): ?>
-                                    <td class="col-checkbox nao-imprimir <?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000;">
-                    <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
-                           data-quantidade="<?php echo e($lote1['quantidade']); ?>" 
-                           data-lote="<?php echo e($lote1['lote']); ?>" checked 
-                           onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
-                  </td>
-                                    <td class="<?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote1['lote']); ?></td>
-                                    <td class="<?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
-                    <span class="valor-tela"><?php echo number_format($lote1['quantidade'], 0, ',', '.'); ?></span>
-                  </td>
-                  <?php else: ?>
-                                    <td class="col-checkbox nao-imprimir lote-vazio <?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                                    <td class="lote-vazio <?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                                    <td class="lote-vazio <?php echo $col1_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                  <?php endif; ?>
-                  
-                  <!-- Coluna 2 -->
-                  <?php if ($lote2): ?>
-                                    <td class="col-checkbox nao-imprimir <?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000;">
-                    <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
-                           data-quantidade="<?php echo e($lote2['quantidade']); ?>" 
-                           data-lote="<?php echo e($lote2['lote']); ?>" checked 
-                           onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
-                  </td>
-                                    <td class="<?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote2['lote']); ?></td>
-                                    <td class="<?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
-                    <span class="valor-tela"><?php echo number_format($lote2['quantidade'], 0, ',', '.'); ?></span>
-                  </td>
-                  <?php else: ?>
-                                    <td class="col-checkbox nao-imprimir lote-vazio <?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                                    <td class="lote-vazio <?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                                    <td class="lote-vazio <?php echo $col2_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                  <?php endif; ?>
-                  
-                  <!-- Coluna 3 -->
-                  <?php if ($lote3): ?>
-                                    <td class="col-checkbox nao-imprimir <?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000;">
-                    <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
-                           data-quantidade="<?php echo e($lote3['quantidade']); ?>" 
-                           data-lote="<?php echo e($lote3['lote']); ?>" checked 
-                           onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
-                  </td>
-                                    <td class="<?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote3['lote']); ?></td>
-                                    <td class="<?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
-                    <span class="valor-tela"><?php echo number_format($lote3['quantidade'], 0, ',', '.'); ?></span>
-                  </td>
-                  <?php else: ?>
-                                    <td class="col-checkbox nao-imprimir lote-vazio <?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                                    <td class="lote-vazio <?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                                    <td class="lote-vazio <?php echo $col3_vazia ? 'coluna-vazia' : ''; ?>" style="border:1px solid #000;"></td>
-                  <?php endif; ?>
-                </tr>
-                <?php endfor; ?>
-              </tbody>
-            </table>
-            <input type="hidden" 
-                   name="lotes_confirmados[<?php echo e($codigo3); ?>]" 
-                   id="lotes_confirmados_<?php echo e($codigo3); ?>" 
-                   value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_array)); ?>">
-                 <?php if (!$modo_branco): ?>
-                 <input type="hidden" 
-                     name="quantidade_posto[<?php echo e($codigo3); ?>]" 
-                     id="quantidade_final_<?php echo e($codigo3); ?>" 
-                     value="<?php echo $qtd_total; ?>">
-                 <?php endif; ?>
-          </div>
+                    <!-- v9.22.0: Título LOTES (1 por linha) -->
+                    <h3 style="text-align:center; margin:20px 0 10px 0; font-size:16px; font-weight:bold;">LOTES</h3>
+
+                    <div class="tabela-lotes" style="margin:10px 15px; padding:0; max-width:calc(100% - 30px);">
+                        <table style="width:100%; border-collapse:collapse; border:1px solid #000;" class="lotes-detalhe-1col">
+                            <thead>
+                                <tr style="background:#e0e0e0;">
+                                    <th class="col-checkbox nao-imprimir" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
+                                    <th style="width:70%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
+                                    <th style="width:30%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($lotes_pagina as $lote): ?>
+                                <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote['lote']); ?>" data-checked="1">
+                                    <td class="col-checkbox nao-imprimir" style="text-align:center; padding:4px; border:1px solid #000;">
+                                        <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
+                                                     data-quantidade="<?php echo e($lote['quantidade']); ?>" 
+                                                     data-lote="<?php echo e($lote['lote']); ?>" checked 
+                                                     onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
+                                    </td>
+                                    <td style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote['lote']); ?></td>
+                                    <td style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
+                                        <span class="valor-tela"><?php echo number_format($lote['quantidade'], 0, ',', '.'); ?></span>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <input type="hidden" 
+                                     name="lotes_confirmados[<?php echo e($codigo3); ?>]" 
+                                     id="lotes_confirmados_<?php echo e($codigo3); ?>" 
+                                     value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_pagina)); ?>">
+                        <?php if (!$modo_branco): ?>
+                        <input type="hidden" 
+                                     name="quantidade_posto[<?php echo e($codigo3); ?>]" 
+                                     id="quantidade_final_<?php echo e($codigo3); ?>" 
+                                     value="<?php echo $qtd_pagina; ?>">
+                        <?php endif; ?>
+                    </div>
           
           <!-- v9.21.5: Botão centralizado horizontalmente na página -->
           <div class="controle-split nao-imprimir" style="margin-top:20px; margin-bottom:10px; display:flex; justify-content:center; width:100%;">
@@ -1837,8 +1779,9 @@ if (document.readyState === 'loading') {
         </div>
       </div>
     </div>
-  </div>
-  <?php endforeach; ?>  <!-- Fecha o foreach de $paginas -->
+    </div>
+    <?php endforeach; ?>  <!-- Fecha o foreach de $lotes_paginas -->
+    <?php endforeach; ?>  <!-- Fecha o foreach de $paginas -->
 
 <?php else: ?>  <!-- Se $temDados for false, exibe mensagem de erro -->
   <div style="margin:50px auto; max-width:800px; padding:30px; background:#fff3cd; border:3px solid #856404; border-radius:8px; text-align:center;">
