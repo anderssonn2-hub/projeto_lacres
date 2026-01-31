@@ -838,8 +838,8 @@ try {
                             COALESCE(i.lacre_iipr, '') AS lacre_iipr,
                             COALESCE(i.lacre_correios, '') AS lacre_correios,
                             COALESCE(i.etiqueta_correios, '') AS etiqueta_correios,
-                            COALESCE(i.conferido, 'N') AS conferido,
-                            COALESCE(i.conferido_por, '') AS conferido_por,
+                            'N' AS conferido,
+                            '' AS conferido_por,
                             COALESCE(p.nome, CONCAT('Posto ', i.posto)) AS nome_posto,
                             COALESCE(l.data_carga, '') AS data_carga,
                             COALESCE(l.responsaveis, '') AS responsaveis
@@ -866,8 +866,8 @@ try {
                         COALESCE(l.etiquetaiipr, 0) AS etiquetaiipr,
                         COALESCE(l.etiquetacorreios, 0) AS etiquetacorreios,
                         COALESCE(l.etiqueta_correios, '') AS etiqueta_correios,
-                        COALESCE(l.conferido, 'N') AS conferido,
-                        COALESCE(l.conferido_por, '') AS conferido_por
+                        'N' AS conferido,
+                        '' AS conferido_por
                     FROM ciDespachoLotes l
                     WHERE l.id_despacho = ?
                     ORDER BY l.posto, CAST(l.lote AS UNSIGNED)

@@ -236,44 +236,45 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         $nomes = isset($_POST['nome_posto']) && is_array($_POST['nome_posto']) ? $_POST['nome_posto'] : array();
         $enderecos = isset($_POST['endereco_posto']) && is_array($_POST['endereco_posto']) ? $_POST['endereco_posto'] : array();
         $quantidades = isset($_POST['quantidade_posto']) && is_array($_POST['quantidade_posto']) ? $_POST['quantidade_posto'] : array();
+        $folhas_post = isset($_POST['folha_posto']) && is_array($_POST['folha_posto']) ? $_POST['folha_posto'] : array();
+        $folhas_sel_raw = isset($_POST['folhas_selecionadas']) ? trim($_POST['folhas_selecionadas']) : '';
+        $folhas_selecionadas = array_filter(array_map('trim', explode(',', $folhas_sel_raw)));
+        if (empty($folhas_selecionadas)) {
+            $folhas_selecionadas = array_keys($folhas_post);
+        }
 
         if (empty($lacres) && empty($nomes)) {
             throw new Exception('Nenhum dado de posto foi informado.');
         }
 
-        // Armazena os dados do POST para repopular os campos após salvar
-        foreach ($lacres as $posto => $val) {
-            if (!isset($dados_salvos[$posto])) {
-                $dados_salvos[$posto] = array();
+        // v9.22.2: Capturar lotes confirmados por folha
+        $lotes_post = isset($_POST['lotes_confirmados']) && is_array($_POST['lotes_confirmados']) ? $_POST['lotes_confirmados'] : array();
+
+        // v9.22.2: Filtrar apenas folhas selecionadas e com lacre preenchido
+        $folha_por_posto = array();
+        foreach ($folhas_selecionadas as $folha_id) {
+            if (!isset($folhas_post[$folha_id])) continue;
+            $posto = $folhas_post[$folha_id];
+            $lacre = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
+            if ($lacre === '') continue;
+            if (!isset($folha_por_posto[$posto])) {
+                $folha_por_posto[$posto] = $folha_id;
             }
-            $dados_salvos[$posto]['lacre'] = trim($val);
         }
-        foreach ($nomes as $posto => $val) {
+
+        foreach ($folha_por_posto as $posto => $folha_id) {
             if (!isset($dados_salvos[$posto])) {
                 $dados_salvos[$posto] = array();
             }
-            $dados_salvos[$posto]['nome'] = trim($val);
+            $dados_salvos[$posto]['lacre'] = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
+            $dados_salvos[$posto]['nome'] = isset($nomes[$posto]) ? trim($nomes[$posto]) : '';
+            $dados_salvos[$posto]['endereco'] = isset($enderecos[$posto]) ? trim($enderecos[$posto]) : '';
+            $dados_salvos[$posto]['quantidade'] = isset($quantidades[$folha_id]) ? (int)$quantidades[$folha_id] : 0;
+            $dados_salvos[$posto]['lote'] = isset($lotes_post[$folha_id]) ? trim($lotes_post[$folha_id]) : '';
         }
-        foreach ($enderecos as $posto => $val) {
-            if (!isset($dados_salvos[$posto])) {
-                $dados_salvos[$posto] = array();
-            }
-            $dados_salvos[$posto]['endereco'] = trim($val);
-        }
-        foreach ($quantidades as $posto => $val) {
-            if (!isset($dados_salvos[$posto])) {
-                $dados_salvos[$posto] = array();
-            }
-            $dados_salvos[$posto]['quantidade'] = (int)$val;
-        }
-        
-        // v8.14.4: Capturar lotes do POST (vindos dos hidden inputs do form)
-        $lotes_post = isset($_POST['lote_posto']) && is_array($_POST['lote_posto']) ? $_POST['lote_posto'] : array();
-        foreach ($lotes_post as $posto => $val) {
-            if (!isset($dados_salvos[$posto])) {
-                $dados_salvos[$posto] = array();
-            }
-            $dados_salvos[$posto]['lote'] = trim($val);
+
+        if (empty($dados_salvos)) {
+            throw new Exception('Nenhuma folha selecionada com lacre preenchido.');
         }
 
         // v8.14.3: Verificar modo do ofício (sobrescrever/novo)
@@ -1188,7 +1189,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.4}
 .oficio-observacao > table{
     margin-left:auto !important;
     margin-right:auto !important;
-    max-width:650px !important;
+    max-width:100% !important;
 }
 </style>
 <script type="text/javascript">
@@ -1515,6 +1516,8 @@ if (document.readyState === 'loading') {
   <input type="hidden" name="imprimir_apos_salvar" id="imprimir_apos_salvar" value="0">
   <!-- v8.14.3: Modo do ofício (sobrescrever/novo) -->
   <input type="hidden" name="modo_oficio" id="modo_oficio_pt" value="">
+    <!-- v9.22.2: Folhas selecionadas para gravar/imprimir -->
+    <input type="hidden" name="folhas_selecionadas" id="folhas_selecionadas" value="">
 
   <div class="controles-pagina nao-imprimir">
     <h2>Modelo de Oficio - Poupatempo</h2>
@@ -1724,16 +1727,19 @@ if (document.readyState === 'loading') {
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
-                        <input type="hidden" 
-                                     name="lotes_confirmados[<?php echo e($codigo3); ?>]" 
-                                     id="lotes_confirmados_<?php echo e($codigo3); ?>" 
-                                     value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_pagina)); ?>">
-                        <?php if (!$modo_branco): ?>
-                        <input type="hidden" 
-                                     name="quantidade_posto[<?php echo e($codigo3); ?>]" 
-                                     id="quantidade_final_<?php echo e($codigo3); ?>" 
-                                     value="<?php echo $qtd_pagina; ?>">
-                        <?php endif; ?>
+                             <input type="hidden" 
+                                 name="folha_posto[<?php echo e($folha_id); ?>]" 
+                                 value="<?php echo e($codigo3); ?>">
+                             <input type="hidden" 
+                                 name="lotes_confirmados[<?php echo e($folha_id); ?>]" 
+                                 id="lotes_confirmados_<?php echo e($folha_id); ?>" 
+                                 value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_pagina)); ?>">
+                             <?php if (!$modo_branco): ?>
+                             <input type="hidden" 
+                                 name="quantidade_posto[<?php echo e($folha_id); ?>]" 
+                                 id="quantidade_final_<?php echo e($folha_id); ?>" 
+                                 value="<?php echo $qtd_pagina; ?>">
+                             <?php endif; ?>
                     </div>
           
           <!-- v9.21.5: Botão centralizado horizontalmente na página -->
