@@ -1,7 +1,11 @@
 <?php
 /**
- * consulta_producao.php - Versao 9.22.4
+ * consulta_producao.php - Versao 9.22.5
  * 
+ * CHANGELOG v9.22.5:
+ * - [MELHORADO] Detalhes PT buscam lotes/responsaveis/data_carga em ciPostosCsv quando necessario
+ * - [MELHORADO] Tabela de lotes exibe badge correto para Poupa Tempo
+ *
  * CHANGELOG v9.22.4:
  * - [MELHORADO] Conferido no Poupa Tempo baseado em lacre/conferido_oficio
  * - [MELHORADO] Detalhes PT exibem data carga e responsaveis quando gravados
@@ -829,11 +833,15 @@ try {
             $lotes = array();
             try {
                 // Busca o tipo do despacho
-                $stmtTipo = $pdo_controle->prepare("SELECT grupo FROM ciDespachos WHERE id = ? LIMIT 1");
+                $stmtTipo = $pdo_controle->prepare("SELECT grupo, datas_str FROM ciDespachos WHERE id = ? LIMIT 1");
                 $stmtTipo->execute(array($id_despacho));
                 $rowTipo = $stmtTipo->fetch();
                 if ($rowTipo && isset($rowTipo['grupo'])) {
                     $despacho_tipo = $rowTipo['grupo'];
+                }
+                $despacho_datas = '';
+                if ($rowTipo && isset($rowTipo['datas_str'])) {
+                    $despacho_datas = $rowTipo['datas_str'];
                 }
                 
                 // Busca itens (Poupa Tempo)
@@ -963,6 +971,111 @@ try {
                 ");
                 $stmtLotes->execute(array($id_despacho));
                 $lotes = $stmtLotes->fetchAll();
+
+                // v9.22.5: fallback para lotes PT via ciPostosCsv quando vazio
+                if ($despacho_tipo === 'POUPA TEMPO' && empty($lotes)) {
+                    $datasSql = array();
+                    if (!empty($despacho_datas)) {
+                        $tmp = explode(',', $despacho_datas);
+                        foreach ($tmp as $d) {
+                            $d = trim($d);
+                            if ($d === '') continue;
+                            if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
+                                $datasSql[] = $m[3] . '-' . $m[2] . '-' . $m[1];
+                            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+                                $datasSql[] = $d;
+                            }
+                        }
+                    }
+
+                    $postosFiltro = array();
+                    foreach ($itens as $i) {
+                        if (isset($i['posto']) && $i['posto'] !== '') {
+                            $postosFiltro[str_pad((string)$i['posto'], 3, '0', STR_PAD_LEFT)] = true;
+                        }
+                    }
+
+                    if (!empty($datasSql)) {
+                        $phDatas = implode(',', array_fill(0, count($datasSql), '?'));
+                        $paramsPt = $datasSql;
+
+                        $sqlLotesPt = "
+                            SELECT 
+                                LPAD(c.posto,3,'0') AS posto,
+                                c.lote,
+                                SUM(COALESCE(c.quantidade,0)) AS quantidade,
+                                MIN(DATE(c.dataCarga)) AS data_carga,
+                                GROUP_CONCAT(DISTINCT c.usuario SEPARATOR ', ') AS responsaveis,
+                                0 AS etiquetaiipr,
+                                0 AS etiquetacorreios,
+                                '' AS etiqueta_correios,
+                                'N' AS conferido,
+                                '' AS conferido_por
+                            FROM ciPostosCsv c
+                            INNER JOIN ciRegionais r 
+                                ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
+                            WHERE DATE(c.dataCarga) IN ($phDatas)
+                              AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
+                        ";
+
+                        if (!empty($postosFiltro)) {
+                            $postosList = array_keys($postosFiltro);
+                            $phPostos = implode(',', array_fill(0, count($postosList), '?'));
+                            $sqlLotesPt .= " AND LPAD(c.posto,3,'0') IN ($phPostos) ";
+                            $paramsPt = array_merge($paramsPt, $postosList);
+                        }
+
+                        $sqlLotesPt .= " GROUP BY LPAD(c.posto,3,'0'), c.lote ORDER BY LPAD(c.posto,3,'0'), c.lote ";
+
+                        $stmtLotesPt = $pdo_controle->prepare($sqlLotesPt);
+                        $stmtLotesPt->execute($paramsPt);
+                        $lotes = $stmtLotesPt->fetchAll();
+                    }
+                }
+
+                // v9.22.5: preencher data_carga/responsaveis nos itens PT usando lotes
+                if ($despacho_tipo === 'POUPA TEMPO' && !empty($itens) && !empty($lotes)) {
+                    $mapaLotes = array();
+                    foreach ($lotes as $l) {
+                        $k = (string)$l['posto'] . '|' . (string)$l['lote'];
+                        $mapaLotes[$k] = $l;
+                    }
+
+                    foreach ($itens as $ix => $i) {
+                        $dataOk = !empty($i['data_carga']);
+                        $respOk = !empty($i['responsaveis']);
+                        if ($dataOk && $respOk) {
+                            continue;
+                        }
+                        $lotesStr = isset($i['lote']) ? (string)$i['lote'] : '';
+                        if ($lotesStr === '') {
+                            continue;
+                        }
+                        $lotesList = array();
+                        foreach (explode(',', $lotesStr) as $lt) {
+                            $lt = trim($lt);
+                            if ($lt !== '') {
+                                $lotesList[] = $lt;
+                            }
+                        }
+                        foreach ($lotesList as $lt) {
+                            $k = (string)$i['posto'] . '|' . $lt;
+                            if (isset($mapaLotes[$k])) {
+                                if (!$dataOk && !empty($mapaLotes[$k]['data_carga'])) {
+                                    $itens[$ix]['data_carga'] = $mapaLotes[$k]['data_carga'];
+                                    $dataOk = true;
+                                }
+                                if (!$respOk && !empty($mapaLotes[$k]['responsaveis'])) {
+                                    $itens[$ix]['responsaveis'] = $mapaLotes[$k]['responsaveis'];
+                                    $respOk = true;
+                                }
+                            }
+                            if ($dataOk && $respOk) {
+                                break;
+                            }
+                        }
+                    }
+                }
 
                 // v9.22.3: completar nome do posto via ciPostosCsv quando existir
                 if (($hasCsvNome && $hasCsvPosto) && (!empty($itens) || !empty($lotes))) {
@@ -1192,7 +1305,11 @@ try {
             <!-- v8.14.9.4: Título simplificado (sem ciDespachoLotes) -->
             <h3 style="font-size:14px; margin:20px 0 10px 0;">
                 Lotes
-                <span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">CORREIOS</span>
+                <?php if ($despacho_tipo === 'POUPA TEMPO'): ?>
+                    <span style="background:#17a2b8;color:white;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">POUPA TEMPO</span>
+                <?php else: ?>
+                    <span style="background:#ffc107;color:#000;padding:3px 8px;border-radius:3px;font-size:12px;margin-left:10px;">CORREIOS</span>
+                <?php endif; ?>
             </h3>
             <table>
                 <thead>
