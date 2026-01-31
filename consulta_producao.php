@@ -1,6 +1,11 @@
 <?php
 /**
- * consulta_producao.php - Versao 8.17.0
+ * consulta_producao.php - Versao 9.22.3
+ * 
+ * CHANGELOG v9.22.3:
+ * - [REFATORADO] Detalhes do despacho com fallback entre ciDespachoItens e ciDespachoLotes
+ * - [CORRIGIDO] Busca de nome do posto sem depender de colunas inexistentes
+ * - [MELHORADO] Resumo e tabela de detalhes mostram dados mesmo quando itens estao vazios
  * 
  * CHANGELOG v8.17.0:
  * - [CORRIGIDO] Detalhes do despacho não apareciam - queries retornando vazio
@@ -828,23 +833,49 @@ try {
                 }
                 
                 // Busca itens (Poupa Tempo)
+                $colunasItens = array();
+                $hasNomePosto = false;
+                $hasCsvNome = false;
+                $hasCsvPosto = false;
+                try {
+                    $stmtCols = $pdo_controle->query("SHOW COLUMNS FROM ciDespachoItens");
+                    $cols = $stmtCols->fetchAll();
+                    foreach ($cols as $c) {
+                        if (isset($c['Field'])) {
+                            $colunasItens[] = $c['Field'];
+                        }
+                    }
+                    $hasNomePosto = in_array('nome_posto', $colunasItens);
+                } catch (Exception $exCols) {
+                    $hasNomePosto = false;
+                }
+
+                try {
+                    $stmtColsCsv = $pdo_controle->query("SHOW COLUMNS FROM ciPostosCsv");
+                    $colsCsv = $stmtColsCsv->fetchAll();
+                    $colunasCsv = array();
+                    foreach ($colsCsv as $c2) {
+                        if (isset($c2['Field'])) {
+                            $colunasCsv[] = $c2['Field'];
+                        }
+                    }
+                    $hasCsvNome = in_array('nome', $colunasCsv);
+                    $hasCsvPosto = in_array('posto', $colunasCsv);
+                } catch (Exception $exColsCsv) {
+                    $hasCsvNome = false;
+                    $hasCsvPosto = false;
+                }
+
                 if ($despacho_tipo === 'POUPA TEMPO') {
                     $stmtItens = $pdo_controle->prepare("
                         SELECT 
-                            i.posto, 
-                            i.lote, 
-                            i.quantidade, 
-                            i.usuario, 
-                            COALESCE(i.lacre_iipr, '') AS lacre_iipr,
-                            COALESCE(i.lacre_correios, '') AS lacre_correios,
-                            COALESCE(i.etiqueta_correios, '') AS etiqueta_correios,
-                            'N' AS conferido,
-                            '' AS conferido_por,
-                            COALESCE(p.nome, CONCAT('Posto ', i.posto)) AS nome_posto,
-                            COALESCE(l.data_carga, '') AS data_carga,
-                            COALESCE(l.responsaveis, '') AS responsaveis
+                            i.*, 
+                            l.data_carga AS l_data_carga,
+                            l.responsaveis AS l_responsaveis,
+                            l.etiquetaiipr AS l_etiquetaiipr,
+                            l.etiquetacorreios AS l_etiquetacorreios,
+                            l.etiqueta_correios AS l_etiqueta_correios
                         FROM ciDespachoItens i
-                        LEFT JOIN ciPostosCsv p ON p.codigo = i.posto
                         LEFT JOIN ciDespachoLotes l ON l.id_despacho = i.id_despacho 
                             AND l.posto = i.posto 
                             AND l.lote = i.lote
@@ -852,7 +883,54 @@ try {
                         ORDER BY i.posto, i.lote
                     ");
                     $stmtItens->execute(array($id_despacho));
-                    $itens = $stmtItens->fetchAll();
+                    $rowsItens = $stmtItens->fetchAll();
+                    $itens = array();
+
+                    foreach ($rowsItens as $r) {
+                        $posto = isset($r['posto']) ? $r['posto'] : '';
+                        $lote = isset($r['lote']) ? $r['lote'] : '';
+                        $quantidade = isset($r['quantidade']) ? $r['quantidade'] : 0;
+                        $usuario = isset($r['usuario']) ? $r['usuario'] : '';
+                        $lacre_iipr = '';
+                        if (isset($r['lacre_iipr']) && $r['lacre_iipr'] !== '') {
+                            $lacre_iipr = $r['lacre_iipr'];
+                        } elseif (isset($r['l_etiquetaiipr']) && $r['l_etiquetaiipr'] !== '') {
+                            $lacre_iipr = $r['l_etiquetaiipr'];
+                        }
+                        $lacre_correios = '';
+                        if (isset($r['lacre_correios']) && $r['lacre_correios'] !== '') {
+                            $lacre_correios = $r['lacre_correios'];
+                        } elseif (isset($r['l_etiquetacorreios']) && $r['l_etiquetacorreios'] !== '') {
+                            $lacre_correios = $r['l_etiquetacorreios'];
+                        }
+                        $etiqueta_correios = '';
+                        if (isset($r['etiqueta_correios']) && $r['etiqueta_correios'] !== '') {
+                            $etiqueta_correios = $r['etiqueta_correios'];
+                        } elseif (isset($r['l_etiqueta_correios']) && $r['l_etiqueta_correios'] !== '') {
+                            $etiqueta_correios = $r['l_etiqueta_correios'];
+                        }
+                        $nome_posto = '';
+                        if ($hasNomePosto && isset($r['nome_posto']) && $r['nome_posto'] !== '') {
+                            $nome_posto = $r['nome_posto'];
+                        }
+                        $data_carga = isset($r['l_data_carga']) ? $r['l_data_carga'] : '';
+                        $responsaveis = isset($r['l_responsaveis']) ? $r['l_responsaveis'] : '';
+
+                        $itens[] = array(
+                            'posto' => $posto,
+                            'lote' => $lote,
+                            'quantidade' => $quantidade,
+                            'usuario' => $usuario,
+                            'lacre_iipr' => $lacre_iipr,
+                            'lacre_correios' => $lacre_correios,
+                            'etiqueta_correios' => $etiqueta_correios,
+                            'nome_posto' => $nome_posto,
+                            'data_carga' => $data_carga,
+                            'responsaveis' => $responsaveis,
+                            'conferido' => 'N',
+                            'conferido_por' => ''
+                        );
+                    }
                 }
                 
                 // Busca lotes (Correios - SEMPRE busca para mostrar)
@@ -874,6 +952,79 @@ try {
                 ");
                 $stmtLotes->execute(array($id_despacho));
                 $lotes = $stmtLotes->fetchAll();
+
+                // v9.22.3: completar nome do posto via ciPostosCsv quando existir
+                if (($hasCsvNome && $hasCsvPosto) && (!empty($itens) || !empty($lotes))) {
+                    $postosParaBuscar = array();
+                    foreach ($itens as $ix => $i) {
+                        if (empty($i['nome_posto']) && isset($i['posto']) && $i['posto'] !== '') {
+                            $postosParaBuscar[(string)$i['posto']] = true;
+                        }
+                    }
+                    foreach ($lotes as $lx => $l) {
+                        if ((!isset($l['nome_posto']) || $l['nome_posto'] === '') && isset($l['posto']) && $l['posto'] !== '') {
+                            $postosParaBuscar[(string)$l['posto']] = true;
+                        }
+                    }
+
+                    if (!empty($postosParaBuscar)) {
+                        $postosList = array_keys($postosParaBuscar);
+                        $placeholders = implode(',', array_fill(0, count($postosList), '?'));
+                        $stmtPostosCsv = $pdo_controle->prepare("SELECT posto, nome FROM ciPostosCsv WHERE posto IN ($placeholders)");
+                        $stmtPostosCsv->execute($postosList);
+                        $mapaNomes = array();
+                        $rowsCsv = $stmtPostosCsv->fetchAll();
+                        foreach ($rowsCsv as $rc) {
+                            $key = str_pad((string)$rc['posto'], 3, '0', STR_PAD_LEFT);
+                            $mapaNomes[$key] = (string)$rc['nome'];
+                        }
+
+                        foreach ($itens as $ix => $i) {
+                            if (empty($i['nome_posto']) && isset($i['posto'])) {
+                                $k = str_pad((string)$i['posto'], 3, '0', STR_PAD_LEFT);
+                                if (isset($mapaNomes[$k])) {
+                                    $itens[$ix]['nome_posto'] = $mapaNomes[$k];
+                                }
+                            }
+                        }
+
+                        foreach ($lotes as $lx => $l) {
+                            if ((!isset($l['nome_posto']) || $l['nome_posto'] === '') && isset($l['posto'])) {
+                                $k = str_pad((string)$l['posto'], 3, '0', STR_PAD_LEFT);
+                                if (isset($mapaNomes[$k])) {
+                                    $lotes[$lx]['nome_posto'] = $mapaNomes[$k];
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // v9.22.3: fallback para PT quando nao houver itens, usando lotes
+                if ($despacho_tipo === 'POUPA TEMPO' && empty($itens) && !empty($lotes)) {
+                    foreach ($lotes as $l) {
+                        $itens[] = array(
+                            'posto' => isset($l['posto']) ? $l['posto'] : '',
+                            'lote' => isset($l['lote']) ? $l['lote'] : '',
+                            'quantidade' => isset($l['quantidade']) ? $l['quantidade'] : 0,
+                            'usuario' => '',
+                            'lacre_iipr' => isset($l['etiquetaiipr']) ? $l['etiquetaiipr'] : '',
+                            'lacre_correios' => isset($l['etiquetacorreios']) ? $l['etiquetacorreios'] : '',
+                            'etiqueta_correios' => isset($l['etiqueta_correios']) ? $l['etiqueta_correios'] : '',
+                            'nome_posto' => isset($l['nome_posto']) ? $l['nome_posto'] : '',
+                            'data_carga' => isset($l['data_carga']) ? $l['data_carga'] : '',
+                            'responsaveis' => isset($l['responsaveis']) ? $l['responsaveis'] : '',
+                            'conferido' => 'N',
+                            'conferido_por' => ''
+                        );
+                    }
+                }
+
+                // v9.22.3: garantir nome do posto padrao quando vazio
+                foreach ($itens as $ix => $i) {
+                    if (empty($i['nome_posto']) && isset($i['posto']) && $i['posto'] !== '') {
+                        $itens[$ix]['nome_posto'] = 'Posto ' . $i['posto'];
+                    }
+                }
                 
             } catch (Exception $e) {
                 // v8.17.0: Exibe erro para debug em vez de falha silenciosa
