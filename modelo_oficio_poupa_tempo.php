@@ -343,6 +343,20 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         $sqlSel = "SELECT COUNT(*) FROM ciDespachoItens WHERE id_despacho = :id_despacho AND posto = :posto";
         $stmSel = $pdo_controle->prepare($sqlSel);
 
+        // v9.22.4: detectar coluna conferido_oficio (se existir)
+        $temConferidoOficio = false;
+        try {
+            $colsItens = $pdo_controle->query("SHOW COLUMNS FROM ciDespachoItens")->fetchAll();
+            foreach ($colsItens as $c) {
+                if (isset($c['Field']) && $c['Field'] === 'conferido_oficio') {
+                    $temConferidoOficio = true;
+                    break;
+                }
+            }
+        } catch (Exception $exCols) {
+            $temConferidoOficio = false;
+        }
+
         // v8.14.9: Adicionar campo usuario
         $sqlUpd = "
             UPDATE ciDespachoItens
@@ -351,16 +365,27 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                    endereco = :endereco,
                    lote = :lote,
                    quantidade = :quantidade,
-                   usuario = :usuario
+                   usuario = :usuario";
+        if ($temConferidoOficio) {
+            $sqlUpd .= ", conferido_oficio = :conferido_oficio";
+        }
+        $sqlUpd .= "
              WHERE id_despacho = :id_despacho
                AND posto = :posto
         ";
         $stmUpd = $pdo_controle->prepare($sqlUpd);
 
-        $sqlIns = "
-            INSERT INTO ciDespachoItens (id_despacho, posto, lacre_iipr, nome_posto, endereco, lote, quantidade, usuario, incluir)
-            VALUES (:id_despacho, :posto, :lacre, :nome, :endereco, :lote, :quantidade, :usuario, 1)
-        ";
+        if ($temConferidoOficio) {
+            $sqlIns = "
+                INSERT INTO ciDespachoItens (id_despacho, posto, lacre_iipr, nome_posto, endereco, lote, quantidade, usuario, incluir, conferido_oficio)
+                VALUES (:id_despacho, :posto, :lacre, :nome, :endereco, :lote, :quantidade, :usuario, 1, :conferido_oficio)
+            ";
+        } else {
+            $sqlIns = "
+                INSERT INTO ciDespachoItens (id_despacho, posto, lacre_iipr, nome_posto, endereco, lote, quantidade, usuario, incluir)
+                VALUES (:id_despacho, :posto, :lacre, :nome, :endereco, :lote, :quantidade, :usuario, 1)
+            ";
+        }
         $stmIns = $pdo_controle->prepare($sqlIns);
 
         $totalInseridos = 0;
@@ -368,6 +393,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
 
         // v8.14.9: Preparar busca de usuario por posto
         $stmUsuario = $pdo_controle->prepare("SELECT MAX(usuario) FROM ciPostosCsv WHERE posto = ? LIMIT 1");
+
+        // v9.22.4: armazenar usuarios por posto (fallback para responsaveis)
+        $usuariosPorPosto = array();
 
         // Itera sobre todos os postos
         $postos_processados = array_keys($dados_salvos);
@@ -387,6 +415,10 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                 $valorUsuario = trim((string)$tempUsuario);
             }
 
+            $usuariosPorPosto[$posto] = $valorUsuario;
+
+            $confOficio = ($valorLacre !== '') ? 'S' : 'N';
+
             // Verifica se já existe registro para este posto
             $stmSel->execute(array(
                 ':id_despacho' => $id_despacho_post,
@@ -396,7 +428,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
 
             if ($existe > 0) {
                 // Atualiza registro existente
-                $stmUpd->execute(array(
+                $paramsUpd = array(
                     ':lacre' => $valorLacre,
                     ':nome' => $valorNome,
                     ':endereco' => $valorEndereco,
@@ -405,11 +437,15 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                     ':usuario' => $valorUsuario,
                     ':id_despacho' => $id_despacho_post,
                     ':posto' => $posto
-                ));
+                );
+                if ($temConferidoOficio) {
+                    $paramsUpd[':conferido_oficio'] = $confOficio;
+                }
+                $stmUpd->execute($paramsUpd);
                 $totalAtualizados++;
             } else {
                 // Insere novo registro
-                $stmIns->execute(array(
+                $paramsIns = array(
                     ':id_despacho' => $id_despacho_post,
                     ':posto' => $posto,
                     ':lacre' => $valorLacre,
@@ -418,8 +454,111 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                     ':lote' => $valorLote,
                     ':quantidade' => $valorQuantidade,
                     ':usuario' => $valorUsuario
-                ));
+                );
+                if ($temConferidoOficio) {
+                    $paramsIns[':conferido_oficio'] = $confOficio;
+                }
+                $stmIns->execute($paramsIns);
                 $totalInseridos++;
+            }
+        }
+
+        // v9.22.4: inserir lotes PT em ciDespachoLotes com data_carga/responsaveis
+        $datasSql = array();
+        if (!empty($datasStr_post)) {
+            $datasTmp = explode(',', $datasStr_post);
+            foreach ($datasTmp as $d) {
+                $d = trim($d);
+                if ($d === '') continue;
+                if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
+                    $datasSql[] = $m[3] . '-' . $m[2] . '-' . $m[1];
+                } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+                    $datasSql[] = $d;
+                }
+            }
+        }
+
+        $lotesPorPosto = array();
+        foreach ($dados_salvos as $posto => $d) {
+            $lotesStr = isset($d['lote']) ? (string)$d['lote'] : '';
+            if ($lotesStr === '') {
+                continue;
+            }
+            $lotesList = array();
+            foreach (explode(',', $lotesStr) as $lt) {
+                $lt = trim($lt);
+                if ($lt !== '') {
+                    $lotesList[$lt] = true;
+                }
+            }
+            if (!empty($lotesList)) {
+                $lotesPorPosto[$posto] = array_keys($lotesList);
+            }
+        }
+
+        if (!empty($lotesPorPosto)) {
+            $stDelLote = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho = ? AND posto = ?");
+            $stInsLote = $pdo_controle->prepare("INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis) VALUES (?,?,?,?,?,?)");
+
+            foreach ($lotesPorPosto as $posto => $listaLotes) {
+                $stDelLote->execute(array($id_despacho_post, $posto));
+
+                $placeLotes = implode(',', array_fill(0, count($listaLotes), '?'));
+                $paramsLotes = array();
+                $paramsLotes[] = $posto;
+                foreach ($listaLotes as $lt) { $paramsLotes[] = $lt; }
+
+                $sqlLotes = "
+                    SELECT 
+                        LPAD(c.posto,3,'0') AS posto,
+                        c.lote,
+                        SUM(COALESCE(c.quantidade,0)) AS quantidade,
+                        MIN(DATE(c.dataCarga)) AS data_carga,
+                        GROUP_CONCAT(DISTINCT c.usuario SEPARATOR ', ') AS responsaveis
+                    FROM ciPostosCsv c
+                    WHERE LPAD(c.posto,3,'0') = ?
+                      AND c.lote IN ($placeLotes)
+                ";
+                if (!empty($datasSql)) {
+                    $placeDatas = implode(',', array_fill(0, count($datasSql), '?'));
+                    $sqlLotes .= " AND DATE(c.dataCarga) IN ($placeDatas) ";
+                    foreach ($datasSql as $ds) { $paramsLotes[] = $ds; }
+                }
+                $sqlLotes .= " GROUP BY LPAD(c.posto,3,'0'), c.lote ";
+
+                $stmtLotes = $pdo_controle->prepare($sqlLotes);
+                $stmtLotes->execute($paramsLotes);
+                $rowsLotes = $stmtLotes->fetchAll();
+
+                $mapaLotes = array();
+                foreach ($rowsLotes as $rl) {
+                    $mapaLotes[(string)$rl['lote']] = $rl;
+                }
+
+                $respFallback = isset($usuariosPorPosto[$posto]) ? $usuariosPorPosto[$posto] : '';
+
+                foreach ($listaLotes as $lt) {
+                    if (isset($mapaLotes[$lt])) {
+                        $row = $mapaLotes[$lt];
+                        $stInsLote->execute(array(
+                            $id_despacho_post,
+                            $posto,
+                            $lt,
+                            (int)$row['quantidade'],
+                            $row['data_carga'],
+                            $row['responsaveis']
+                        ));
+                    } else {
+                        $stInsLote->execute(array(
+                            $id_despacho_post,
+                            $posto,
+                            $lt,
+                            0,
+                            null,
+                            $respFallback
+                        ));
+                    }
+                }
             }
         }
 

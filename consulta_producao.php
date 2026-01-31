@@ -1,7 +1,11 @@
 <?php
 /**
- * consulta_producao.php - Versao 9.22.3
+ * consulta_producao.php - Versao 9.22.4
  * 
+ * CHANGELOG v9.22.4:
+ * - [MELHORADO] Conferido no Poupa Tempo baseado em lacre/conferido_oficio
+ * - [MELHORADO] Detalhes PT exibem data carga e responsaveis quando gravados
+ *
  * CHANGELOG v9.22.3:
  * - [REFATORADO] Detalhes do despacho com fallback entre ciDespachoItens e ciDespachoLotes
  * - [CORRIGIDO] Busca de nome do posto sem depender de colunas inexistentes
@@ -916,6 +920,13 @@ try {
                         $data_carga = isset($r['l_data_carga']) ? $r['l_data_carga'] : '';
                         $responsaveis = isset($r['l_responsaveis']) ? $r['l_responsaveis'] : '';
 
+                        $conferido = 'N';
+                        if (isset($r['conferido_oficio']) && $r['conferido_oficio'] === 'S') {
+                            $conferido = 'S';
+                        } elseif ($lacre_iipr !== '') {
+                            $conferido = 'S';
+                        }
+
                         $itens[] = array(
                             'posto' => $posto,
                             'lote' => $lote,
@@ -927,7 +938,7 @@ try {
                             'nome_posto' => $nome_posto,
                             'data_carga' => $data_carga,
                             'responsaveis' => $responsaveis,
-                            'conferido' => 'N',
+                            'conferido' => $conferido,
                             'conferido_por' => ''
                         );
                     }
@@ -1002,6 +1013,7 @@ try {
                 // v9.22.3: fallback para PT quando nao houver itens, usando lotes
                 if ($despacho_tipo === 'POUPA TEMPO' && empty($itens) && !empty($lotes)) {
                     foreach ($lotes as $l) {
+                        $confLote = (isset($l['etiquetaiipr']) && $l['etiquetaiipr'] !== 0 && $l['etiquetaiipr'] !== '0') ? 'S' : 'N';
                         $itens[] = array(
                             'posto' => isset($l['posto']) ? $l['posto'] : '',
                             'lote' => isset($l['lote']) ? $l['lote'] : '',
@@ -1013,7 +1025,7 @@ try {
                             'nome_posto' => isset($l['nome_posto']) ? $l['nome_posto'] : '',
                             'data_carga' => isset($l['data_carga']) ? $l['data_carga'] : '',
                             'responsaveis' => isset($l['responsaveis']) ? $l['responsaveis'] : '',
-                            'conferido' => 'N',
+                            'conferido' => $confLote,
                             'conferido_por' => ''
                         );
                     }
