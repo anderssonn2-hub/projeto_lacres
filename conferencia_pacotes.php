@@ -1,12 +1,14 @@
 <?php
-/* conferencia_pacotes.php — v9.3
- * CHANGELOG v9.3:
- * - [ALTERADO] Coluna Regional para Poupa Tempo mostra o PRÓPRIO POSTO
- *   Exemplo: Posto 023 (PT) → Regional exibida: 023 (não 001)
- * - Mantém toda funcionalidade da v9.2
+/* conferencia_pacotes.php — v9.22.7
+ * CHANGELOG v9.22.7:
+ * - [NOVO] Fila de áudio sem sobreposição
+ * - [NOVO] beep.mp3 em toda leitura válida de código
+ * - [NOVO] concluido.mp3 ao finalizar grupo (mesmo com 1 pacote)
+ * - [NOVO] pacotedeoutraregional.mp3 para regional diferente
+ * - [NOVO] posto_poupatempo.mp3 para PT no meio de correios (e PT único)
  * 
- * LÓGICA INTELIGENTE DE SONS BASEADA NO CONTEXTO (v9.2):
- * - beep.mp3: Primeiro pacote OU pacote correto do grupo atual
+ * LÓGICA INTELIGENTE DE SONS BASEADA NO CONTEXTO:
+ * - beep.mp3: toda leitura válida de código de barras
  * - posto_poupatempo.mp3: PT aparece enquanto confere correios (misturado!)
  * - pacotedeoutraregional.mp3: Regional diferente OU correios no meio do PT
  * - pacotejaconferido.mp3: Pacote já conferido
@@ -209,7 +211,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v9.3</title>
+    <title>Conferência de Pacotes v9.22.7</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
@@ -514,7 +516,7 @@ if (empty($regionais_data)) {
 
 <script>
 // ========================================
-// v9.2: JavaScript com lógica inteligente de sons
+// v9.22.7: JavaScript com fila de sons sem sobreposição
 // ========================================
 
 function substituirMultiplosPadroes(inputString) {
@@ -548,6 +550,48 @@ document.addEventListener("DOMContentLoaded", function() {
     var pacoteOutraRegional = document.getElementById("pacotedeoutraregional");
     var postoPoupaTempo = document.getElementById("posto_poupatempo");
     var btnResetar = document.getElementById("resetar");
+
+    // v9.22.7: Fila de áudio para evitar sobreposição
+    var filaSons = [];
+    var tocando = false;
+
+    function tocarProximoSom() {
+        if (filaSons.length === 0) {
+            tocando = false;
+            return;
+        }
+        tocando = true;
+        var som = filaSons.shift();
+        try {
+            som.currentTime = 0;
+            var playPromise = som.play();
+            if (playPromise && playPromise.then) {
+                playPromise.catch(function() {
+                    tocando = false;
+                    tocarProximoSom();
+                });
+            }
+        } catch (e) {
+            tocando = false;
+            tocarProximoSom();
+        }
+    }
+
+    function enfileirarSom(som) {
+        if (!som) return;
+        filaSons.push(som);
+        if (!tocando) {
+            tocarProximoSom();
+        }
+    }
+
+    // Encadeia para tocar o próximo som quando o atual terminar
+    var listaSons = [beep, concluido, pacoteJaConferido, pacoteOutraRegional, postoPoupaTempo];
+    for (var si = 0; si < listaSons.length; si++) {
+        listaSons[si].addEventListener('ended', function() {
+            tocarProximoSom();
+        });
+    }
     
     // v9.2: Variáveis de contexto para sons inteligentes
     var regionalAtual = null;
@@ -608,47 +652,52 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Verifica se já foi conferido
         if (linha.classList.contains("confirmado")) {
-            pacoteJaConferido.play();
+            enfileirarSom(beep);
+            enfileirarSom(pacoteJaConferido);
             input.value = "";
             return;
         }
         
-        // v9.2: Lógica inteligente de sons
-        var somParaTocar = null;
+        // v9.22.7: Lógica inteligente de sons
+        var somAlerta = null;
         
         // Caso 1: Primeiro pacote da conferência - sempre beep
         if (!primeiroConferido) {
-            somParaTocar = beep;
             regionalAtual = regionalDoPacote;
             tipoAtual = tipoPacote;
             primeiroConferido = true;
         }
         // Caso 2: Pacote Poupa Tempo aparecendo em meio aos Correios
         else if (tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
-            somParaTocar = postoPoupaTempo; // Alerta: PT misturado com correios!
+            somAlerta = postoPoupaTempo; // Alerta: PT misturado com correios!
             // NÃO altera regionalAtual nem tipoAtual - continua conferindo correios
         }
         // Caso 3: Pacote Correios aparecendo em meio ao Poupa Tempo
         else if (tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
-            somParaTocar = pacoteOutraRegional; // Alerta: correios no meio do PT!
+            somAlerta = pacoteOutraRegional; // Alerta: correios no meio do PT!
             // NÃO altera regionalAtual nem tipoAtual
         }
         // Caso 4: Regional diferente (mesmo tipo)
         else if (regionalDoPacote !== regionalAtual && tipoPacote === tipoAtual) {
-            somParaTocar = pacoteOutraRegional; // Alerta: regional diferente!
+            somAlerta = pacoteOutraRegional; // Alerta: regional diferente!
             // NÃO altera regionalAtual nem tipoAtual
         }
-        // Caso 5: Pacote correto (mesma regional, mesmo tipo)
-        else {
-            somParaTocar = beep; // Tudo certo!
+
+        // PT único: emitir aviso específico mesmo no primeiro pacote
+        if (tipoPacote === 'poupatempo') {
+            var totalPT = document.querySelectorAll('tbody tr[data-ispt="1"]').length;
+            if (totalPT === 1 && !somAlerta) {
+                somAlerta = postoPoupaTempo;
+            }
         }
         
         // Marca como conferido
         linha.classList.add("confirmado");
         
-        // Toca o som apropriado
-        if (somParaTocar) {
-            somParaTocar.play();
+        // Toca os sons: beep sempre na leitura válida, alerta se necessário
+        enfileirarSom(beep);
+        if (somAlerta) {
+            enfileirarSom(somAlerta);
         }
         
         input.value = "";
@@ -703,9 +752,7 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Se completou o grupo, toca concluído e reseta contexto
         if (conferidosDoGrupo === linhasDoGrupo.length && linhasDoGrupo.length > 0) {
-            setTimeout(function() {
-                concluido.play();
-            }, 300); // Pequeno delay para não sobrepor com o beep
+            enfileirarSom(concluido);
             regionalAtual = null;
             tipoAtual = null;
             primeiroConferido = false;

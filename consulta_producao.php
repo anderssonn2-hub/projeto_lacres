@@ -1,7 +1,11 @@
 <?php
 /**
- * consulta_producao.php - Versao 9.22.5
+ * consulta_producao.php - Versao 9.22.6
  * 
+ * CHANGELOG v9.22.6:
+ * - [MELHORADO] Detalhes PT listam lotes via ciPostosCsv (por data e posto)
+ * - [MELHORADO] Tabela de itens PT mostra lote/data/responsaveis por lote
+ *
  * CHANGELOG v9.22.5:
  * - [MELHORADO] Detalhes PT buscam lotes/responsaveis/data_carga em ciPostosCsv quando necessario
  * - [MELHORADO] Tabela de lotes exibe badge correto para Poupa Tempo
@@ -831,6 +835,7 @@ try {
             $despacho_tipo = '';
             $itens = array();
             $lotes = array();
+            $itens_detalhe = array();
             try {
                 // Busca o tipo do despacho
                 $stmtTipo = $pdo_controle->prepare("SELECT grupo, datas_str FROM ciDespachos WHERE id = ? LIMIT 1");
@@ -1012,10 +1017,7 @@ try {
                                 'N' AS conferido,
                                 '' AS conferido_por
                             FROM ciPostosCsv c
-                            INNER JOIN ciRegionais r 
-                                ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
                             WHERE DATE(c.dataCarga) IN ($phDatas)
-                              AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
                         ";
 
                         if (!empty($postosFiltro)) {
@@ -1023,6 +1025,8 @@ try {
                             $phPostos = implode(',', array_fill(0, count($postosList), '?'));
                             $sqlLotesPt .= " AND LPAD(c.posto,3,'0') IN ($phPostos) ";
                             $paramsPt = array_merge($paramsPt, $postosList);
+                        } else {
+                            $sqlLotesPt .= " AND c.posto IS NOT NULL ";
                         }
 
                         $sqlLotesPt .= " GROUP BY LPAD(c.posto,3,'0'), c.lote ORDER BY LPAD(c.posto,3,'0'), c.lote ";
@@ -1072,6 +1076,92 @@ try {
                             }
                             if ($dataOk && $respOk) {
                                 break;
+                            }
+                        }
+                    }
+                }
+
+                // v9.22.6: montar itens detalhados por lote (PT) via ciPostosCsv
+                if ($despacho_tipo === 'POUPA TEMPO') {
+                    $datasSql = array();
+                    if (!empty($despacho_datas)) {
+                        $tmp = explode(',', $despacho_datas);
+                        foreach ($tmp as $d) {
+                            $d = trim($d);
+                            if ($d === '') continue;
+                            if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
+                                $datasSql[] = $m[3] . '-' . $m[2] . '-' . $m[1];
+                            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+                                $datasSql[] = $d;
+                            }
+                        }
+                    }
+
+                    $postosFiltro = array();
+                    foreach ($itens as $i) {
+                        if (isset($i['posto']) && $i['posto'] !== '') {
+                            $postosFiltro[str_pad((string)$i['posto'], 3, '0', STR_PAD_LEFT)] = true;
+                        }
+                    }
+
+                    if (!empty($datasSql)) {
+                        $phDatas = implode(',', array_fill(0, count($datasSql), '?'));
+                        $paramsPt = $datasSql;
+
+                        $sqlItensPt = "
+                            SELECT 
+                                LPAD(c.posto,3,'0') AS posto,
+                                c.lote,
+                                SUM(COALESCE(c.quantidade,0)) AS quantidade,
+                                MIN(DATE(c.dataCarga)) AS data_carga,
+                                GROUP_CONCAT(DISTINCT c.usuario SEPARATOR ', ') AS responsaveis
+                            FROM ciPostosCsv c
+                            WHERE DATE(c.dataCarga) IN ($phDatas)
+                        ";
+
+                        if (!empty($postosFiltro)) {
+                            $postosList = array_keys($postosFiltro);
+                            $phPostos = implode(',', array_fill(0, count($postosList), '?'));
+                            $sqlItensPt .= " AND LPAD(c.posto,3,'0') IN ($phPostos) ";
+                            $paramsPt = array_merge($paramsPt, $postosList);
+                        } else {
+                            $sqlItensPt .= " AND c.posto IS NOT NULL ";
+                        }
+
+                        $sqlItensPt .= " GROUP BY LPAD(c.posto,3,'0'), c.lote ORDER BY LPAD(c.posto,3,'0'), c.lote ";
+
+                        $stmtItensPt = $pdo_controle->prepare($sqlItensPt);
+                        $stmtItensPt->execute($paramsPt);
+                        $rowsItensPt = $stmtItensPt->fetchAll();
+
+                        if (!empty($rowsItensPt)) {
+                            foreach ($rowsItensPt as $rpt) {
+                                $posto = (string)$rpt['posto'];
+                                $nome_posto = '';
+                                foreach ($itens as $ii) {
+                                    if ((string)$ii['posto'] === $posto && !empty($ii['nome_posto'])) {
+                                        $nome_posto = $ii['nome_posto'];
+                                        break;
+                                    }
+                                }
+                                if ($nome_posto === '') {
+                                    $nome_posto = 'Posto ' . $posto;
+                                }
+
+                                $itens_detalhe[] = array(
+                                    'posto' => $posto,
+                                    'lote' => (string)$rpt['lote'],
+                                    'quantidade' => (int)$rpt['quantidade'],
+                                    'usuario' => '',
+                                    'lacre_iipr' => '',
+                                    'lacre_correios' => '',
+                                    'etiqueta_correios' => '',
+                                    'nome_posto' => $nome_posto,
+                                    'data_carga' => (string)$rpt['data_carga'],
+                                    'responsaveis' => (string)$rpt['responsaveis'],
+                                    'conferido' => 'N',
+                                    'conferido_por' => ''
+                                );
                             }
                         }
                     }
@@ -1168,7 +1258,7 @@ try {
             $postosUnicos = array();
             $totalLotes = 0;
             
-            // Para Poupa Tempo, usa ciDespachoItens
+            // Para Poupa Tempo, usa ciDespachoItens (resumo por posto)
             if ($despacho_tipo === 'POUPA TEMPO' && !empty($itens)) {
                 foreach ($itens as $i) {
                     $totalCarteirasLotes += (int)$i['quantidade'];
@@ -1177,7 +1267,7 @@ try {
                         $totalPostosLotes++;
                     }
                 }
-                $totalLotes = count($itens);
+                $totalLotes = !empty($itens_detalhe) ? count($itens_detalhe) : count($itens);
             }
             // Para Correios, usa ciDespachoLotes
             else {
@@ -1203,7 +1293,7 @@ try {
             </div>
             
             <!-- Itens por Posto (ciDespachoItens - usado para Poupa Tempo) -->
-            <?php if (!empty($itens)): ?>
+            <?php if (!empty($itens) || !empty($itens_detalhe)): ?>
             <!-- v8.14.9.1: Adicionar badge indicando Poupa Tempo + mostrar totais -->
             <!-- v8.14.9.4: Título simplificado (sem ciDespachoItens) -->
             <h3 style="font-size:14px; margin:15px 0 10px 0;">
@@ -1214,7 +1304,8 @@ try {
             </h3>
             <?php
             $totalCart = 0;
-            foreach ($itens as $i) {
+            $itens_tabela = !empty($itens_detalhe) ? $itens_detalhe : $itens;
+            foreach ($itens_tabela as $i) {
                 $totalCart += (int)$i['quantidade'];
             }
             ?>
@@ -1242,7 +1333,7 @@ try {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($itens as $i): ?>
+                    <?php foreach ($itens_tabela as $i): ?>
                         <?php
                         $item_class = '';
                         $is_conferido = (isset($i['conferido']) && $i['conferido'] === 'S');
