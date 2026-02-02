@@ -1,5 +1,12 @@
 <?php
-/* conferencia_pacotes.php — v9.22.7
+/* conferencia_pacotes.php — v9.22.8
+ * CHANGELOG v9.22.8:
+ * - [NOVO] Filtro por intervalo + datas avulsas
+ * - [NOVO] Cards de resumo (carteiras, conferidas, postos)
+ * - [NOVO] Lista das últimas conferências
+ * - [MELHORADO] Scroll central e pulsação da última leitura
+ * - [MELHORADO] Desbloqueio de áudio para beep
+ *
  * CHANGELOG v9.22.7:
  * - [NOVO] Fila de áudio sem sobreposição
  * - [NOVO] beep.mp3 em toda leitura válida de código
@@ -26,7 +33,11 @@
 $total_codigos = 0;
 $datas_expedicao = array();
 $regionais_data = array();
-$datas_filtro = isset($_GET['datas']) ? $_GET['datas'] : array();
+$data_ini = isset($_GET['data_ini']) ? trim($_GET['data_ini']) : '';
+$data_fim = isset($_GET['data_fim']) ? trim($_GET['data_fim']) : '';
+$datas_avulsas = isset($_GET['datas_avulsas']) ? trim($_GET['datas_avulsas']) : '';
+$datas_sql = array();
+$datas_exib = array();
 $poupaTempoPostos = array();
 $conferencias = array();
 
@@ -108,16 +119,69 @@ try {
         $conferencias[$key] = 1;
     }
 
+    // v9.22.8: Normalizar datas (intervalo + avulsas)
+    function normalizarDataSql($d) {
+        $d = trim($d);
+        if ($d === '') return '';
+        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
+            return $m[3] . '-' . $m[2] . '-' . $m[1];
+        }
+        if (preg_match('/^(\d{2})\-(\d{2})\-(\d{4})$/', $d, $m)) {
+            return $m[3] . '-' . $m[2] . '-' . $m[1];
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+            return $d;
+        }
+        return '';
+    }
+
+    function normalizarDataExib($d) {
+        $d = trim($d);
+        if ($d === '') return '';
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) {
+            return $m[3] . '-' . $m[2] . '-' . $m[1];
+        }
+        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
+            return $m[1] . '-' . $m[2] . '-' . $m[3];
+        }
+        if (preg_match('/^(\d{2})\-(\d{2})\-(\d{4})$/', $d)) {
+            return $d;
+        }
+        return '';
+    }
+
+    $data_ini_sql = normalizarDataSql($data_ini);
+    $data_fim_sql = normalizarDataSql($data_fim);
+
+    if ($data_ini_sql !== '' && $data_fim_sql === '') {
+        $data_fim_sql = $data_ini_sql;
+    }
+
+    if ($data_ini_sql === '' && $data_fim_sql !== '') {
+        $data_ini_sql = $data_fim_sql;
+    }
+
+    if (!empty($datas_avulsas)) {
+        $partes = preg_split('/[\s,;]+/', $datas_avulsas);
+        foreach ($partes as $p) {
+            $ds = normalizarDataSql($p);
+            if ($ds !== '') {
+                $datas_sql[] = $ds;
+            }
+        }
+    }
+
     // v8.17.2: Se nenhum filtro, carrega APENAS última data (rápido)
-    if (empty($datas_filtro)) {
-        $stmt = $pdo->query("SELECT DISTINCT DATE_FORMAT(dataCarga, '%d-%m-%Y') as data 
+    if ($data_ini_sql === '' && $data_fim_sql === '' && empty($datas_sql)) {
+        $stmt = $pdo->query("SELECT DISTINCT DATE_FORMAT(dataCarga, '%Y-%m-%d') as data 
                              FROM ciPostosCsv 
                              WHERE dataCarga IS NOT NULL 
                              ORDER BY dataCarga DESC 
                              LIMIT 1");
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row) {
-            $datas_filtro[] = $row['data'];
+        if ($row && !empty($row['data'])) {
+            $data_ini_sql = $row['data'];
+            $data_fim_sql = $row['data'];
         }
     }
 
@@ -132,31 +196,33 @@ try {
     }
 
     // Busca dados do ciPostosCsv (com LIMIT)
-    if (!empty($datas_filtro)) {
-        $placeholders = implode(',', array_fill(0, count($datas_filtro), '?'));
-        
-        // Converte datas para SQL
-        $datas_sql = array();
-        foreach ($datas_filtro as $df) {
-            $partes = explode('-', $df);
-            if (count($partes) == 3) {
-                $datas_sql[] = $partes[2] . '-' . $partes[1] . '-' . $partes[0];
-            }
-        }
-        
-        if (!empty($datas_sql)) {
-            $sql = "SELECT lote, posto, regional, quantidade, dataCarga 
-                    FROM ciPostosCsv 
-                    WHERE DATE(dataCarga) IN ($placeholders)
-                    ORDER BY regional, lote, posto 
-                    LIMIT 3000";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($datas_sql);
+    $condicoes_data = array();
+    $params_data = array();
+    if ($data_ini_sql !== '' && $data_fim_sql !== '') {
+        $condicoes_data[] = "DATE(dataCarga) BETWEEN ? AND ?";
+        $params_data[] = $data_ini_sql;
+        $params_data[] = $data_fim_sql;
+    }
+    if (!empty($datas_sql)) {
+        $ph = implode(',', array_fill(0, count($datas_sql), '?'));
+        $condicoes_data[] = "DATE(dataCarga) IN ($ph)";
+        $params_data = array_merge($params_data, $datas_sql);
+    }
 
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                if (empty($row['dataCarga'])) continue;
+    if (!empty($condicoes_data)) {
+        $whereData = "WHERE (" . implode(' OR ', $condicoes_data) . ")";
+        $sql = "SELECT lote, posto, regional, quantidade, dataCarga 
+                FROM ciPostosCsv 
+                $whereData
+                ORDER BY regional, lote, posto 
+                LIMIT 3000";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params_data);
 
-                $data_formatada = date('d-m-Y', strtotime($row['dataCarga']));
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            if (empty($row['dataCarga'])) continue;
+
+            $data_formatada = date('d-m-Y', strtotime($row['dataCarga']));
 
                 $lote = $row['lote'];
                 $posto = str_pad($row['posto'], 3, '0', STR_PAD_LEFT);
@@ -195,12 +261,80 @@ try {
                     'conf' => $conferido
                 );
 
-                $total_codigos++;
-            }
+            $total_codigos++;
         }
     }
 
     sort($datas_expedicao);
+
+    // v9.22.8: Montar datas exibidas para filtros/estatísticas
+    if ($data_ini_sql !== '' && $data_fim_sql !== '') {
+        try {
+            $dtIni = new DateTime($data_ini_sql);
+            $dtFim = new DateTime($data_fim_sql);
+            while ($dtIni <= $dtFim) {
+                $datas_exib[] = $dtIni->format('d-m-Y');
+                $dtIni->modify('+1 day');
+            }
+        } catch (Exception $e) {}
+    }
+    if (!empty($datas_sql)) {
+        foreach ($datas_sql as $ds) {
+            $datas_exib[] = normalizarDataExib($ds);
+        }
+    }
+    $datas_exib = array_values(array_unique(array_filter($datas_exib)));
+
+    // v9.22.8: Estatísticas
+    $stats = array(
+        'carteiras_emitidas' => 0,
+        'carteiras_conferidas' => 0,
+        'postos_conferidos' => 0,
+        'pacotes_conferidos' => 0
+    );
+
+    if (!empty($condicoes_data)) {
+        $sqlEmitidas = "SELECT COALESCE(SUM(quantidade),0) AS total FROM ciPostosCsv $whereData";
+        $stmtEmit = $pdo->prepare($sqlEmitidas);
+        $stmtEmit->execute($params_data);
+        $stats['carteiras_emitidas'] = (int)$stmtEmit->fetchColumn();
+    }
+
+    if (!empty($datas_exib)) {
+        $phEx = implode(',', array_fill(0, count($datas_exib), '?'));
+        $sqlConf = "SELECT 
+                        COALESCE(SUM(qtd),0) AS total_qtd,
+                        COUNT(*) AS total_pacotes,
+                        COUNT(DISTINCT nposto) AS total_postos
+                    FROM conferencia_pacotes
+                    WHERE conf='s' AND dataexp IN ($phEx)";
+        $stmtConf = $pdo->prepare($sqlConf);
+        $stmtConf->execute($datas_exib);
+        $rowConf = $stmtConf->fetch(PDO::FETCH_ASSOC);
+        if ($rowConf) {
+            $stats['carteiras_conferidas'] = (int)$rowConf['total_qtd'];
+            $stats['pacotes_conferidos'] = (int)$rowConf['total_pacotes'];
+            $stats['postos_conferidos'] = (int)$rowConf['total_postos'];
+        }
+    }
+
+    // v9.22.8: Últimas conferências
+    $ultimas_conferencias = array();
+    try {
+        if (!empty($datas_exib)) {
+            $phEx2 = implode(',', array_fill(0, count($datas_exib), '?'));
+            $sqlUlt = "SELECT nlote, regional, nposto, dataexp, qtd, codbar 
+                       FROM conferencia_pacotes 
+                       WHERE conf='s' AND dataexp IN ($phEx2)
+                       ORDER BY dataexp DESC, nlote DESC 
+                       LIMIT 5";
+            $stmtUlt = $pdo->prepare($sqlUlt);
+            $stmtUlt->execute($datas_exib);
+            $ultimas_conferencias = $stmtUlt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $ex) {
+        $ultimas_conferencias = array();
+    }
 } catch (PDOException $e) {
     echo "Erro ao conectar ao banco de dados: " . $e->getMessage();
     die();
@@ -293,6 +427,13 @@ try {
         tbody tr { cursor: pointer; transition: background 0.2s; }
         tbody tr:hover { background: #f8f9fa; }
         tbody tr.confirmado { background-color: #d4edda !important; font-weight: 500; }
+        tbody tr.ultimo-lido { animation: pulse 1.2s ease-in-out infinite; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(0,123,255,0.6); }
+            70% { box-shadow: 0 0 0 10px rgba(0,123,255,0); }
+            100% { box-shadow: 0 0 0 0 rgba(0,123,255,0); }
+        }
         
         .tag-pt {
             background: #e74c3c;
@@ -316,12 +457,45 @@ try {
             z-index: 1000;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
+        .cards-resumo {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin: 15px 0 10px;
+        }
+        .card-resumo {
+            background: #fff;
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid #007bff;
+        }
+        .card-resumo h4 { margin: 0; font-size: 12px; color: #555; text-transform: uppercase; }
+        .card-resumo .valor { font-size: 20px; font-weight: 700; color: #007bff; margin-top: 6px; }
+        .painel-ultimas {
+            background: #fff;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .painel-ultimas ul { margin: 8px 0 0; padding-left: 18px; }
+        .btn-toggle {
+            padding: 8px 14px;
+            background: #17a2b8;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 6px;
+        }
     </style>
 </head>
 <body>
-<div class="versao">v9.2</div>
+<div class="versao">v9.22.8</div>
 
-<h2>📋 Conferência de Pacotes v8.17.2</h2>
+<h2>📋 Conferência de Pacotes v9.22.8</h2>
 
 <!-- Radio Auto-Save -->
 <div class="radio-box">
@@ -334,26 +508,59 @@ try {
 <!-- Filtro de datas -->
 <div class="filtro-datas">
     <form method="get" action="">
-        <strong>📅 Filtrar por data(s):</strong>
-        <?php 
-        $dataFormatada = array();
-        foreach($datas_expedicao as $dt){
-            $dataFormatada[] = implode('-', array_reverse(explode('-', $dt)));
-        }
-        sort($dataFormatada);
-        foreach (array_slice($dataFormatada, -5) as $data): ?>
-            <label>
-                <input type="checkbox" name="datas[]" value="<?php echo implode('-', array_reverse(explode('-', $data))); ?>" 
-                    <?php echo (empty($datas_filtro) || in_array(implode('-', array_reverse(explode('-', $data))), $datas_filtro)) ? 'checked' : ''; ?>>
-                <?php echo $data; ?>
-            </label>
-        <?php endforeach; ?>
+        <strong>📅 Filtrar por intervalo:</strong>
+        <input type="date" name="data_ini" value="<?php echo e($data_ini); ?>">
+        <input type="date" name="data_fim" value="<?php echo e($data_fim); ?>">
+        <label style="min-width:100%;">
+            Datas avulsas (dd-mm-aaaa ou yyyy-mm-dd, separadas por vírgula):
+            <input type="text" name="datas_avulsas" value="<?php echo e($datas_avulsas); ?>" style="width:100%; margin-top:4px;">
+        </label>
         <input type="submit" value="🔍 Aplicar Filtro">
     </form>
 </div>
 
-<div class="info">
-    📦 Total de pacotes: <strong><?php echo $total_codigos; ?></strong>
+<button class="btn-toggle" type="button" onclick="var el=document.getElementById('painel-estatisticas'); el.style.display = (el.style.display==='none'?'block':'none');">
+    📊 Mostrar/Ocultar Estatísticas
+</button>
+
+<div id="painel-estatisticas" style="display:block;">
+    <div class="cards-resumo">
+        <div class="card-resumo">
+            <h4>Pacotes na tela</h4>
+            <div class="valor"><?php echo (int)$total_codigos; ?></div>
+        </div>
+        <div class="card-resumo">
+            <h4>Carteiras emitidas</h4>
+            <div class="valor"><?php echo number_format((int)$stats['carteiras_emitidas'], 0, ',', '.'); ?></div>
+        </div>
+        <div class="card-resumo">
+            <h4>Carteiras conferidas</h4>
+            <div class="valor"><?php echo number_format((int)$stats['carteiras_conferidas'], 0, ',', '.'); ?></div>
+        </div>
+        <div class="card-resumo">
+            <h4>Postos com retirada</h4>
+            <div class="valor"><?php echo (int)$stats['postos_conferidos']; ?></div>
+        </div>
+        <div class="card-resumo">
+            <h4>Pacotes conferidos</h4>
+            <div class="valor"><?php echo (int)$stats['pacotes_conferidos']; ?></div>
+        </div>
+    </div>
+
+    <div class="painel-ultimas">
+        <strong>🕒 Últimas conferências</strong>
+        <?php if (!empty($ultimas_conferencias)): ?>
+            <ul>
+                <?php foreach ($ultimas_conferencias as $u): ?>
+                <li>
+                    Lote <?php echo e($u['nlote']); ?> | Posto <?php echo e(str_pad($u['nposto'],3,'0',STR_PAD_LEFT)); ?> | Reg. <?php echo e(str_pad($u['regional'],3,'0',STR_PAD_LEFT)); ?> | <?php echo e($u['dataexp']); ?> | Qtd <?php echo e($u['qtd']); ?>
+                </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php else: ?>
+            <div style="margin-top:6px; color:#666;">Sem conferências recentes para o filtro atual.</div>
+        <?php endif; ?>
+    </div>
 </div>
 
 <div>
@@ -550,6 +757,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var pacoteOutraRegional = document.getElementById("pacotedeoutraregional");
     var postoPoupaTempo = document.getElementById("posto_poupatempo");
     var btnResetar = document.getElementById("resetar");
+    var audioDesbloqueado = false;
 
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
@@ -592,6 +800,38 @@ document.addEventListener("DOMContentLoaded", function() {
             tocarProximoSom();
         });
     }
+
+    function desbloquearAudio() {
+        if (audioDesbloqueado) return;
+        audioDesbloqueado = true;
+        for (var i = 0; i < listaSons.length; i++) {
+            try {
+                listaSons[i].volume = 0;
+                var p = listaSons[i].play();
+                if (p && p.then) {
+                    p.then(function() {
+                        for (var j = 0; j < listaSons.length; j++) {
+                            listaSons[j].pause();
+                            listaSons[j].currentTime = 0;
+                            listaSons[j].volume = 1;
+                        }
+                    }).catch(function() {
+                        for (var k = 0; k < listaSons.length; k++) {
+                            listaSons[k].volume = 1;
+                        }
+                    });
+                }
+            } catch (e) {
+                for (var k2 = 0; k2 < listaSons.length; k2++) {
+                    listaSons[k2].volume = 1;
+                }
+            }
+        }
+    }
+
+    input.addEventListener('focus', desbloquearAudio);
+    input.addEventListener('click', desbloquearAudio);
+    document.addEventListener('keydown', desbloquearAudio, { once: true });
     
     // v9.2: Variáveis de contexto para sons inteligentes
     var regionalAtual = null;
@@ -702,8 +942,16 @@ document.addEventListener("DOMContentLoaded", function() {
         
         input.value = "";
         
-        // Centraliza a linha na tela
-        linha.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Centraliza a linha na tela e destaca última leitura
+        var ultimas = document.querySelectorAll('tr.ultimo-lido');
+        for (var u = 0; u < ultimas.length; u++) {
+            ultimas[u].classList.remove('ultimo-lido');
+        }
+        linha.classList.add('ultimo-lido');
+
+        var rect = linha.getBoundingClientRect();
+        var alvo = rect.top + window.pageYOffset - (window.innerHeight / 2) + (rect.height / 2);
+        window.scrollTo({ top: alvo, behavior: 'smooth' });
         
         // Salvar no banco se auto-save estiver ativo
         if (radioAutoSalvar.checked) {
