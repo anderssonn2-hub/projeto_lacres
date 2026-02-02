@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v9.22.8
+/* conferencia_pacotes.php — v9.22.9
+ * CHANGELOG v9.22.9:
+ * - [CORRIGIDO] Inputs do filtro visíveis
+ * - [MELHORADO] PT segregado por posto (concluido por grupo)
+ *
  * CHANGELOG v9.22.8:
  * - [NOVO] Filtro por intervalo + datas avulsas
  * - [NOVO] Cards de resumo (carteiras, conferidas, postos)
@@ -40,6 +44,10 @@ $datas_sql = array();
 $datas_exib = array();
 $poupaTempoPostos = array();
 $conferencias = array();
+
+function e($s) {
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+}
 
 // Conexão
 $host = '10.15.61.169';
@@ -182,6 +190,12 @@ try {
         if ($row && !empty($row['data'])) {
             $data_ini_sql = $row['data'];
             $data_fim_sql = $row['data'];
+            if ($data_ini === '') {
+                $data_ini = $row['data'];
+            }
+            if ($data_fim === '') {
+                $data_fim = $row['data'];
+            }
         }
     }
 
@@ -381,6 +395,15 @@ try {
         }
         .filtro-datas form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
         .filtro-datas label { margin-right: 10px; cursor: pointer; }
+        .filtro-row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; width:100%; }
+        .filtro-datas input[type="date"],
+        .filtro-datas input[type="text"] {
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            min-width: 180px;
+            background: #fff;
+        }
         .filtro-datas input[type="submit"] { padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
         .filtro-datas input[type="submit"]:hover { background: #0056b3; }
         
@@ -493,9 +516,9 @@ try {
     </style>
 </head>
 <body>
-<div class="versao">v9.22.8</div>
+<div class="versao">v9.22.9</div>
 
-<h2>📋 Conferência de Pacotes v9.22.8</h2>
+<h2>📋 Conferência de Pacotes v9.22.9</h2>
 
 <!-- Radio Auto-Save -->
 <div class="radio-box">
@@ -509,13 +532,15 @@ try {
 <div class="filtro-datas">
     <form method="get" action="">
         <strong>📅 Filtrar por intervalo:</strong>
-        <input type="date" name="data_ini" value="<?php echo e($data_ini); ?>">
-        <input type="date" name="data_fim" value="<?php echo e($data_fim); ?>">
+        <div class="filtro-row">
+            <input type="date" name="data_ini" value="<?php echo e($data_ini); ?>">
+            <input type="date" name="data_fim" value="<?php echo e($data_fim); ?>">
+            <input type="submit" value="🔍 Aplicar Filtro">
+        </div>
         <label style="min-width:100%;">
             Datas avulsas (dd-mm-aaaa ou yyyy-mm-dd, separadas por vírgula):
             <input type="text" name="datas_avulsas" value="<?php echo e($datas_avulsas); ?>" style="width:100%; margin-top:4px;">
         </label>
-        <input type="submit" value="🔍 Aplicar Filtro">
     </form>
 </div>
 
@@ -577,7 +602,7 @@ try {
 // ========================================
 
 
-$grupo_pt = array();           // Todos postos Poupa Tempo em UMA lista
+$grupo_pt = array();           // Poupa Tempo agrupado por posto
 $grupo_r01 = array();          // Todos postos Regional 01 em UMA lista (excluindo PT)
 $grupo_capital = array();      // Todos postos Capital em UMA lista
 $grupo_999 = array();          // Todos postos Central IIPR em UMA lista
@@ -587,7 +612,11 @@ foreach ($regionais_data as $regional => $postos) {
     foreach ($postos as $posto) {
         // 1. Poupa Tempo (PRIORIDADE MÁXIMA - ex: posto 28, 80)
         if ($posto['tipoEntrega'] == 'poupatempo') {
-            $grupo_pt[] = $posto; // Adiciona direto na lista
+            $postoKey = $posto['posto'];
+            if (!isset($grupo_pt[$postoKey])) {
+                $grupo_pt[$postoKey] = array();
+            }
+            $grupo_pt[$postoKey][] = $posto; // Agrupa por posto
             continue; // v8.17.5: NÃO classifica em outros grupos
         }
         // 2. Regional 01 (postos 01, 02, 27 - excluindo os que já foram para PT)
@@ -617,7 +646,7 @@ foreach ($regionais_data as $regional => $postos) {
 ksort($grupo_outros);
 
 // v8.17.5: Função para renderizar tabela (aceita array plano OU aninhado)
-function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
+function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '') {
     if (empty($dados)) {
         return;
     }
@@ -675,7 +704,8 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
         echo 'data-posto="' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-data="' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-qtd="' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '" ';
-        echo 'data-ispt="' . $posto['isPT'] . '">';
+        echo 'data-ispt="' . $posto['isPT'] . '" ';
+        echo 'data-pt-group="' . htmlspecialchars($ptGroup, ENT_QUOTES, 'UTF-8') . '">';
         echo '<td>' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '</td>';
@@ -690,7 +720,10 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false) {
 
 // v8.17.4: Renderizar na ordem correta (cada grupo = UMA tabela)
 if (!empty($grupo_pt)) {
-    renderizarTabela('Postos do Poupa Tempo', $grupo_pt, true);
+    ksort($grupo_pt);
+    foreach ($grupo_pt as $postoKey => $postosPt) {
+        renderizarTabela('Posto ' . $postoKey . ' - Poupa Tempo', $postosPt, true, $postoKey);
+    }
 }
 if (!empty($grupo_r01)) {
     renderizarTabela('Postos do Posto 01', $grupo_r01);
@@ -972,10 +1005,11 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Determina qual grupo está sendo conferido
         if (tipoAtual === 'poupatempo') {
-            grupoAtual = 'poupatempo';
-            // Todas as linhas PT
+            grupoAtual = linha.getAttribute('data-pt-group') || linha.getAttribute('data-posto');
+            // Linhas PT do mesmo posto
             for (var i = 0; i < todasLinhas.length; i++) {
-                if (todasLinhas[i].getAttribute('data-ispt') === '1') {
+                if (todasLinhas[i].getAttribute('data-ispt') === '1' &&
+                    (todasLinhas[i].getAttribute('data-pt-group') === grupoAtual || todasLinhas[i].getAttribute('data-posto') === grupoAtual)) {
                     linhasDoGrupo.push(todasLinhas[i]);
                 }
             }
