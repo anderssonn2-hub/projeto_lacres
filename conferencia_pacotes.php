@@ -451,7 +451,16 @@ try {
             display: flex;
             align-items: center;
         }
-        .radio-box input { margin-right: 10px; width: 18px; height: 18px; cursor: pointer; }
+        .radio-box input[type="radio"] { margin-right: 10px; width: 18px; height: 18px; cursor: pointer; }
+        .radio-box input[type="text"] {
+            width: 260px;
+            max-width: 100%;
+            padding: 8px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #fff;
+            color: #333;
+        }
         
         .filtro-datas { 
             background: white;
@@ -613,10 +622,9 @@ try {
 </div>
 
 <div class="radio-box" style="margin-top:10px;">
-    <label style="gap:10px;">
-        👤 Usuário da conferência:
-        <input type="text" id="usuario_conf" placeholder="Digite o usuário" style="padding:6px 8px; border-radius:4px; border:1px solid #ccc;">
-    </label>
+    <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Usuário da conferência</div>
+    <input type="text" id="usuario_conf" placeholder="Digite o usuário" autocomplete="off">
+    <div style="color:#e9ecef; font-size:12px; margin-top:6px;">Obrigatório para iniciar a conferência.</div>
 </div>
 
 <!-- Filtro de datas -->
