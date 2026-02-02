@@ -1,5 +1,10 @@
 <?php
-/* conferencia_pacotes.php — v9.22.9
+/* conferencia_pacotes.php — v9.23.0
+ * CHANGELOG v9.23.0:
+ * - [NOVO] Usuário obrigatório para iniciar conferência
+ * - [NOVO] Card Status de Conferências (últimas/pendentes)
+ * - [CORRIGIDO] Salvamento de dataexp na conferência
+ *
  * CHANGELOG v9.22.9:
  * - [CORRIGIDO] Inputs do filtro visíveis
  * - [MELHORADO] PT segregado por posto (concluido por grupo)
@@ -44,6 +49,9 @@ $datas_sql = array();
 $datas_exib = array();
 $poupaTempoPostos = array();
 $conferencias = array();
+$dias_com_conferencia = array();
+$dias_sem_conferencia = array();
+$metadados_dias = array();
 
 function e($s) {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
@@ -67,12 +75,20 @@ try {
         $dataexp = trim($_POST['dataexp']);
         $qtd = (int)$_POST['qtd'];
         $codbar = trim($_POST['codbar']);
+        $usuario_conf = isset($_POST['usuario']) ? trim($_POST['usuario']) : '';
+
+        if ($dataexp === '') {
+            $dataexp = date('d-m-Y');
+        }
+        if ($usuario_conf === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Usuario obrigatorio')));
+        }
         
-        $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf) 
-                VALUES (?, ?, ?, ?, ?, ?, 's')
-                ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar)";
+        $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario) 
+                VALUES (?, ?, ?, ?, ?, ?, 's', ?)
+                ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar), dataexp=VALUES(dataexp), usuario=VALUES(usuario)";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute(array($regional, $lote, $posto, $dataexp, $qtd, $codbar));
+        $stmt->execute(array($regional, $lote, $posto, $dataexp, $qtd, $codbar, $usuario_conf));
         $stmt = null; // v8.17.4: Libera statement
         $pdo = null;  // v8.17.4: Fecha conexão
         die(json_encode(array('success' => true)));
@@ -307,6 +323,57 @@ try {
         'pacotes_conferidos' => 0
     );
 
+    // v9.23.0: Status de conferências (últimos 30 dias)
+    try {
+        $stmt_conferidos = $pdo->query("
+            SELECT DISTINCT 
+                DATE(dataCarga) as data,
+                DAYOFWEEK(dataCarga) as dia_semana
+            FROM ciPostosCsv 
+            WHERE dataCarga >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            ORDER BY data DESC
+            LIMIT 15
+        ");
+        $dias_com_producao = array();
+        while ($row = $stmt_conferidos->fetch(PDO::FETCH_ASSOC)) {
+            $data_fmt = date('d/m/Y', strtotime($row['data']));
+            $dias_com_producao[] = $data_fmt;
+
+            $dia_num = (int)$row['dia_semana'];
+            $label = '';
+            if ($dia_num == 6) $label = 'SEX';
+            elseif ($dia_num == 7) $label = 'SÁB';
+            elseif ($dia_num == 1) $label = 'DOM';
+
+            $metadados_dias[$data_fmt] = array(
+                'dia_semana_num' => $dia_num,
+                'label' => $label
+            );
+        }
+
+        try {
+            $stmt_conf = $pdo->query("
+                SELECT DISTINCT DATE(csv.dataCarga) as data
+                FROM ciPostosCsv csv
+                INNER JOIN conferencia_pacotes cp ON csv.lote = cp.nlote
+                WHERE csv.dataCarga >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                  AND cp.conf = 's'
+                ORDER BY data DESC
+            ");
+            while ($row = $stmt_conf->fetch(PDO::FETCH_ASSOC)) {
+                $dias_com_conferencia[] = date('d/m/Y', strtotime($row['data']));
+            }
+        } catch (Exception $e) {
+            $dias_com_conferencia = array();
+        }
+
+        $dias_sem_conferencia = array_diff($dias_com_producao, $dias_com_conferencia);
+        $dias_sem_conferencia = array_values($dias_sem_conferencia);
+        $dias_sem_conferencia = array_slice($dias_sem_conferencia, 0, 10);
+    } catch (Exception $e) {
+        // ignore
+    }
+
     if (!empty($condicoes_data)) {
         $sqlEmitidas = "SELECT COALESCE(SUM(quantidade),0) AS total FROM ciPostosCsv $whereData";
         $stmtEmit = $pdo->prepare($sqlEmitidas);
@@ -513,18 +580,42 @@ try {
             font-weight: 600;
             margin-top: 6px;
         }
+        #indicador-dias {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px 14px;
+            width: 260px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 1000;
+        }
+        #indicador-dias.collapsed .indicador-conteudo { display: none; }
+        .badge-data { display:inline-block; padding:4px 8px; border-radius:6px; font-size:11px; margin:2px 4px 2px 0; }
+        .badge-data.conferida { background:#28a745; color:#fff; }
+        .badge-data.pendente { background:#ffc107; color:#333; font-weight:bold; }
+        .indicador-toggle { cursor:pointer; float:right; }
     </style>
 </head>
 <body>
 <div class="versao">v9.22.9</div>
 
-<h2>📋 Conferência de Pacotes v9.22.9</h2>
+<h2>📋 Conferência de Pacotes v9.23.0</h2>
 
 <!-- Radio Auto-Save -->
 <div class="radio-box">
     <label>
         <input type="radio" id="autoSalvar" checked>
         Auto-salvar conferências durante leitura
+    </label>
+</div>
+
+<div class="radio-box" style="margin-top:10px;">
+    <label style="gap:10px;">
+        👤 Usuário da conferência:
+        <input type="text" id="usuario_conf" placeholder="Digite o usuário" style="padding:6px 8px; border-radius:4px; border:1px solid #ccc;">
     </label>
 </div>
 
@@ -542,6 +633,56 @@ try {
             <input type="text" name="datas_avulsas" value="<?php echo e($datas_avulsas); ?>" style="width:100%; margin-top:4px;">
         </label>
     </form>
+</div>
+
+<div id="indicador-dias">
+    <div style="font-weight:bold;color:#333;font-size:13px;">
+        📅 Status de Conferências
+        <span class="indicador-toggle" onclick="toggleIndicadorDias()" title="Recolher/Expandir">▼</span>
+    </div>
+    <div class="indicador-conteudo">
+        <div style="margin:10px 0;">
+            <strong style="color:#28a745;font-size:12px;">✓ Últimas Conferências:</strong><br>
+            <div style="margin-top:5px;">
+                <?php 
+                $ultimas_cinco = array_slice($dias_com_conferencia, 0, 5);
+                if (!empty($ultimas_cinco)) {
+                    foreach ($ultimas_cinco as $data) {
+                        $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
+                        $badge_label = !empty($label_dia) ? " <small style='font-size:9px;background:#6c757d;color:white;padding:1px 3px;border-radius:2px;'>$label_dia</small>" : '';
+                        echo '<span class="badge-data conferida">' . htmlspecialchars($data) . $badge_label . '</span>';
+                    }
+                } else {
+                    echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
+                }
+                ?>
+            </div>
+        </div>
+        <div style="margin:10px 0;">
+            <strong style="color:#ffc107;font-size:12px;">⚠ Conferências Pendentes:</strong><br>
+            <div style="margin-top:5px;">
+                <?php 
+                $ultimas_pendentes = array_slice($dias_sem_conferencia, 0, 5);
+                if (!empty($ultimas_pendentes)) {
+                    foreach ($ultimas_pendentes as $data) {
+                        $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
+                        $badge_label = '';
+                        if ($label_dia == 'SEX') {
+                            $badge_label = " <small style='font-size:9px;background:#ffc107;color:#333;padding:1px 3px;border-radius:2px;font-weight:bold;'>SEX</small>";
+                        } elseif ($label_dia == 'SÁB') {
+                            $badge_label = " <small style='font-size:9px;background:#17a2b8;color:white;padding:1px 3px;border-radius:2px;font-weight:bold;'>SÁB</small>";
+                        } elseif ($label_dia == 'DOM') {
+                            $badge_label = " <small style='font-size:9px;background:#dc3545;color:white;padding:1px 3px;border-radius:2px;font-weight:bold;'>DOM</small>";
+                        }
+                        echo '<span class="badge-data pendente">' . htmlspecialchars($data) . $badge_label . '</span>';
+                    }
+                } else {
+                    echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
+                }
+                ?>
+            </div>
+        </div>
+    </div>
 </div>
 
 <button class="btn-toggle" type="button" onclick="var el=document.getElementById('painel-estatisticas'); el.style.display = (el.style.display==='none'?'block':'none');">
@@ -790,6 +931,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var pacoteOutraRegional = document.getElementById("pacotedeoutraregional");
     var postoPoupaTempo = document.getElementById("posto_poupatempo");
     var btnResetar = document.getElementById("resetar");
+    var usuarioInput = document.getElementById("usuario_conf");
     var audioDesbloqueado = false;
 
     // v9.22.7: Fila de áudio para evitar sobreposição
@@ -874,7 +1016,7 @@ document.addEventListener("DOMContentLoaded", function() {
     input.focus();
     
     // Função para salvar conferência via AJAX
-    function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar) {
+    function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
         var formData = new FormData();
         formData.append('salvar_lote_ajax', '1');
         formData.append('lote', lote);
@@ -883,6 +1025,7 @@ document.addEventListener("DOMContentLoaded", function() {
         formData.append('dataexp', dataexp);
         formData.append('qtd', qtd);
         formData.append('codbar', codbar);
+        formData.append('usuario', usuario);
         
         fetch(window.location.href, {
             method: 'POST',
@@ -916,6 +1059,14 @@ document.addEventListener("DOMContentLoaded", function() {
         
         if (!linha) {
             input.value = "";
+            return;
+        }
+
+        // v9.23.0: usuário obrigatório
+        if (!usuarioInput || usuarioInput.value.trim() === '') {
+            alert('Informe o usuário da conferência para iniciar.');
+            input.value = "";
+            if (usuarioInput) { usuarioInput.focus(); }
             return;
         }
         
@@ -994,8 +1145,8 @@ document.addEventListener("DOMContentLoaded", function() {
             var dataexp = linha.getAttribute("data-data");
             var qtd = linha.getAttribute("data-qtd");
             var codbar = linha.getAttribute("data-codigo");
-            
-            salvarConferencia(lote, regional, posto, dataexp, qtd, codbar);
+            var usuario = usuarioInput.value.trim();
+            salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario);
         }
         
         // v9.2: Verifica se completou o GRUPO atual (PT, Capital, R01, 999, ou outra regional)
@@ -1090,6 +1241,16 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
     });
+
+    window.toggleIndicadorDias = function() {
+        var el = document.getElementById('indicador-dias');
+        if (!el) return;
+        if (el.classList.contains('collapsed')) {
+            el.classList.remove('collapsed');
+        } else {
+            el.classList.add('collapsed');
+        }
+    };
 });
 </script>
 
