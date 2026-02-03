@@ -1,5 +1,16 @@
 <?php
-/* conferencia_pacotes.php — v9.23.0
+/* conferencia_pacotes.php — v9.23.2
+ * CHANGELOG v9.23.2:
+ * - [NOVO] Inserção de pacotes não listados (ciPostosCsv + ciPostos)
+ * - [NOVO] Seleção do tipo de conferência (Correios/PT)
+ * - [NOVO] Alerta pertence_aos_correios.mp3 (Correios no meio de PT)
+ * - [NOVO] Opção de silenciar beep.mp3
+ * - [AJUSTE] Status de conferências no topo (não acompanha scroll)
+ *
+ * CHANGELOG v9.23.1:
+ * - [NOVO] Bloqueio inicial até informar usuário
+ * - [NOVO] Usuário exibido após liberação
+ *
  * CHANGELOG v9.23.0:
  * - [NOVO] Usuário obrigatório para iniciar conferência
  * - [NOVO] Card Status de Conferências (últimas/pendentes)
@@ -92,6 +103,71 @@ try {
         $stmt = null; // v8.17.4: Libera statement
         $pdo = null;  // v8.17.4: Fecha conexão
         die(json_encode(array('success' => true)));
+    }
+
+    // v9.23.2: Inserir pacotes não listados (ciPostosCsv + ciPostos)
+    if (isset($_POST['inserir_pacotes_nao_listados'])) {
+        $payload = isset($_POST['pacotes']) ? $_POST['pacotes'] : '';
+        $usuario_conf = isset($_POST['usuario']) ? trim($_POST['usuario']) : '';
+        if ($usuario_conf === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Usuario obrigatorio')));
+        }
+        $pacotes = json_decode($payload, true);
+        if (!is_array($pacotes)) {
+            die(json_encode(array('success' => false, 'erro' => 'Payload invalido')));
+        }
+
+        $ok = 0;
+        $erros = array();
+        $stmtCsv = $pdo->prepare("INSERT INTO ciPostosCsv (lote, posto, regional, quantidade, dataCarga, data, usuario) VALUES (?,?,?,?,?,NOW(),?)");
+        $stmtPostos = $pdo->prepare("
+            INSERT INTO ciPostos (posto, dia, quantidade, turno, regional, lote, autor, criado, situacao)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 0)
+        ");
+
+        foreach ($pacotes as $p) {
+            try {
+                $lote = isset($p['lote']) ? trim($p['lote']) : '';
+                $posto = isset($p['posto']) ? trim($p['posto']) : '';
+                $regional = isset($p['regional']) ? trim($p['regional']) : '';
+                $quantidade = isset($p['quantidade']) ? (int)$p['quantidade'] : 0;
+                $dataexp = isset($p['dataexp']) ? trim($p['dataexp']) : '';
+
+                if ($lote === '' || $posto === '' || $regional === '' || $quantidade <= 0 || $dataexp === '') {
+                    throw new Exception('Campos obrigatorios ausentes');
+                }
+
+                if (preg_match('/^(\d{2})\-(\d{2})\-(\d{4})$/', $dataexp, $m)) {
+                    $data_sql = $m[3] . '-' . $m[2] . '-' . $m[1];
+                } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataexp)) {
+                    $data_sql = $dataexp;
+                } else {
+                    throw new Exception('Data invalida');
+                }
+
+                $stmtCsv->execute(array($lote, $posto, $regional, $quantidade, $data_sql, $usuario_conf));
+
+                $nome_posto = sprintf('%03d - POSTO', (int)$posto);
+                $criado = $data_sql . ' 10:10:10';
+                $stmtPostos->execute(array(
+                    $nome_posto,
+                    $data_sql,
+                    $quantidade,
+                    'M',
+                    (int)$lote,
+                    $usuario_conf,
+                    $criado
+                ));
+                $ok++;
+            } catch (Exception $ex) {
+                $erros[] = $ex->getMessage();
+            }
+        }
+
+        $stmtCsv = null;
+        $stmtPostos = null;
+        $pdo = null;
+        die(json_encode(array('success' => true, 'inseridos' => $ok, 'erros' => $erros)));
     }
 
     // Handler AJAX excluir
@@ -252,7 +328,8 @@ try {
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             if (empty($row['dataCarga'])) continue;
 
-            $data_formatada = date('d-m-Y', strtotime($row['dataCarga']));
+                $data_formatada = date('d-m-Y', strtotime($row['dataCarga']));
+                $data_sql_row = date('Y-m-d', strtotime($row['dataCarga']));
 
                 $lote = $row['lote'];
                 $posto = str_pad($row['posto'], 3, '0', STR_PAD_LEFT);
@@ -285,6 +362,7 @@ try {
                     'regional' => $regional_exibida,
                     'tipoEntrega' => $tipoEntrega,
                     'data' => $data_formatada,
+                    'data_sql' => $data_sql_row,
                     'qtd' => ltrim($quantidade, '0'),
                     'codigo' => $codigo_barras,
                     'isPT' => $isPT,
@@ -590,28 +668,129 @@ try {
             margin-top: 6px;
         }
         #indicador-dias {
-            position: fixed;
-            top: 70px;
-            right: 20px;
+            position: relative;
+            top: 0;
+            right: 0;
             background: #fff;
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 12px 14px;
             width: 260px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            z-index: 1000;
+            z-index: 10;
         }
         #indicador-dias.collapsed .indicador-conteudo { display: none; }
         .badge-data { display:inline-block; padding:4px 8px; border-radius:6px; font-size:11px; margin:2px 4px 2px 0; }
         .badge-data.conferida { background:#28a745; color:#fff; }
         .badge-data.pendente { background:#ffc107; color:#333; font-weight:bold; }
         .indicador-toggle { cursor:pointer; float:right; }
+        .usuario-badge {
+            display:inline-block;
+            padding:6px 10px;
+            background:#28a745;
+            color:#fff;
+            border-radius:14px;
+            font-weight:700;
+            font-size:12px;
+        }
+        .page-locked {
+            pointer-events: none;
+            filter: blur(1px);
+        }
+        .overlay-usuario {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .overlay-usuario .card {
+            background:#fff;
+            padding:20px 24px;
+            border-radius:8px;
+            width: 360px;
+            max-width: 90%;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+        }
+        .overlay-usuario .card h3 { margin:0 0 10px 0; }
+        .overlay-usuario input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-top: 6px;
+        }
+        .overlay-usuario button {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background:#007bff;
+            color:#fff;
+            border:none;
+            border-radius:4px;
+            cursor:pointer;
+            width:100%;
+            font-weight:700;
+        }
+        .painel-pacotes-novos {
+            background:#fff;
+            border-radius:8px;
+            padding:12px 16px;
+            margin:15px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .painel-pacotes-novos table { margin-top: 8px; }
+        .btn-acao {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-salvar { background:#28a745; color:#fff; }
+        .btn-cancelar { background:#dc3545; color:#fff; }
+        .modal-pacote {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2100;
+        }
+        .modal-pacote .card {
+            background:#fff;
+            padding:18px;
+            border-radius:8px;
+            width: 380px;
+            max-width: 92%;
+        }
+        .modal-pacote label { display:block; margin-top:8px; font-size:12px; color:#555; }
+        .modal-pacote input { width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; }
     </style>
 </head>
 <body>
-<div class="versao">v9.22.9</div>
+<div class="versao">v9.23.2</div>
 
-<h2>📋 Conferência de Pacotes v9.23.0</h2>
+<h2>📋 Conferência de Pacotes v9.23.2</h2>
+
+<div class="overlay-usuario" id="overlayUsuario">
+    <div class="card">
+        <h3>👤 Informe o usuário</h3>
+        <div style="font-size:12px; color:#666;">Obrigatório para iniciar a conferência.</div>
+        <input type="text" id="usuario_conf_modal" placeholder="Digite o usuário" autocomplete="off">
+        <button type="button" id="btnConfirmarUsuario">Confirmar</button>
+    </div>
+</div>
+
+<div id="conteudoPagina" class="page-locked">
 
 <!-- Radio Auto-Save -->
 <div class="radio-box">
@@ -623,8 +802,26 @@ try {
 
 <div class="radio-box" style="margin-top:10px;">
     <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Usuário da conferência</div>
-    <input type="text" id="usuario_conf" placeholder="Digite o usuário" autocomplete="off">
-    <div style="color:#e9ecef; font-size:12px; margin-top:6px;">Obrigatório para iniciar a conferência.</div>
+    <span class="usuario-badge" id="usuarioBadge">Não informado</span>
+</div>
+
+<div class="radio-box" style="margin-top:10px;">
+    <div style="color:#fff; font-weight:600; margin-bottom:8px;">🎯 Tipo de conferência</div>
+    <label style="gap:8px; margin-right:16px;">
+        <input type="radio" name="tipo_inicio" value="correios" checked>
+        Correios
+    </label>
+    <label style="gap:8px;">
+        <input type="radio" name="tipo_inicio" value="poupatempo">
+        Poupa Tempo
+    </label>
+</div>
+
+<div class="radio-box" style="margin-top:10px;">
+    <label>
+        <input type="checkbox" id="muteBeep">
+        Silenciar beep.mp3
+    </label>
 </div>
 
 <!-- Filtro de datas -->
@@ -689,6 +886,52 @@ try {
                 }
                 ?>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="painel-pacotes-novos" id="painelPacotesNovos" style="display:none;">
+    <strong>📥 Pacotes não listados</strong>
+    <div style="margin-top:8px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Lote</th>
+                    <th>Regional</th>
+                    <th>Posto</th>
+                    <th>Qtd</th>
+                    <th>Data</th>
+                    <th>Ação</th>
+                </tr>
+            </thead>
+            <tbody id="listaPacotesNovos"></tbody>
+        </table>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px;">
+        <button type="button" class="btn-acao btn-salvar" id="btnSalvarPacotes">Salvar pacotes</button>
+        <button type="button" class="btn-acao btn-cancelar" id="btnCancelarPacotes">Cancelar</button>
+    </div>
+</div>
+
+<div class="modal-pacote" id="modalPacote">
+    <div class="card">
+        <h3>📦 Pacote não encontrado</h3>
+        <div style="font-size:12px; color:#666;">Informe os dados para inserir nas bases.</div>
+        <label>Código de barras</label>
+        <input type="text" id="pacote_codbar" readonly>
+        <label>Lote</label>
+        <input type="text" id="pacote_lote">
+        <label>Regional</label>
+        <input type="text" id="pacote_regional">
+        <label>Posto</label>
+        <input type="text" id="pacote_posto">
+        <label>Quantidade</label>
+        <input type="number" id="pacote_qtd" min="1">
+        <label>Data de expedição</label>
+        <input type="date" id="pacote_dataexp">
+        <div style="margin-top:10px; display:flex; gap:8px;">
+            <button type="button" class="btn-acao btn-salvar" id="btnAdicionarPacote">Adicionar</button>
+            <button type="button" class="btn-acao btn-cancelar" id="btnCancelarPacote">Cancelar</button>
         </div>
     </div>
 </div>
@@ -852,6 +1095,8 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         echo 'data-lote="' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-posto="' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-data="' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '" ';
+        $data_sql_attr = isset($posto['data_sql']) ? $posto['data_sql'] : '';
+        echo 'data-data-sql="' . htmlspecialchars($data_sql_attr, ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-qtd="' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-ispt="' . $posto['isPT'] . '" ';
         echo 'data-pt-group="' . htmlspecialchars($ptGroup, ENT_QUOTES, 'UTF-8') . '">';
@@ -896,12 +1141,15 @@ if (empty($regionais_data)) {
 }
 ?>
 
+</div>
+
 <!-- Áudios -->
 <audio id="beep" src="beep.mp3" preload="auto"></audio>
 <audio id="concluido" src="concluido.mp3" preload="auto"></audio>
 <audio id="pacotejaconferido" src="pacotejaconferido.mp3" preload="auto"></audio>
 <audio id="pacotedeoutraregional" src="pacotedeoutraregional.mp3" preload="auto"></audio>
 <audio id="posto_poupatempo" src="posto_poupatempo.mp3" preload="auto"></audio>
+<audio id="pertence_correios" src="pertence_aos_correios.mp3" preload="auto"></audio>
 
 <script>
 // ========================================
@@ -938,9 +1186,30 @@ document.addEventListener("DOMContentLoaded", function() {
     var pacoteJaConferido = document.getElementById("pacotejaconferido");
     var pacoteOutraRegional = document.getElementById("pacotedeoutraregional");
     var postoPoupaTempo = document.getElementById("posto_poupatempo");
+    var pertenceCorreios = document.getElementById("pertence_correios");
+    var muteBeep = document.getElementById("muteBeep");
     var btnResetar = document.getElementById("resetar");
-    var usuarioInput = document.getElementById("usuario_conf");
+    var usuarioBadge = document.getElementById("usuarioBadge");
+    var overlayUsuario = document.getElementById("overlayUsuario");
+    var conteudoPagina = document.getElementById("conteudoPagina");
+    var usuarioInputModal = document.getElementById("usuario_conf_modal");
+    var btnConfirmarUsuario = document.getElementById("btnConfirmarUsuario");
+    var usuarioAtual = '';
     var audioDesbloqueado = false;
+    var modalPacote = document.getElementById('modalPacote');
+    var pacoteCodbar = document.getElementById('pacote_codbar');
+    var pacoteLote = document.getElementById('pacote_lote');
+    var pacoteRegional = document.getElementById('pacote_regional');
+    var pacotePosto = document.getElementById('pacote_posto');
+    var pacoteQtd = document.getElementById('pacote_qtd');
+    var pacoteDataexp = document.getElementById('pacote_dataexp');
+    var btnAdicionarPacote = document.getElementById('btnAdicionarPacote');
+    var btnCancelarPacote = document.getElementById('btnCancelarPacote');
+    var painelPacotesNovos = document.getElementById('painelPacotesNovos');
+    var listaPacotesNovos = document.getElementById('listaPacotesNovos');
+    var btnSalvarPacotes = document.getElementById('btnSalvarPacotes');
+    var btnCancelarPacotes = document.getElementById('btnCancelarPacotes');
+    var pacotesPendentes = [];
 
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
@@ -977,7 +1246,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // Encadeia para tocar o próximo som quando o atual terminar
-    var listaSons = [beep, concluido, pacoteJaConferido, pacoteOutraRegional, postoPoupaTempo];
+    var listaSons = [];
+    if (beep) listaSons.push(beep);
+    if (concluido) listaSons.push(concluido);
+    if (pacoteJaConferido) listaSons.push(pacoteJaConferido);
+    if (pacoteOutraRegional) listaSons.push(pacoteOutraRegional);
+    if (postoPoupaTempo) listaSons.push(postoPoupaTempo);
+    if (pertenceCorreios) listaSons.push(pertenceCorreios);
     for (var si = 0; si < listaSons.length; si++) {
         listaSons[si].addEventListener('ended', function() {
             tocarProximoSom();
@@ -1016,12 +1291,173 @@ document.addEventListener("DOMContentLoaded", function() {
     input.addEventListener('click', desbloquearAudio);
     document.addEventListener('keydown', desbloquearAudio, { once: true });
     
-    // v9.2: Variáveis de contexto para sons inteligentes
+    // v9.23.2: Variáveis de contexto para sons inteligentes
     var regionalAtual = null;
     var tipoAtual = null; // 'poupatempo' ou 'correios'
     var primeiroConferido = false;
+
+    function obterTipoInicioSelecionado() {
+        var radios = document.querySelectorAll('input[name="tipo_inicio"]');
+        for (var i = 0; i < radios.length; i++) {
+            if (radios[i].checked) return radios[i].value;
+        }
+        return 'correios';
+    }
+
+    function abrirModalPacote(codigo) {
+        if (!modalPacote) return;
+        var cod = codigo || '';
+        if (pacoteCodbar) pacoteCodbar.value = cod;
+        if (cod.length === 19) {
+            if (pacoteLote) pacoteLote.value = cod.substr(0, 8);
+            if (pacoteRegional) pacoteRegional.value = cod.substr(8, 3);
+            if (pacotePosto) pacotePosto.value = cod.substr(11, 3);
+            if (pacoteQtd) pacoteQtd.value = parseInt(cod.substr(14, 5), 10) || '';
+        }
+        if (pacoteDataexp && !pacoteDataexp.value) {
+            var now = new Date();
+            var mm = String(now.getMonth() + 1).padStart(2, '0');
+            var dd = String(now.getDate()).padStart(2, '0');
+            pacoteDataexp.value = now.getFullYear() + '-' + mm + '-' + dd;
+        }
+        modalPacote.style.display = 'flex';
+        if (pacoteLote) pacoteLote.focus();
+    }
+
+    function fecharModalPacote() {
+        if (modalPacote) modalPacote.style.display = 'none';
+    }
+
+    function renderizarPacotesPendentes() {
+        if (!listaPacotesNovos) return;
+        listaPacotesNovos.innerHTML = '';
+        for (var i = 0; i < pacotesPendentes.length; i++) {
+            var p = pacotesPendentes[i];
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + p.lote + '</td>' +
+                '<td>' + p.regional + '</td>' +
+                '<td>' + p.posto + '</td>' +
+                '<td>' + p.quantidade + '</td>' +
+                '<td>' + p.dataexp + '</td>' +
+                '<td><button type="button" class="btn-acao btn-cancelar" data-idx="' + i + '">Remover</button></td>';
+            listaPacotesNovos.appendChild(tr);
+        }
+        if (painelPacotesNovos) {
+            painelPacotesNovos.style.display = pacotesPendentes.length ? 'block' : 'none';
+        }
+    }
+
+    if (btnAdicionarPacote) {
+        btnAdicionarPacote.addEventListener('click', function() {
+            var obj = {
+                codbar: pacoteCodbar ? pacoteCodbar.value.trim() : '',
+                lote: pacoteLote ? pacoteLote.value.trim() : '',
+                regional: pacoteRegional ? pacoteRegional.value.trim() : '',
+                posto: pacotePosto ? pacotePosto.value.trim() : '',
+                quantidade: pacoteQtd ? pacoteQtd.value.trim() : '',
+                dataexp: pacoteDataexp ? pacoteDataexp.value.trim() : ''
+            };
+            if (!obj.lote || !obj.regional || !obj.posto || !obj.quantidade || !obj.dataexp) {
+                alert('Preencha todos os campos do pacote.');
+                return;
+            }
+            pacotesPendentes.push(obj);
+            renderizarPacotesPendentes();
+            fecharModalPacote();
+        });
+    }
+
+    if (btnCancelarPacote) {
+        btnCancelarPacote.addEventListener('click', function() {
+            fecharModalPacote();
+        });
+    }
+
+    if (listaPacotesNovos) {
+        listaPacotesNovos.addEventListener('click', function(e) {
+            var target = e.target;
+            if (target && target.getAttribute('data-idx')) {
+                var idx = parseInt(target.getAttribute('data-idx'), 10);
+                if (!isNaN(idx)) {
+                    pacotesPendentes.splice(idx, 1);
+                    renderizarPacotesPendentes();
+                }
+            }
+        });
+    }
+
+    if (btnCancelarPacotes) {
+        btnCancelarPacotes.addEventListener('click', function() {
+            pacotesPendentes = [];
+            renderizarPacotesPendentes();
+        });
+    }
+
+    if (btnSalvarPacotes) {
+        btnSalvarPacotes.addEventListener('click', function() {
+            if (!usuarioAtual) {
+                alert('Informe o usuário da conferência.');
+                return;
+            }
+            if (!pacotesPendentes.length) return;
+            var formData = new FormData();
+            formData.append('inserir_pacotes_nao_listados', '1');
+            formData.append('usuario', usuarioAtual);
+            formData.append('pacotes', JSON.stringify(pacotesPendentes));
+            fetch(window.location.href, { method: 'POST', body: formData })
+                .then(function(resp){ return resp.json(); })
+                .then(function(data){
+                    if (data && data.success) {
+                        alert('Pacotes inseridos: ' + data.inseridos);
+                        pacotesPendentes = [];
+                        renderizarPacotesPendentes();
+                        window.location.reload();
+                    } else {
+                        alert('Erro ao inserir pacotes.');
+                    }
+                })
+                .catch(function(){ alert('Erro ao inserir pacotes.'); });
+        });
+    }
     
-    input.focus();
+    if (usuarioInputModal) {
+        usuarioInputModal.focus();
+    }
+
+    function liberarPaginaComUsuario(nome) {
+        usuarioAtual = nome;
+        if (usuarioBadge) {
+            usuarioBadge.textContent = nome;
+        }
+        if (overlayUsuario) {
+            overlayUsuario.style.display = 'none';
+        }
+        if (conteudoPagina) {
+            conteudoPagina.classList.remove('page-locked');
+        }
+        input.focus();
+    }
+
+    if (btnConfirmarUsuario) {
+        btnConfirmarUsuario.addEventListener('click', function() {
+            var nome = usuarioInputModal ? usuarioInputModal.value.trim() : '';
+            if (!nome) {
+                alert('Informe o usuário da conferência.');
+                if (usuarioInputModal) usuarioInputModal.focus();
+                return;
+            }
+            liberarPaginaComUsuario(nome);
+        });
+    }
+
+    if (usuarioInputModal) {
+        usuarioInputModal.addEventListener('keydown', function(e) {
+            if (e.keyCode === 13) {
+                e.preventDefault();
+                if (btnConfirmarUsuario) btnConfirmarUsuario.click();
+            }
+        });
+    }
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
@@ -1066,15 +1502,18 @@ document.addEventListener("DOMContentLoaded", function() {
         var linha = document.querySelector('tr[data-codigo="' + valor + '"]');
         
         if (!linha) {
+            abrirModalPacote(valor);
             input.value = "";
             return;
         }
 
-        // v9.23.0: usuário obrigatório
-        if (!usuarioInput || usuarioInput.value.trim() === '') {
+        // v9.23.1: usuário obrigatório
+        if (!usuarioAtual) {
             alert('Informe o usuário da conferência para iniciar.');
             input.value = "";
-            if (usuarioInput) { usuarioInput.focus(); }
+            if (overlayUsuario) { overlayUsuario.style.display = 'flex'; }
+            if (conteudoPagina) { conteudoPagina.classList.add('page-locked'); }
+            if (usuarioInputModal) { usuarioInputModal.focus(); }
             return;
         }
         
@@ -1095,8 +1534,10 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Caso 1: Primeiro pacote da conferência - sempre beep
         if (!primeiroConferido) {
-            regionalAtual = regionalDoPacote;
-            tipoAtual = tipoPacote;
+            tipoAtual = obterTipoInicioSelecionado();
+            if (tipoAtual === tipoPacote) {
+                regionalAtual = regionalDoPacote;
+            }
             primeiroConferido = true;
         }
         // Caso 2: Pacote Poupa Tempo aparecendo em meio aos Correios
@@ -1106,7 +1547,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         // Caso 3: Pacote Correios aparecendo em meio ao Poupa Tempo
         else if (tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
-            somAlerta = pacoteOutraRegional; // Alerta: correios no meio do PT!
+            somAlerta = pertenceCorreios; // Alerta: pertence aos correios!
             // NÃO altera regionalAtual nem tipoAtual
         }
         // Caso 4: Regional diferente (mesmo tipo)
@@ -1127,7 +1568,9 @@ document.addEventListener("DOMContentLoaded", function() {
         linha.classList.add("confirmado");
         
         // Toca os sons: beep sempre na leitura válida, alerta se necessário
-        enfileirarSom(beep);
+        if (!muteBeep || !muteBeep.checked) {
+            enfileirarSom(beep);
+        }
         if (somAlerta) {
             enfileirarSom(somAlerta);
         }
@@ -1150,11 +1593,10 @@ document.addEventListener("DOMContentLoaded", function() {
             var lote = linha.getAttribute("data-lote");
             var regional = linha.getAttribute("data-regional");
             var posto = linha.getAttribute("data-posto");
-            var dataexp = linha.getAttribute("data-data");
+            var dataexp = linha.getAttribute("data-data-sql") || linha.getAttribute("data-data");
             var qtd = linha.getAttribute("data-qtd");
             var codbar = linha.getAttribute("data-codigo");
-            var usuario = usuarioInput.value.trim();
-            salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario);
+            salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuarioAtual);
         }
         
         // v9.2: Verifica se completou o GRUPO atual (PT, Capital, R01, 999, ou outra regional)
