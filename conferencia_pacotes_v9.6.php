@@ -1,5 +1,4 @@
-<?php
-/* conferencia_pacotes.php — v9.6
+ conferencia_pacotes.php — v9.6
  * NOVA VERSÃO baseada na v9.4
  * MUDANÇAS:
  * 1. ✅ Coluna "Conferido Por" mostrando lido_em da tabela conferencia_pacotes

@@ -1,5 +1,21 @@
 <?php
-/* conferencia_pacotes.php — v9.23.2
+/* conferencia_pacotes.php — v9.23.6
+ * CHANGELOG v9.23.6:
+ * - [CORRIGIDO] Fallback por lote para linhas já conferidas
+ *
+ * CHANGELOG v9.23.5:
+ * - [CORRIGIDO] Correspondência de conferência com/sem zeros à esquerda
+ *
+ * CHANGELOG v9.23.4:
+ * - [CORRIGIDO] Linhas verdes por codbar e chave normalizada
+ * - [CORRIGIDO] Não marca como conferido quando pacote é de outra regional/tipo
+ * - [CORRIGIDO] Áudio pertence_aos_correios para PT selecionado
+ *
+ * CHANGELOG v9.23.3:
+ * - [CORRIGIDO] Alerta PT no primeiro pacote quando tipo inicial é Correios
+ * - [REMOVIDO] Card de últimas conferências
+ * - [MANTIDO] Pacotes já conferidos em verde
+ *
  * CHANGELOG v9.23.2:
  * - [NOVO] Inserção de pacotes não listados (ciPostosCsv + ciPostos)
  * - [NOVO] Seleção do tipo de conferência (Correios/PT)
@@ -60,6 +76,7 @@ $datas_sql = array();
 $datas_exib = array();
 $poupaTempoPostos = array();
 $conferencias = array();
+$conferencias_lote = array();
 $dias_com_conferencia = array();
 $dias_sem_conferencia = array();
 $metadados_dias = array();
@@ -212,11 +229,45 @@ try {
         );
     }
 
-    // Busca conferências já realizadas (com LIMIT)
-    $stmt = $pdo->query("SELECT nlote, regional, nposto FROM conferencia_pacotes WHERE conf='s' LIMIT 5000");
+    // Busca conferências já realizadas (sem LIMIT)
+    $stmt = $pdo->query("SELECT nlote, regional, nposto, codbar FROM conferencia_pacotes WHERE conf='s'");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $key = $row['nlote'] . '|' . str_pad($row['regional'], 3, '0', STR_PAD_LEFT) . '|' . str_pad($row['nposto'], 3, '0', STR_PAD_LEFT);
-        $conferencias[$key] = 1;
+        $nlote_raw = trim((string)$row['nlote']);
+        $regional_raw = trim((string)$row['regional']);
+        $posto_raw = trim((string)$row['nposto']);
+
+        $nlote_pad = str_pad($nlote_raw, 8, '0', STR_PAD_LEFT);
+        $regional_pad = str_pad($regional_raw, 3, '0', STR_PAD_LEFT);
+        $posto_pad = str_pad($posto_raw, 3, '0', STR_PAD_LEFT);
+
+        $keys = array();
+        $keys[] = $nlote_pad . '|' . $regional_pad . '|' . $posto_pad;
+        $keys[] = $nlote_raw . '|' . $regional_pad . '|' . $posto_pad;
+        $keys[] = $nlote_pad . '|' . $posto_pad;
+        $keys[] = $nlote_raw . '|' . $posto_pad;
+
+        if (!empty($row['codbar'])) {
+            $cb = preg_replace('/\D+/', '', (string)$row['codbar']);
+            if (strlen($cb) >= 14) {
+                $lote_cb = substr($cb, 0, 8);
+                $reg_cb = substr($cb, 8, 3);
+                $pst_cb = substr($cb, 11, 3);
+                $lote_cb_pad = str_pad($lote_cb, 8, '0', STR_PAD_LEFT);
+                $reg_cb_pad = str_pad($reg_cb, 3, '0', STR_PAD_LEFT);
+                $pst_cb_pad = str_pad($pst_cb, 3, '0', STR_PAD_LEFT);
+                $keys[] = $lote_cb_pad . '|' . $reg_cb_pad . '|' . $pst_cb_pad;
+                $keys[] = $lote_cb_pad . '|' . $pst_cb_pad;
+            }
+        }
+
+        foreach ($keys as $k) {
+            $conferencias[$k] = 1;
+        }
+
+        if ($nlote_raw !== '') {
+            $conferencias_lote[$nlote_raw] = 1;
+        }
+        $conferencias_lote[$nlote_pad] = 1;
     }
 
     // v9.22.8: Normalizar datas (intervalo + avulsas)
@@ -331,7 +382,7 @@ try {
                 $data_formatada = date('d-m-Y', strtotime($row['dataCarga']));
                 $data_sql_row = date('Y-m-d', strtotime($row['dataCarga']));
 
-                $lote = $row['lote'];
+                $lote = str_pad($row['lote'], 8, '0', STR_PAD_LEFT);
                 $posto = str_pad($row['posto'], 3, '0', STR_PAD_LEFT);
                 $regional_csv = (int)$row['regional']; // Regional do CSV (para código de barras)
                 $regional_str = str_pad($regional_csv, 3, '0', STR_PAD_LEFT);
@@ -345,8 +396,29 @@ try {
                 $isPT = ($tipoEntrega == 'poupatempo') ? 1 : 0;
                 
                 // Verifica se já foi conferido
-                $key = $lote . '|' . $regional_str . '|' . $posto;
-                $conferido = isset($conferencias[$key]) ? 1 : 0;
+                $lote_pad = str_pad($lote, 8, '0', STR_PAD_LEFT);
+                $posto_pad = str_pad($posto, 3, '0', STR_PAD_LEFT);
+                $regional_pad_csv = str_pad($regional_str, 3, '0', STR_PAD_LEFT);
+                $regional_pad_exib = str_pad($regional_exibida, 3, '0', STR_PAD_LEFT);
+
+                $keysToTry = array(
+                    $lote_pad . '|' . $regional_pad_exib . '|' . $posto_pad,
+                    $lote . '|' . $regional_pad_exib . '|' . $posto_pad,
+                    $lote_pad . '|' . $regional_pad_csv . '|' . $posto_pad,
+                    $lote . '|' . $regional_pad_csv . '|' . $posto_pad,
+                    $lote_pad . '|' . $posto_pad,
+                    $lote . '|' . $posto_pad
+                );
+
+                $conferido = 0;
+                foreach ($keysToTry as $kTry) {
+                    if (isset($conferencias[$kTry])) { $conferido = 1; break; }
+                }
+                if ($conferido === 0) {
+                    if (isset($conferencias_lote[$lote]) || isset($conferencias_lote[$lote_pad])) {
+                        $conferido = 1;
+                    }
+                }
 
                 // v9.0: Agrupa por REGIONAL REAL (de ciRegionais)
                 if (!isset($regionais_data[$regional_real])) {
@@ -477,23 +549,6 @@ try {
         }
     }
 
-    // v9.22.8: Últimas conferências
-    $ultimas_conferencias = array();
-    try {
-        if (!empty($datas_exib)) {
-            $phEx2 = implode(',', array_fill(0, count($datas_exib), '?'));
-            $sqlUlt = "SELECT nlote, regional, nposto, dataexp, qtd, codbar 
-                       FROM conferencia_pacotes 
-                       WHERE conf='s' AND dataexp IN ($phEx2)
-                       ORDER BY dataexp DESC, nlote DESC 
-                       LIMIT 5";
-            $stmtUlt = $pdo->prepare($sqlUlt);
-            $stmtUlt->execute($datas_exib);
-            $ultimas_conferencias = $stmtUlt->fetchAll(PDO::FETCH_ASSOC);
-        }
-    } catch (Exception $ex) {
-        $ultimas_conferencias = array();
-    }
 } catch (PDOException $e) {
     echo "Erro ao conectar ao banco de dados: " . $e->getMessage();
     die();
@@ -777,9 +832,9 @@ try {
     </style>
 </head>
 <body>
-<div class="versao">v9.23.2</div>
+<div class="versao">v9.23.4</div>
 
-<h2>📋 Conferência de Pacotes v9.23.2</h2>
+<h2>📋 Conferência de Pacotes v9.23.4</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -964,20 +1019,6 @@ try {
         </div>
     </div>
 
-    <div class="painel-ultimas">
-        <strong>🕒 Últimas conferências</strong>
-        <?php if (!empty($ultimas_conferencias)): ?>
-            <ul>
-                <?php foreach ($ultimas_conferencias as $u): ?>
-                <li>
-                    Lote <?php echo e($u['nlote']); ?> | Posto <?php echo e(str_pad($u['nposto'],3,'0',STR_PAD_LEFT)); ?> | Reg. <?php echo e(str_pad($u['regional'],3,'0',STR_PAD_LEFT)); ?> | <?php echo e($u['dataexp']); ?> | Qtd <?php echo e($u['qtd']); ?>
-                </li>
-                <?php endforeach; ?>
-            </ul>
-        <?php else: ?>
-            <div style="margin-top:6px; color:#666;">Sem conferências recentes para o filtro atual.</div>
-        <?php endif; ?>
-    </div>
 </div>
 
 <div>
@@ -1529,39 +1570,62 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
         
-        // v9.22.7: Lógica inteligente de sons
+        // v9.23.4: Lógica inteligente de sons
         var somAlerta = null;
+        var podeConferir = true;
         
         // Caso 1: Primeiro pacote da conferência - sempre beep
         if (!primeiroConferido) {
             tipoAtual = obterTipoInicioSelecionado();
             if (tipoAtual === tipoPacote) {
                 regionalAtual = regionalDoPacote;
+            } else {
+                podeConferir = false;
+                if (tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
+                    somAlerta = postoPoupaTempo;
+                }
+                if (tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
+                    somAlerta = pertenceCorreios;
+                }
             }
-            primeiroConferido = true;
+            if (podeConferir) {
+                primeiroConferido = true;
+            }
         }
         // Caso 2: Pacote Poupa Tempo aparecendo em meio aos Correios
         else if (tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
             somAlerta = postoPoupaTempo; // Alerta: PT misturado com correios!
+            podeConferir = false;
             // NÃO altera regionalAtual nem tipoAtual - continua conferindo correios
         }
         // Caso 3: Pacote Correios aparecendo em meio ao Poupa Tempo
         else if (tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
             somAlerta = pertenceCorreios; // Alerta: pertence aos correios!
+            podeConferir = false;
             // NÃO altera regionalAtual nem tipoAtual
         }
         // Caso 4: Regional diferente (mesmo tipo)
         else if (regionalDoPacote !== regionalAtual && tipoPacote === tipoAtual) {
             somAlerta = pacoteOutraRegional; // Alerta: regional diferente!
+            podeConferir = false;
             // NÃO altera regionalAtual nem tipoAtual
         }
 
         // PT único: emitir aviso específico mesmo no primeiro pacote
-        if (tipoPacote === 'poupatempo') {
+        if (podeConferir && tipoPacote === 'poupatempo') {
             var totalPT = document.querySelectorAll('tbody tr[data-ispt="1"]').length;
             if (totalPT === 1 && !somAlerta) {
                 somAlerta = postoPoupaTempo;
             }
+        }
+
+        // Se não pode conferir, apenas alerta
+        if (!podeConferir) {
+            if (somAlerta) {
+                enfileirarSom(somAlerta);
+            }
+            input.value = "";
+            return;
         }
         
         // Marca como conferido
