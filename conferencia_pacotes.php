@@ -399,6 +399,9 @@ try {
                 $lote_pad = str_pad($lote, 8, '0', STR_PAD_LEFT);
                 $posto_pad = str_pad($posto, 3, '0', STR_PAD_LEFT);
                 $regional_pad_csv = str_pad($regional_str, 3, '0', STR_PAD_LEFT);
+
+                // v9.3: Poupa Tempo usa próprio posto como regional na exibição
+                $regional_exibida = ($isPT == 1) ? $posto : $regional_str;
                 $regional_pad_exib = str_pad($regional_exibida, 3, '0', STR_PAD_LEFT);
 
                 $keysToTry = array(
@@ -425,8 +428,6 @@ try {
                     $regionais_data[$regional_real] = array();
                 }
 
-                // v9.3: Poupa Tempo usa próprio posto como regional na exibição
-                $regional_exibida = ($isPT == 1) ? $posto : $regional_str;
 
                 $regionais_data[$regional_real][] = array(
                     'lote' => $lote,
@@ -573,9 +574,15 @@ try {
         
         .radio-box {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 15px 20px;
-            margin-bottom: 20px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
             border-radius: 6px;
+        }
+        .barras-topo {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
         }
         .radio-box label {
             color: white;
@@ -847,36 +854,38 @@ try {
 
 <div id="conteudoPagina" class="page-locked">
 
-<!-- Radio Auto-Save -->
-<div class="radio-box">
-    <label>
-        <input type="radio" id="autoSalvar" checked>
-        Auto-salvar conferências durante leitura
-    </label>
-</div>
+<!-- Barras no topo -->
+<div class="barras-topo">
+    <div class="radio-box">
+        <label>
+            <input type="radio" id="autoSalvar" checked>
+            Auto-salvar conferências durante leitura
+        </label>
+    </div>
 
-<div class="radio-box" style="margin-top:10px;">
-    <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Usuário da conferência</div>
-    <span class="usuario-badge" id="usuarioBadge">Não informado</span>
-</div>
+    <div class="radio-box">
+        <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Usuário da conferência</div>
+        <span class="usuario-badge" id="usuarioBadge">Não informado</span>
+    </div>
 
-<div class="radio-box" style="margin-top:10px;">
-    <div style="color:#fff; font-weight:600; margin-bottom:8px;">🎯 Tipo de conferência</div>
-    <label style="gap:8px; margin-right:16px;">
-        <input type="radio" name="tipo_inicio" value="correios" checked>
-        Correios
-    </label>
-    <label style="gap:8px;">
-        <input type="radio" name="tipo_inicio" value="poupatempo">
-        Poupa Tempo
-    </label>
-</div>
+    <div class="radio-box">
+        <div style="color:#fff; font-weight:600; margin-bottom:8px;">🎯 Tipo de conferência</div>
+        <label style="gap:8px; margin-right:16px;">
+            <input type="radio" name="tipo_inicio" value="correios" checked>
+            Correios
+        </label>
+        <label style="gap:8px;">
+            <input type="radio" name="tipo_inicio" value="poupatempo">
+            Poupa Tempo
+        </label>
+    </div>
 
-<div class="radio-box" style="margin-top:10px;">
-    <label>
-        <input type="checkbox" id="muteBeep">
-        Silenciar beep.mp3
-    </label>
+    <div class="radio-box">
+        <label>
+            <input type="checkbox" id="muteBeep">
+            Silenciar beep.mp3
+        </label>
+    </div>
 </div>
 
 <!-- Filtro de datas -->
