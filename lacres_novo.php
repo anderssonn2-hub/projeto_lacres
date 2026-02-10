@@ -1,7 +1,10 @@
 <?php
-/* lacres_novo.php — Versão 9.21.5
+/* lacres_novo.php — Versão 9.21.6
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
  * 
+ * CHANGELOG v9.21.6 (10/02/2026):
+ * - [CORRIGIDO] Preserva lacres digitados ao cadastrar novo posto em regionais
+ *
  * CHANGELOG v9.21.5 (29/01/2026):
  * - [CORRIGIDO] ✅ Card "Status de Conferências" oculto na impressão (classe nao-imprimir)
  * - [MANTIDO] ✅ Botão "Filtrar por data(s)" com recálculo automático
@@ -5958,6 +5961,65 @@ function inicializarMonitoramentoAlteracoes() {
             });
         }
     } catch (er) { /* ignore */ }
+
+    function marcarRestauracaoAposPosto() {
+        try {
+            var idEl = document.getElementById('id_despacho');
+            var id = idEl ? idEl.value : 'sem';
+            window.localStorage.setItem('restaurar_lacres_pos_posto:' + id, '1');
+        } catch (e) { /* ignore */ }
+    }
+
+    function restaurarSeNecessario() {
+        try {
+            var idEl = document.getElementById('id_despacho');
+            var id = idEl ? idEl.value : 'sem';
+            var chave = 'restaurar_lacres_pos_posto:' + id;
+            if (window.localStorage.getItem(chave) === '1') {
+                if (typeof restaurarEstadoEtiquetasCorreios === 'function') {
+                    restaurarEstadoEtiquetasCorreios();
+                }
+                window.localStorage.removeItem(chave);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    try {
+        var formCadastro = document.querySelector('.form-cadastro');
+        if (formCadastro) {
+            formCadastro.addEventListener('submit', function() {
+                if (typeof salvarEstadoEtiquetasCorreios === 'function') {
+                    salvarEstadoEtiquetasCorreios();
+                }
+                marcarRestauracaoAposPosto();
+            });
+        }
+    } catch (eCad) { /* ignore */ }
+
+    try {
+        var formModalInserir = document.querySelector('#modal-inserir .modal-form');
+        if (formModalInserir) {
+            formModalInserir.addEventListener('submit', function() {
+                if (typeof salvarEstadoEtiquetasCorreios === 'function') {
+                    salvarEstadoEtiquetasCorreios();
+                }
+                marcarRestauracaoAposPosto();
+            });
+        }
+    } catch (eModal) { /* ignore */ }
+
+    try {
+        if (formAdicionar) {
+            formAdicionar.addEventListener('submit', function() {
+                if (typeof salvarEstadoEtiquetasCorreios === 'function') {
+                    salvarEstadoEtiquetasCorreios();
+                }
+                marcarRestauracaoAposPosto();
+            });
+        }
+    } catch (eAdd) { /* ignore */ }
+
+    restaurarSeNecessario();
     
     // VERSAO 3: Iniciar SEM pulsacao (so pulsa quando ha mudanca)
     // Pagina recarrega apos salvar, entao comeca sempre sem pulsacao
