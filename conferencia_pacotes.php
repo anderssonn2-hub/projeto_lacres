@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v9.24.0
+/* conferencia_pacotes.php — v9.24.1
+ * CHANGELOG v9.24.1:
+ * - [NOVO] Escolha obrigatoria de tipo apos informar responsavel
+ * - [NOVO] Tela inicial separada (inicio.php)
+ *
  * CHANGELOG v9.24.0:
  * - [NOVO] Postos bloqueados (nao enviar este posto) com audio dinamico
  * - [NOVO] Pacotes nao encontrados acumulados para salvar ao final
@@ -640,7 +644,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v9.24.0</title>
+    <title>Conferência de Pacotes v9.24.1</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -912,7 +916,8 @@ try {
             pointer-events: none;
             filter: blur(1px);
         }
-        .overlay-usuario {
+        .overlay-usuario,
+        .overlay-tipo {
             position: fixed;
             top: 0;
             left: 0;
@@ -924,7 +929,8 @@ try {
             justify-content: center;
             z-index: 2000;
         }
-        .overlay-usuario .card {
+        .overlay-usuario .card,
+        .overlay-tipo .card {
             background:#fff;
             padding:20px 24px;
             border-radius:8px;
@@ -932,7 +938,8 @@ try {
             max-width: 90%;
             box-shadow: 0 4px 16px rgba(0,0,0,0.25);
         }
-        .overlay-usuario .card h3 { margin:0 0 10px 0; }
+        .overlay-usuario .card h3,
+        .overlay-tipo .card h3 { margin:0 0 10px 0; }
         .overlay-usuario input[type="text"] {
             width: 100%;
             padding: 10px;
@@ -940,7 +947,8 @@ try {
             border-radius: 4px;
             margin-top: 6px;
         }
-        .overlay-usuario button {
+        .overlay-usuario button,
+        .overlay-tipo button {
             margin-top: 12px;
             padding: 10px 14px;
             background:#007bff;
@@ -951,6 +959,8 @@ try {
             width:100%;
             font-weight:700;
         }
+        .overlay-tipo .btn-opcao { background:#28a745; }
+        .overlay-tipo .btn-opcao.pt { background:#17a2b8; }
         .painel-pacotes-novos {
             background:#fff;
             border-radius:8px;
@@ -1007,7 +1017,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v9.24.0</div>
+    <div class="versao">v9.24.1</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1052,7 +1062,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v9.24.0</h2>
+<h2>📋 Conferência de Pacotes v9.24.1</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1060,6 +1070,15 @@ try {
         <div style="font-size:12px; color:#666;">Obrigatório para iniciar a conferência.</div>
         <input type="text" id="usuario_conf_modal" placeholder="Digite o responsável" autocomplete="off">
         <button type="button" id="btnConfirmarUsuario">Confirmar</button>
+    </div>
+</div>
+
+<div class="overlay-tipo" id="overlayTipo" style="display:none;">
+    <div class="card">
+        <h3>🎯 Tipo de conferência</h3>
+        <div style="font-size:12px; color:#666;">Escolha para iniciar.</div>
+        <button type="button" class="btn-opcao" data-tipo="correios">Correios</button>
+        <button type="button" class="btn-opcao pt" data-tipo="poupatempo">Poupa Tempo</button>
     </div>
 </div>
 
@@ -1455,6 +1474,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var conteudoPagina = document.getElementById("conteudoPagina");
     var usuarioInputModal = document.getElementById("usuario_conf_modal");
     var btnConfirmarUsuario = document.getElementById("btnConfirmarUsuario");
+    var overlayTipo = document.getElementById("overlayTipo");
     var usuarioAtual = '';
     var audioDesbloqueado = false;
     var modalPacote = document.getElementById('modalPacote');
@@ -1480,6 +1500,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var listaPostosBloqueados = document.getElementById('listaPostosBloqueados');
     var postosBloqueados = <?php echo json_encode($postos_bloqueados); ?>;
     var postosBloqueadosMap = {};
+    var tipoEscolhido = false;
 
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
@@ -1582,6 +1603,19 @@ document.addEventListener("DOMContentLoaded", function() {
             if (radios[i].checked) return radios[i].value;
         }
         return 'correios';
+    }
+
+    function selecionarTipoConferencia(tipo) {
+        var radios = document.querySelectorAll('input[name="tipo_inicio"]');
+        for (var i = 0; i < radios.length; i++) {
+            if (radios[i].value === tipo) {
+                radios[i].checked = true;
+                break;
+            }
+        }
+        tipoEscolhido = true;
+        if (overlayTipo) overlayTipo.style.display = 'none';
+        if (input) input.focus();
     }
 
     function abrirModalPacote(codigo, idx) {
@@ -1757,7 +1791,10 @@ document.addEventListener("DOMContentLoaded", function() {
         if (conteudoPagina) {
             conteudoPagina.classList.remove('page-locked');
         }
-        input.focus();
+        tipoEscolhido = false;
+        if (overlayTipo) {
+            overlayTipo.style.display = 'flex';
+        }
     }
 
     if (btnConfirmarUsuario) {
@@ -1769,6 +1806,17 @@ document.addEventListener("DOMContentLoaded", function() {
                 return;
             }
             liberarPaginaComUsuario(nome);
+        });
+    }
+
+    if (overlayTipo) {
+        overlayTipo.addEventListener('click', function(e) {
+            var target = e.target;
+            if (!target) return;
+            var tipo = target.getAttribute('data-tipo');
+            if (tipo) {
+                selecionarTipoConferencia(tipo);
+            }
         });
     }
 
@@ -1863,13 +1911,19 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
-        // v9.23.1: usuário obrigatório
+        // v9.23.1: responsável obrigatório
         if (!usuarioAtual) {
             alert('Informe o responsável da conferência para iniciar.');
             input.value = "";
             if (overlayUsuario) { overlayUsuario.style.display = 'flex'; }
             if (conteudoPagina) { conteudoPagina.classList.add('page-locked'); }
             if (usuarioInputModal) { usuarioInputModal.focus(); }
+            return;
+        }
+
+        if (!tipoEscolhido) {
+            if (overlayTipo) overlayTipo.style.display = 'flex';
+            input.value = "";
             return;
         }
         
