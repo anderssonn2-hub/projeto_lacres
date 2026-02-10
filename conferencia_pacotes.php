@@ -1,5 +1,14 @@
 <?php
-/* conferencia_pacotes.php — v9.23.6
+/* conferencia_pacotes.php — v9.24.0
+ * CHANGELOG v9.24.0:
+ * - [NOVO] Postos bloqueados (nao enviar este posto) com audio dinamico
+ * - [NOVO] Pacotes nao encontrados acumulados para salvar ao final
+ * - [NOVO] Audio dinamico para pacote nao encontrado
+ * - [MELHORIA] Layout responsivo para uso em celulares
+ * - [AJUSTE] Status de conferencias recolhido no topo esquerdo
+ * - [AJUSTE] Toggle deslizante para beep e rotulo de responsavel
+ * - [MELHORIA] Banners para grupos Correios e Poupa Tempo
+ *
  * CHANGELOG v9.23.6:
  * - [CORRIGIDO] Fallback por lote para linhas já conferidas
  *
@@ -95,6 +104,18 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
+    // v9.24.0: Postos bloqueados
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ciPostosBloqueados (
+        id INT NOT NULL AUTO_INCREMENT,
+        posto VARCHAR(10) NOT NULL,
+        nome VARCHAR(120) DEFAULT NULL,
+        ativo TINYINT(1) NOT NULL DEFAULT 1,
+        criado DATETIME NOT NULL,
+        atualizado DATETIME DEFAULT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY posto (posto)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
     // Handler AJAX salvar
     if (isset($_POST['salvar_lote_ajax'])) {
         $lote = trim($_POST['lote']);
@@ -149,6 +170,10 @@ try {
                 $regional = isset($p['regional']) ? trim($p['regional']) : '';
                 $quantidade = isset($p['quantidade']) ? (int)$p['quantidade'] : 0;
                 $dataexp = isset($p['dataexp']) ? trim($p['dataexp']) : '';
+                $usuario_pacote = isset($p['responsavel']) ? trim($p['responsavel']) : '';
+                if ($usuario_pacote === '') {
+                    $usuario_pacote = $usuario_conf;
+                }
 
                 if ($lote === '' || $posto === '' || $regional === '' || $quantidade <= 0 || $dataexp === '') {
                     throw new Exception('Campos obrigatorios ausentes');
@@ -162,7 +187,7 @@ try {
                     throw new Exception('Data invalida');
                 }
 
-                $stmtCsv->execute(array($lote, $posto, $regional, $quantidade, $data_sql, $usuario_conf));
+                $stmtCsv->execute(array($lote, $posto, $regional, $quantidade, $data_sql, $usuario_pacote));
 
                 $nome_posto = sprintf('%03d - POSTO', (int)$posto);
                 $criado = $data_sql . ' 10:10:10';
@@ -172,7 +197,7 @@ try {
                     $quantidade,
                     'M',
                     (int)$lote,
-                    $usuario_conf,
+                    $usuario_pacote,
                     $criado
                 ));
                 $ok++;
@@ -198,6 +223,40 @@ try {
         $stmt->execute(array($lote, $regional, $posto));
         $stmt = null; // v8.17.4: Libera statement
         $pdo = null;  // v8.17.4: Fecha conexão
+        die(json_encode(array('success' => true)));
+    }
+
+    // v9.24.0: Salvar posto bloqueado
+    if (isset($_POST['salvar_posto_bloqueado'])) {
+        $posto = trim($_POST['posto']);
+        $nome = isset($_POST['nome']) ? trim($_POST['nome']) : '';
+        if ($posto === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Posto obrigatorio')));
+        }
+        $stmt = $pdo->prepare("SELECT id FROM ciPostosBloqueados WHERE posto = ?");
+        $stmt->execute(array($posto));
+        if ($stmt->fetch()) {
+            $stmt = $pdo->prepare("UPDATE ciPostosBloqueados SET nome = ?, ativo = 1, atualizado = NOW() WHERE posto = ?");
+            $stmt->execute(array($nome, $posto));
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO ciPostosBloqueados (posto, nome, ativo, criado) VALUES (?, ?, 1, NOW())");
+            $stmt->execute(array($posto, $nome));
+        }
+        $stmt = null;
+        $pdo = null;
+        die(json_encode(array('success' => true)));
+    }
+
+    // v9.24.0: Excluir posto bloqueado
+    if (isset($_POST['excluir_posto_bloqueado'])) {
+        $posto = trim($_POST['posto']);
+        if ($posto === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Posto obrigatorio')));
+        }
+        $stmt = $pdo->prepare("DELETE FROM ciPostosBloqueados WHERE posto = ?");
+        $stmt->execute(array($posto));
+        $stmt = null;
+        $pdo = null;
         die(json_encode(array('success' => true)));
     }
 
@@ -491,10 +550,16 @@ try {
             $dias_com_producao[] = $data_fmt;
 
             $dia_num = (int)$row['dia_semana'];
-            $label = '';
-            if ($dia_num == 6) $label = 'SEX';
-            elseif ($dia_num == 7) $label = 'SÁB';
-            elseif ($dia_num == 1) $label = 'DOM';
+            $labels = array(
+                1 => 'DOM',
+                2 => 'SEG',
+                3 => 'TER',
+                4 => 'QUA',
+                5 => 'QUI',
+                6 => 'SEX',
+                7 => 'SAB'
+            );
+            $label = isset($labels[$dia_num]) ? $labels[$dia_num] : '';
 
             $metadados_dias[$data_fmt] = array(
                 'dia_semana_num' => $dia_num,
@@ -550,6 +615,20 @@ try {
         }
     }
 
+    // v9.24.0: Carregar postos bloqueados
+    $postos_bloqueados = array();
+    try {
+        $stmtBloq = $pdo->query("SELECT posto, nome FROM ciPostosBloqueados WHERE ativo = 1 ORDER BY posto ASC");
+        while ($row = $stmtBloq->fetch(PDO::FETCH_ASSOC)) {
+            $postos_bloqueados[] = array(
+                'posto' => $row['posto'],
+                'nome' => $row['nome']
+            );
+        }
+    } catch (Exception $e) {
+        $postos_bloqueados = array();
+    }
+
 } catch (PDOException $e) {
     echo "Erro ao conectar ao banco de dados: " . $e->getMessage();
     die();
@@ -560,10 +639,11 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v9.22.7</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conferência de Pacotes v9.24.0</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
         h2 { color: #333; border-bottom: 3px solid #007bff; padding-bottom: 10px; margin-bottom: 20px; }
         h3 { 
             color: #555; 
@@ -683,17 +763,22 @@ try {
             font-weight: 700;
             margin-left: 8px;
         }
-        .versao {
+        .topo-status {
             position: fixed;
             top: 10px;
-            right: 10px;
+            left: 10px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            z-index: 1200;
+        }
+        .versao {
             background: #28a745;
             color: white;
             padding: 8px 15px;
             border-radius: 20px;
             font-size: 13px;
             font-weight: 700;
-            z-index: 1000;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         .cards-resumo {
@@ -730,22 +815,29 @@ try {
             margin-top: 6px;
         }
         #indicador-dias {
-            position: relative;
-            top: 0;
-            right: 0;
             background: #fff;
             border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 12px 14px;
-            width: 260px;
+            border-radius: 10px;
+            padding: 10px 12px;
+            width: 280px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            z-index: 10;
         }
         #indicador-dias.collapsed .indicador-conteudo { display: none; }
+        .indicador-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            color: #333;
+            font-size: 13px;
+        }
         .badge-data { display:inline-block; padding:4px 8px; border-radius:6px; font-size:11px; margin:2px 4px 2px 0; }
         .badge-data.conferida { background:#28a745; color:#fff; }
         .badge-data.pendente { background:#ffc107; color:#333; font-weight:bold; }
-        .indicador-toggle { cursor:pointer; float:right; }
+        .badge-dia { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:16px; margin-left:6px; background:#343a40; color:#fff; font-size:9px; border-radius:3px; padding:0 4px; }
+        .indicador-toggle { font-size: 14px; color: #666; }
         .usuario-badge {
             display:inline-block;
             padding:6px 10px;
@@ -755,6 +847,67 @@ try {
             font-weight:700;
             font-size:12px;
         }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .2s;
+            border-radius: 999px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        .switch input:checked + .slider { background-color: #dc3545; }
+        .switch input:checked + .slider:before { transform: translateX(20px); }
+        .banner-grupo {
+            margin: 16px 0 8px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            text-align: center;
+            color: #fff;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+        }
+        .banner-correios { background: linear-gradient(135deg, #2f80ed 0%, #56ccf2 100%); }
+        .banner-pt { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
+        .painel-bloqueio {
+            background: #fff;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin: 10px 0 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid #dc3545;
+        }
+        .painel-bloqueio h4 { margin: 0 0 10px; font-size: 13px; color:#444; text-transform: uppercase; }
+        .bloqueio-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; align-items: center; }
+        .bloqueio-form input { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
+        .bloqueio-lista { margin-top: 10px; display: grid; gap: 6px; }
+        .bloqueio-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; font-size: 12px; }
+        .bloqueio-item .posto { font-weight: 700; color: #dc3545; }
+        .mensagem-leitura { margin: 6px 0 0; font-size: 12px; color: #555; }
+        .mensagem-leitura strong { color: #dc3545; }
         .page-locked {
             pointer-events: none;
             filter: blur(1px);
@@ -836,18 +989,76 @@ try {
         }
         .modal-pacote label { display:block; margin-top:8px; font-size:12px; color:#555; }
         .modal-pacote input { width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; }
+        .btn-secundario { background:#6c757d; color:#fff; }
+        @media (max-width: 768px) {
+            body { padding: 12px; padding-top: 20px; }
+            .topo-status { position: static; flex-direction: column; align-items: stretch; }
+            #indicador-dias { width: 100%; }
+            .barras-topo { grid-template-columns: 1fr; }
+            .radio-box { padding: 10px 12px; }
+            #codigo_barras { max-width: 100%; font-size: 18px; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            th, td { font-size: 12px; padding: 8px; }
+            h2 { font-size: 18px; }
+            .cards-resumo { grid-template-columns: 1fr 1fr; }
+            #resetar { margin-left: 0; margin-top: 8px; width: 100%; }
+        }
     </style>
 </head>
 <body>
-<div class="versao">v9.23.4</div>
+<div class="topo-status">
+    <div class="versao">v9.24.0</div>
+    <div id="indicador-dias" class="collapsed">
+        <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
+            <span>📅 Status de Conferências</span>
+            <span class="indicador-toggle">▼</span>
+        </div>
+        <div class="indicador-conteudo">
+            <div style="margin:10px 0;">
+                <strong style="color:#28a745;font-size:12px;">✓ Últimas Conferências:</strong><br>
+                <div style="margin-top:5px;">
+                    <?php 
+                    $ultimas_cinco = array_slice($dias_com_conferencia, 0, 5);
+                    if (!empty($ultimas_cinco)) {
+                        foreach ($ultimas_cinco as $data) {
+                            $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
+                            $badge_label = !empty($label_dia) ? " <span class='badge-dia'>$label_dia</span>" : '';
+                            echo '<span class="badge-data conferida">' . htmlspecialchars($data) . $badge_label . '</span>';
+                        }
+                    } else {
+                        echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
+                    }
+                    ?>
+                </div>
+            </div>
+            <div style="margin:10px 0;">
+                <strong style="color:#ffc107;font-size:12px;">⚠ Conferências Pendentes:</strong><br>
+                <div style="margin-top:5px;">
+                    <?php 
+                    $ultimas_pendentes = array_slice($dias_sem_conferencia, 0, 5);
+                    if (!empty($ultimas_pendentes)) {
+                        foreach ($ultimas_pendentes as $data) {
+                            $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
+                            $badge_label = !empty($label_dia) ? " <span class='badge-dia'>$label_dia</span>" : '';
+                            echo '<span class="badge-data pendente">' . htmlspecialchars($data) . $badge_label . '</span>';
+                        }
+                    } else {
+                        echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
+                    }
+                    ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-<h2>📋 Conferência de Pacotes v9.23.4</h2>
+<h2>📋 Conferência de Pacotes v9.24.0</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
-        <h3>👤 Informe o usuário</h3>
+        <h3>👤 Informe o responsável</h3>
         <div style="font-size:12px; color:#666;">Obrigatório para iniciar a conferência.</div>
-        <input type="text" id="usuario_conf_modal" placeholder="Digite o usuário" autocomplete="off">
+        <input type="text" id="usuario_conf_modal" placeholder="Digite o responsável" autocomplete="off">
         <button type="button" id="btnConfirmarUsuario">Confirmar</button>
     </div>
 </div>
@@ -857,14 +1068,7 @@ try {
 <!-- Barras no topo -->
 <div class="barras-topo">
     <div class="radio-box">
-        <label>
-            <input type="radio" id="autoSalvar" checked>
-            Auto-salvar conferências durante leitura
-        </label>
-    </div>
-
-    <div class="radio-box">
-        <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Usuário da conferência</div>
+        <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Responsável da conferência</div>
         <span class="usuario-badge" id="usuarioBadge">Não informado</span>
     </div>
 
@@ -881,12 +1085,17 @@ try {
     </div>
 
     <div class="radio-box">
-        <label>
-            <input type="checkbox" id="muteBeep">
-            Silenciar beep.mp3
+        <div style="color:#fff; font-weight:600; margin-bottom:8px;">🔔 Beep de leitura</div>
+        <label style="gap:10px;">
+            <span class="switch">
+                <input type="checkbox" id="muteBeep">
+                <span class="slider"></span>
+            </span>
+            Silenciar
         </label>
     </div>
 </div>
+<input type="checkbox" id="autoSalvar" checked style="display:none;">
 
 <!-- Filtro de datas -->
 <div class="filtro-datas">
@@ -904,53 +1113,23 @@ try {
     </form>
 </div>
 
-<div id="indicador-dias">
-    <div style="font-weight:bold;color:#333;font-size:13px;">
-        📅 Status de Conferências
-        <span class="indicador-toggle" onclick="toggleIndicadorDias()" title="Recolher/Expandir">▼</span>
+<div class="painel-bloqueio">
+    <h4>🚫 Postos que nao devem ser enviados</h4>
+    <div class="bloqueio-form">
+        <input type="text" id="postoBloqueioNumero" placeholder="Posto (numero)">
+        <input type="text" id="postoBloqueioNome" placeholder="Nome/descricao (opcional)">
+        <button type="button" class="btn-acao btn-cancelar" id="btnAdicionarBloqueio">Adicionar</button>
     </div>
-    <div class="indicador-conteudo">
-        <div style="margin:10px 0;">
-            <strong style="color:#28a745;font-size:12px;">✓ Últimas Conferências:</strong><br>
-            <div style="margin-top:5px;">
-                <?php 
-                $ultimas_cinco = array_slice($dias_com_conferencia, 0, 5);
-                if (!empty($ultimas_cinco)) {
-                    foreach ($ultimas_cinco as $data) {
-                        $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
-                        $badge_label = !empty($label_dia) ? " <small style='font-size:9px;background:#6c757d;color:white;padding:1px 3px;border-radius:2px;'>$label_dia</small>" : '';
-                        echo '<span class="badge-data conferida">' . htmlspecialchars($data) . $badge_label . '</span>';
-                    }
-                } else {
-                    echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
-                }
-                ?>
+    <div class="bloqueio-lista" id="listaPostosBloqueados">
+        <?php foreach ($postos_bloqueados as $pb) { ?>
+            <div class="bloqueio-item" data-posto="<?php echo e($pb['posto']); ?>">
+                <div>
+                    <span class="posto"><?php echo e($pb['posto']); ?></span>
+                    <span><?php echo e($pb['nome']); ?></span>
+                </div>
+                <button type="button" class="btn-acao btn-cancelar" data-remover="<?php echo e($pb['posto']); ?>">Remover</button>
             </div>
-        </div>
-        <div style="margin:10px 0;">
-            <strong style="color:#ffc107;font-size:12px;">⚠ Conferências Pendentes:</strong><br>
-            <div style="margin-top:5px;">
-                <?php 
-                $ultimas_pendentes = array_slice($dias_sem_conferencia, 0, 5);
-                if (!empty($ultimas_pendentes)) {
-                    foreach ($ultimas_pendentes as $data) {
-                        $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
-                        $badge_label = '';
-                        if ($label_dia == 'SEX') {
-                            $badge_label = " <small style='font-size:9px;background:#ffc107;color:#333;padding:1px 3px;border-radius:2px;font-weight:bold;'>SEX</small>";
-                        } elseif ($label_dia == 'SÁB') {
-                            $badge_label = " <small style='font-size:9px;background:#17a2b8;color:white;padding:1px 3px;border-radius:2px;font-weight:bold;'>SÁB</small>";
-                        } elseif ($label_dia == 'DOM') {
-                            $badge_label = " <small style='font-size:9px;background:#dc3545;color:white;padding:1px 3px;border-radius:2px;font-weight:bold;'>DOM</small>";
-                        }
-                        echo '<span class="badge-data pendente">' . htmlspecialchars($data) . $badge_label . '</span>';
-                    }
-                } else {
-                    echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
-                }
-                ?>
-            </div>
-        </div>
+        <?php } ?>
     </div>
 </div>
 
@@ -965,6 +1144,7 @@ try {
                     <th>Posto</th>
                     <th>Qtd</th>
                     <th>Data</th>
+                    <th>Responsável</th>
                     <th>Ação</th>
                 </tr>
             </thead>
@@ -993,6 +1173,9 @@ try {
         <input type="number" id="pacote_qtd" min="1">
         <label>Data de expedição</label>
         <input type="date" id="pacote_dataexp">
+        <label>Responsável</label>
+        <input type="text" id="pacote_responsavel" placeholder="Opcional">
+        <input type="hidden" id="pacote_idx" value="">
         <div style="margin-top:10px; display:flex; gap:8px;">
             <button type="button" class="btn-acao btn-salvar" id="btnAdicionarPacote">Adicionar</button>
             <button type="button" class="btn-acao btn-cancelar" id="btnCancelarPacote">Cancelar</button>
@@ -1033,6 +1216,7 @@ try {
 <div>
     <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus>
     <button id="resetar">🔄 Resetar Conferência</button>
+    <div class="mensagem-leitura" id="mensagemLeitura"></div>
 </div>
 
 <!-- Tabelas Agrupadas -->
@@ -1086,6 +1270,11 @@ foreach ($regionais_data as $regional => $postos) {
 
 // v8.17.5: Ordena demais regionais em ordem crescente
 ksort($grupo_outros);
+
+// v9.24.0: Banner por grupo
+function renderizarBanner($texto, $classe) {
+    echo '<div class="banner-grupo ' . $classe . '">' . htmlspecialchars($texto, ENT_QUOTES, 'UTF-8') . '</div>';
+}
 
 // v8.17.5: Função para renderizar tabela (aceita array plano OU aninhado)
 function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '') {
@@ -1163,23 +1352,45 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
 }
 
 // v8.17.4: Renderizar na ordem correta (cada grupo = UMA tabela)
+$banner_correios_exibido = false;
+$banner_pt_exibido = false;
 if (!empty($grupo_pt)) {
     ksort($grupo_pt);
+    if (!$banner_pt_exibido) {
+        renderizarBanner('POSTOS DO POUPA TEMPO', 'banner-pt');
+        $banner_pt_exibido = true;
+    }
     foreach ($grupo_pt as $postoKey => $postosPt) {
         renderizarTabela('Posto ' . $postoKey . ' - Poupa Tempo', $postosPt, true, $postoKey);
     }
 }
 if (!empty($grupo_r01)) {
+    if (!$banner_correios_exibido) {
+        renderizarBanner('POSTOS DOS CORREIOS', 'banner-correios');
+        $banner_correios_exibido = true;
+    }
     renderizarTabela('Postos do Posto 01', $grupo_r01);
 }
 if (!empty($grupo_capital)) {
+    if (!$banner_correios_exibido) {
+        renderizarBanner('POSTOS DOS CORREIOS', 'banner-correios');
+        $banner_correios_exibido = true;
+    }
     renderizarTabela('Postos da Capital', $grupo_capital);
 }
 if (!empty($grupo_999)) {
+    if (!$banner_correios_exibido) {
+        renderizarBanner('POSTOS DOS CORREIOS', 'banner-correios');
+        $banner_correios_exibido = true;
+    }
     renderizarTabela('Postos da Central IIPR', $grupo_999);
 }
 // v8.17.5: Demais regionais já ordenadas (ksort aplicado na linha 367)
 if (!empty($grupo_outros)) {
+    if (!$banner_correios_exibido) {
+        renderizarBanner('POSTOS DOS CORREIOS', 'banner-correios');
+        $banner_correios_exibido = true;
+    }
     foreach ($grupo_outros as $regional => $postos) {
         $regionalStr = str_pad($regional, 3, '0', STR_PAD_LEFT);
         renderizarTabela($regionalStr . ' - Regional ' . $regionalStr, array($regional => $postos));
@@ -1253,6 +1464,8 @@ document.addEventListener("DOMContentLoaded", function() {
     var pacotePosto = document.getElementById('pacote_posto');
     var pacoteQtd = document.getElementById('pacote_qtd');
     var pacoteDataexp = document.getElementById('pacote_dataexp');
+    var pacoteResponsavel = document.getElementById('pacote_responsavel');
+    var pacoteIdx = document.getElementById('pacote_idx');
     var btnAdicionarPacote = document.getElementById('btnAdicionarPacote');
     var btnCancelarPacote = document.getElementById('btnCancelarPacote');
     var painelPacotesNovos = document.getElementById('painelPacotesNovos');
@@ -1260,6 +1473,13 @@ document.addEventListener("DOMContentLoaded", function() {
     var btnSalvarPacotes = document.getElementById('btnSalvarPacotes');
     var btnCancelarPacotes = document.getElementById('btnCancelarPacotes');
     var pacotesPendentes = [];
+    var mensagemLeitura = document.getElementById('mensagemLeitura');
+    var postoBloqueioNumero = document.getElementById('postoBloqueioNumero');
+    var postoBloqueioNome = document.getElementById('postoBloqueioNome');
+    var btnAdicionarBloqueio = document.getElementById('btnAdicionarBloqueio');
+    var listaPostosBloqueados = document.getElementById('listaPostosBloqueados');
+    var postosBloqueados = <?php echo json_encode($postos_bloqueados); ?>;
+    var postosBloqueadosMap = {};
 
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
@@ -1293,6 +1513,16 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!tocando) {
             tocarProximoSom();
         }
+    }
+
+    function falarTexto(texto) {
+        if (!window.speechSynthesis || !texto) return;
+        try {
+            var ut = new SpeechSynthesisUtterance(texto);
+            ut.lang = 'pt-BR';
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(ut);
+        } catch (e) {}
     }
 
     // Encadeia para tocar o próximo som quando o atual terminar
@@ -1354,11 +1584,12 @@ document.addEventListener("DOMContentLoaded", function() {
         return 'correios';
     }
 
-    function abrirModalPacote(codigo) {
+    function abrirModalPacote(codigo, idx) {
         if (!modalPacote) return;
         var cod = codigo || '';
+        if (pacoteIdx) pacoteIdx.value = (typeof idx === 'number') ? String(idx) : '';
         if (pacoteCodbar) pacoteCodbar.value = cod;
-        if (cod.length === 19) {
+        if (cod.length === 19 && (typeof idx !== 'number')) {
             if (pacoteLote) pacoteLote.value = cod.substr(0, 8);
             if (pacoteRegional) pacoteRegional.value = cod.substr(8, 3);
             if (pacotePosto) pacotePosto.value = cod.substr(11, 3);
@@ -1376,6 +1607,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function fecharModalPacote() {
         if (modalPacote) modalPacote.style.display = 'none';
+        if (pacoteIdx) pacoteIdx.value = '';
+        if (pacoteResponsavel) pacoteResponsavel.value = '';
     }
 
     function renderizarPacotesPendentes() {
@@ -1389,12 +1622,30 @@ document.addEventListener("DOMContentLoaded", function() {
                 '<td>' + p.posto + '</td>' +
                 '<td>' + p.quantidade + '</td>' +
                 '<td>' + p.dataexp + '</td>' +
-                '<td><button type="button" class="btn-acao btn-cancelar" data-idx="' + i + '">Remover</button></td>';
+                '<td>' + (p.responsavel || '') + '</td>' +
+                '<td>' +
+                '<button type="button" class="btn-acao btn-salvar" data-editar="' + i + '">Editar</button> ' +
+                '<button type="button" class="btn-acao btn-cancelar" data-remover="' + i + '">Remover</button>' +
+                '</td>';
             listaPacotesNovos.appendChild(tr);
         }
         if (painelPacotesNovos) {
             painelPacotesNovos.style.display = pacotesPendentes.length ? 'block' : 'none';
         }
+    }
+
+    function adicionarPacotePendente(obj) {
+        if (!obj || !obj.lote || !obj.regional || !obj.posto || !obj.quantidade || !obj.dataexp) {
+            return false;
+        }
+        for (var i = 0; i < pacotesPendentes.length; i++) {
+            if (pacotesPendentes[i].codbar === obj.codbar) {
+                return false;
+            }
+        }
+        pacotesPendentes.push(obj);
+        renderizarPacotesPendentes();
+        return true;
     }
 
     if (btnAdicionarPacote) {
@@ -1405,14 +1656,20 @@ document.addEventListener("DOMContentLoaded", function() {
                 regional: pacoteRegional ? pacoteRegional.value.trim() : '',
                 posto: pacotePosto ? pacotePosto.value.trim() : '',
                 quantidade: pacoteQtd ? pacoteQtd.value.trim() : '',
-                dataexp: pacoteDataexp ? pacoteDataexp.value.trim() : ''
+                dataexp: pacoteDataexp ? pacoteDataexp.value.trim() : '',
+                responsavel: pacoteResponsavel ? pacoteResponsavel.value.trim() : ''
             };
             if (!obj.lote || !obj.regional || !obj.posto || !obj.quantidade || !obj.dataexp) {
                 alert('Preencha todos os campos do pacote.');
                 return;
             }
-            pacotesPendentes.push(obj);
-            renderizarPacotesPendentes();
+            var idx = pacoteIdx ? parseInt(pacoteIdx.value, 10) : -1;
+            if (!isNaN(idx) && idx >= 0 && pacotesPendentes[idx]) {
+                pacotesPendentes[idx] = obj;
+                renderizarPacotesPendentes();
+            } else {
+                adicionarPacotePendente(obj);
+            }
             fecharModalPacote();
         });
     }
@@ -1426,11 +1683,26 @@ document.addEventListener("DOMContentLoaded", function() {
     if (listaPacotesNovos) {
         listaPacotesNovos.addEventListener('click', function(e) {
             var target = e.target;
-            if (target && target.getAttribute('data-idx')) {
-                var idx = parseInt(target.getAttribute('data-idx'), 10);
-                if (!isNaN(idx)) {
-                    pacotesPendentes.splice(idx, 1);
+            if (!target) return;
+            if (target.getAttribute('data-remover')) {
+                var idxRem = parseInt(target.getAttribute('data-remover'), 10);
+                if (!isNaN(idxRem)) {
+                    pacotesPendentes.splice(idxRem, 1);
                     renderizarPacotesPendentes();
+                }
+            }
+            if (target.getAttribute('data-editar')) {
+                var idxEdit = parseInt(target.getAttribute('data-editar'), 10);
+                if (!isNaN(idxEdit) && pacotesPendentes[idxEdit]) {
+                    var p = pacotesPendentes[idxEdit];
+                    if (pacoteCodbar) pacoteCodbar.value = p.codbar || '';
+                    if (pacoteLote) pacoteLote.value = p.lote || '';
+                    if (pacoteRegional) pacoteRegional.value = p.regional || '';
+                    if (pacotePosto) pacotePosto.value = p.posto || '';
+                    if (pacoteQtd) pacoteQtd.value = p.quantidade || '';
+                    if (pacoteDataexp) pacoteDataexp.value = p.dataexp || '';
+                    if (pacoteResponsavel) pacoteResponsavel.value = p.responsavel || '';
+                    abrirModalPacote(p.codbar || '', idxEdit);
                 }
             }
         });
@@ -1446,7 +1718,7 @@ document.addEventListener("DOMContentLoaded", function() {
     if (btnSalvarPacotes) {
         btnSalvarPacotes.addEventListener('click', function() {
             if (!usuarioAtual) {
-                alert('Informe o usuário da conferência.');
+                alert('Informe o responsável da conferência.');
                 return;
             }
             if (!pacotesPendentes.length) return;
@@ -1492,7 +1764,7 @@ document.addEventListener("DOMContentLoaded", function() {
         btnConfirmarUsuario.addEventListener('click', function() {
             var nome = usuarioInputModal ? usuarioInputModal.value.trim() : '';
             if (!nome) {
-                alert('Informe o usuário da conferência.');
+                alert('Informe o responsável da conferência.');
                 if (usuarioInputModal) usuarioInputModal.focus();
                 return;
             }
@@ -1545,6 +1817,22 @@ document.addEventListener("DOMContentLoaded", function() {
         if (valor.length !== 19) {
             return;
         }
+
+        valor = valor.replace(/\D+/g, '');
+        if (valor.length !== 19) {
+            input.value = "";
+            return;
+        }
+
+        var postoLido = valor.substr(11, 3);
+        if (postosBloqueadosMap[postoLido]) {
+            falarTexto('nao enviar este posto');
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Posto bloqueado:</strong> ' + postoLido + ' ' + (postosBloqueadosMap[postoLido].nome || '');
+            }
+            input.value = "";
+            return;
+        }
         
         // Aplicar transformações opcionais
         // valor = substituirMultiplosPadroes(valor);
@@ -1552,14 +1840,32 @@ document.addEventListener("DOMContentLoaded", function() {
         var linha = document.querySelector('tr[data-codigo="' + valor + '"]');
         
         if (!linha) {
-            abrirModalPacote(valor);
+            var now = new Date();
+            var mm = String(now.getMonth() + 1).padStart(2, '0');
+            var dd = String(now.getDate()).padStart(2, '0');
+            var dataPadrao = now.getFullYear() + '-' + mm + '-' + dd;
+
+            var obj = {
+                codbar: valor,
+                lote: valor.substr(0, 8),
+                regional: valor.substr(8, 3),
+                posto: valor.substr(11, 3),
+                quantidade: parseInt(valor.substr(14, 5), 10) || 1,
+                dataexp: dataPadrao,
+                responsavel: ''
+            };
+            adicionarPacotePendente(obj);
+            falarTexto('pacote nao encontrado');
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
+            }
             input.value = "";
             return;
         }
 
         // v9.23.1: usuário obrigatório
         if (!usuarioAtual) {
-            alert('Informe o usuário da conferência para iniciar.');
+            alert('Informe o responsável da conferência para iniciar.');
             input.value = "";
             if (overlayUsuario) { overlayUsuario.style.display = 'flex'; }
             if (conteudoPagina) { conteudoPagina.classList.add('page-locked'); }
@@ -1573,7 +1879,9 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Verifica se já foi conferido
         if (linha.classList.contains("confirmado")) {
-            enfileirarSom(beep);
+            if (!muteBeep || !muteBeep.checked) {
+                enfileirarSom(beep);
+            }
             enfileirarSom(pacoteJaConferido);
             input.value = "";
             return;
@@ -1640,12 +1948,16 @@ document.addEventListener("DOMContentLoaded", function() {
         // Marca como conferido
         linha.classList.add("confirmado");
         
-        // Toca os sons: beep sempre na leitura válida, alerta se necessário
+        // Toca os sons: beep na leitura válida, alerta se necessário
         if (!muteBeep || !muteBeep.checked) {
             enfileirarSom(beep);
         }
         if (somAlerta) {
             enfileirarSom(somAlerta);
+        }
+
+        if (mensagemLeitura) {
+            mensagemLeitura.textContent = '';
         }
         
         input.value = "";
@@ -1774,6 +2086,82 @@ document.addEventListener("DOMContentLoaded", function() {
             el.classList.add('collapsed');
         }
     };
+
+    function atualizarMapaBloqueados() {
+        postosBloqueadosMap = {};
+        for (var i = 0; i < postosBloqueados.length; i++) {
+            postosBloqueadosMap[postosBloqueados[i].posto] = postosBloqueados[i];
+        }
+    }
+
+    function renderizarPostosBloqueados() {
+        if (!listaPostosBloqueados) return;
+        listaPostosBloqueados.innerHTML = '';
+        for (var i = 0; i < postosBloqueados.length; i++) {
+            var p = postosBloqueados[i];
+            var div = document.createElement('div');
+            div.className = 'bloqueio-item';
+            div.setAttribute('data-posto', p.posto);
+            div.innerHTML = '<div><span class="posto">' + p.posto + '</span> ' + (p.nome || '') + '</div>' +
+                '<button type="button" class="btn-acao btn-cancelar" data-remover="' + p.posto + '">Remover</button>';
+            listaPostosBloqueados.appendChild(div);
+        }
+        atualizarMapaBloqueados();
+    }
+
+    if (btnAdicionarBloqueio) {
+        btnAdicionarBloqueio.addEventListener('click', function() {
+            var posto = postoBloqueioNumero ? postoBloqueioNumero.value.trim() : '';
+            var nome = postoBloqueioNome ? postoBloqueioNome.value.trim() : '';
+            if (!posto) {
+                alert('Informe o numero do posto.');
+                if (postoBloqueioNumero) postoBloqueioNumero.focus();
+                return;
+            }
+            var formData = new FormData();
+            formData.append('salvar_posto_bloqueado', '1');
+            formData.append('posto', posto);
+            formData.append('nome', nome);
+            fetch(window.location.href, { method: 'POST', body: formData })
+                .then(function(resp){ return resp.json(); })
+                .then(function(data){
+                    if (data && data.success) {
+                        postosBloqueados.push({ posto: posto, nome: nome });
+                        renderizarPostosBloqueados();
+                        if (postoBloqueioNumero) postoBloqueioNumero.value = '';
+                        if (postoBloqueioNome) postoBloqueioNome.value = '';
+                    } else {
+                        alert('Erro ao salvar posto bloqueado.');
+                    }
+                })
+                .catch(function(){ alert('Erro ao salvar posto bloqueado.'); });
+        });
+    }
+
+    if (listaPostosBloqueados) {
+        listaPostosBloqueados.addEventListener('click', function(e) {
+            var target = e.target;
+            if (!target) return;
+            var posto = target.getAttribute('data-remover');
+            if (!posto) return;
+            var formData = new FormData();
+            formData.append('excluir_posto_bloqueado', '1');
+            formData.append('posto', posto);
+            fetch(window.location.href, { method: 'POST', body: formData })
+                .then(function(resp){ return resp.json(); })
+                .then(function(data){
+                    if (data && data.success) {
+                        postosBloqueados = postosBloqueados.filter(function(p){ return p.posto !== posto; });
+                        renderizarPostosBloqueados();
+                    } else {
+                        alert('Erro ao remover posto bloqueado.');
+                    }
+                })
+                .catch(function(){ alert('Erro ao remover posto bloqueado.'); });
+        });
+    }
+
+    renderizarPostosBloqueados();
 });
 </script>
 
