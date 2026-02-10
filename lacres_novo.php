@@ -4379,6 +4379,8 @@ try {
 </head>
 <body>
 
+<input type="hidden" id="id_despacho" value="<?php echo isset($_SESSION['id_despacho_correios']) && $_SESSION['id_despacho_correios'] > 0 ? (int)$_SESSION['id_despacho_correios'] : (int)$id_despacho_atual; ?>">
+
 <!-- v9.7.1: Pop-up centralizado para focar no posto atual -->
 <div id="popup-etiqueta-focal">
     <div class="popup-header">🎯 Leitura de Etiqueta</div>
@@ -5151,6 +5153,24 @@ function salvarEstadoEtiquetasCorreios() {
         } catch (e) {
             // localStorage cheio ou desabilitado
         }
+    }
+}
+
+// Forca salvar mesmo quando recalculo_por_lacre estiver ativo
+function salvarEstadoEtiquetasCorreiosForcado() {
+    var recalEl = document.getElementById('recalculo_por_lacre');
+    var antigo = null;
+    if (recalEl) {
+        antigo = recalEl.value;
+        recalEl.value = '0';
+    }
+    try {
+        salvarEstadoEtiquetasCorreios();
+    } catch (e) {
+        // ignore
+    }
+    if (recalEl && antigo !== null) {
+        recalEl.value = antigo;
     }
 }
 
@@ -5988,8 +6008,8 @@ function inicializarMonitoramentoAlteracoes() {
         var formCadastro = document.querySelector('.form-cadastro');
         if (formCadastro) {
             formCadastro.addEventListener('submit', function() {
-                if (typeof salvarEstadoEtiquetasCorreios === 'function') {
-                    salvarEstadoEtiquetasCorreios();
+                if (typeof salvarEstadoEtiquetasCorreiosForcado === 'function') {
+                    salvarEstadoEtiquetasCorreiosForcado();
                 }
                 marcarRestauracaoAposPosto();
             });
@@ -6000,8 +6020,8 @@ function inicializarMonitoramentoAlteracoes() {
         var formModalInserir = document.querySelector('#modal-inserir .modal-form');
         if (formModalInserir) {
             formModalInserir.addEventListener('submit', function() {
-                if (typeof salvarEstadoEtiquetasCorreios === 'function') {
-                    salvarEstadoEtiquetasCorreios();
+                if (typeof salvarEstadoEtiquetasCorreiosForcado === 'function') {
+                    salvarEstadoEtiquetasCorreiosForcado();
                 }
                 marcarRestauracaoAposPosto();
             });
@@ -6011,8 +6031,8 @@ function inicializarMonitoramentoAlteracoes() {
     try {
         if (formAdicionar) {
             formAdicionar.addEventListener('submit', function() {
-                if (typeof salvarEstadoEtiquetasCorreios === 'function') {
-                    salvarEstadoEtiquetasCorreios();
+                if (typeof salvarEstadoEtiquetasCorreiosForcado === 'function') {
+                    salvarEstadoEtiquetasCorreiosForcado();
                 }
                 marcarRestauracaoAposPosto();
             });
