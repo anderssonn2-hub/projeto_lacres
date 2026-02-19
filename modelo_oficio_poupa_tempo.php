@@ -8,7 +8,11 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-   v9.21.5: Ajustes Finais de Layout e UX (29/01/2026)
+    v9.24.2: Impressao e rodape (18/02/2026)
+    - [CORRIGIDO] Impressao/PDF apenas das folhas marcadas
+    - [CORRIGIDO] Rodape: "Produzido por" e "CELEPAR" + "IIPR-POUPA-TEMPO"
+
+    v9.21.5: Ajustes Finais de Layout e UX (29/01/2026)
    - [CORRIGIDO] ✅ Rodapé reduzido para caber na página (padding menor)
    - [CORRIGIDO] ✅ Botão "DIVIDIR" 100% centralizado horizontalmente
    - [CORRIGIDO] ✅ Lotes desmarcados ocultos na impressão (células vazias removidas)
@@ -218,6 +222,8 @@ try {
 $mensagem_status = '';
 $tipo_mensagem = '';
 $deve_imprimir = false;
+// v9.24.2: Lista de folhas selecionadas para refletir no HTML
+$folhas_selecionadas_render = array();
 
 // Variáveis para manter os dados do POST após salvamento
 $dados_salvos = array();
@@ -242,6 +248,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         if (empty($folhas_selecionadas)) {
             $folhas_selecionadas = array_keys($folhas_post);
         }
+        $folhas_selecionadas_render = $folhas_selecionadas;
 
         if (empty($lacres) && empty($nomes)) {
             throw new Exception('Nenhum dado de posto foi informado.');
@@ -1390,6 +1397,7 @@ function confirmarGravarPT(comImpressao) {
 function executarGravacaoPT(modo, comImpressao) {
     var form = document.getElementById('formOficio');
     if (form) {
+        atualizarFolhasSelecionadasInput();
         document.getElementById('modo_oficio_pt').value = modo;
         document.getElementById('acaoForm').value = 'salvar_oficio_completo';
         document.getElementById('imprimir_apos_salvar').value = comImpressao ? '1' : '0';
@@ -1537,11 +1545,27 @@ function apenasImprimir() {
 
 // v9.22.0: Imprimir apenas folhas selecionadas
 function imprimirSelecionados() {
+    atualizarSelecaoFolhas();
     document.body.classList.add('imprimir-selecionados');
     window.print();
     setTimeout(function(){
         document.body.classList.remove('imprimir-selecionados');
     }, 500);
+}
+
+// v9.24.2: Atualiza hidden com as folhas marcadas
+function atualizarFolhasSelecionadasInput() {
+    var input = document.getElementById('folhas_selecionadas');
+    if (!input) return;
+    var checks = document.querySelectorAll('.selecionar-folha');
+    var selecionadas = [];
+    for (var i = 0; i < checks.length; i++) {
+        if (checks[i].checked) {
+            var folhaId = checks[i].getAttribute('data-folha');
+            if (folhaId) selecionadas.push(folhaId);
+        }
+    }
+    input.value = selecionadas.join(',');
 }
 
 // v9.22.0: Atualiza seleção visual das folhas
@@ -1812,7 +1836,12 @@ if (document.readyState === 'loading') {
                     <!-- v9.22.1: Seleção de folha para impressão (só marca se tiver lacre) -->
                     <div class="nao-imprimir" style="margin:8px 0;">
                         <label style="font-size:12px; font-weight:bold;">
-                            <input type="checkbox" class="selecionar-folha" data-folha="<?php echo e($folha_id); ?>" <?php echo (!empty($valorLacre) ? 'checked' : ''); ?>>
+                            <?php
+                                $folha_selecionada = !empty($folhas_selecionadas_render)
+                                    ? in_array($folha_id, $folhas_selecionadas_render, true)
+                                    : (!empty($valorLacre));
+                            ?>
+                            <input type="checkbox" class="selecionar-folha" data-folha="<?php echo e($folha_id); ?>" <?php echo ($folha_selecionada ? 'checked' : ''); ?>>
                             Imprimir esta folha
                         </label>
                     </div>
@@ -1901,25 +1930,25 @@ if (document.readyState === 'loading') {
     <div class="cols100 border-1px rodape-oficio" style="padding:8px 15px;">
         <div style="display:flex; justify-content:space-between; gap:15px;">
           <!-- Conferido por -->
-          <div style="flex:1; border-right:1px solid #000; padding-right:12px;">
-            <div style="text-align:center; margin-bottom:40px;">
-              <strong>Conferido por:</strong>
-            </div>
-            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
-              <div style="margin-bottom:3px;">______________________________</div>
-              <div style="font-size:12px;"><strong>IIPR - Data:</strong> ___/___/______</div>
-            </div>
-          </div>
+                    <div style="flex:1; border-right:1px solid #000; padding-right:12px;">
+                        <div style="text-align:center; margin-bottom:40px;">
+                            <strong>Produzido por:</strong>
+                        </div>
+                        <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+                            <div style="margin-bottom:3px;">______________________________</div>
+                            <div style="font-size:12px;"><strong>CELEPAR - Data:</strong> ___/___/______</div>
+                        </div>
+                    </div>
           
           <!-- Recebido por -->
           <div style="flex:1; padding-left:12px;">
             <div style="text-align:center; margin-bottom:40px;">
               <strong>Recebido por:</strong>
             </div>
-            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
-              <div style="margin-bottom:3px;">______________________________</div>
-              <div style="font-size:12px;"><strong>Poupatempo - Data:</strong> ___/___/______</div>
-            </div>
+                        <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+                            <div style="margin-bottom:3px;">______________________________</div>
+                            <div style="font-size:12px;"><strong>IIPR-POUPA-TEMPO - Data:</strong> ___/___/______</div>
+                        </div>
           </div>
         </div>
       </div>
@@ -1962,7 +1991,7 @@ if ($deve_imprimir && $tipo_mensagem === 'sucesso'):
 <script type="text/javascript">
 // Imprime após pequeno delay para garantir que a página renderizou
 setTimeout(function() {
-    window.print();
+    imprimirSelecionados();
 }, 500);
 </script>
 <?php endif; ?>
