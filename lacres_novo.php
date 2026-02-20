@@ -1,6 +1,10 @@
 <?php
-/* lacres_novo.php — Versão 9.21.6
+/* lacres_novo.php — Versão 9.24.4
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v9.24.4 (20/02/2026):
+ * - [AJUSTE] Botao "Adicionar linha abaixo" visivel ao lado de Excluir/Excluir Regional
+ * - [MANTIDO] Modal de insercao permite grupo POUPA TEMPO
  * 
  * CHANGELOG v9.21.6 (10/02/2026):
  * - [CORRIGIDO] Preserva lacres digitados ao cadastrar novo posto em regionais
@@ -3760,6 +3764,17 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
         .btn-add-above:hover, .btn-add-below:hover {
             background-color: #0b7dda;
         }
+
+        .acoes-cell {
+            white-space: nowrap;
+        }
+        .acoes-cell button {
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .acoes-cell .btn-add-below {
+            margin-left: 4px;
+        }
         
         /* Botão excluir */
         .btn-excluir {
@@ -5103,7 +5118,7 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
         <tbody>
             <?php foreach ($itens as $key => $dado): ?>
             <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
-                <td>
+                <td class="acoes-cell">
                     <!-- v8.6: Input oculto com código do posto para manter alinhamento de arrays -->
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
                     <input type="hidden" name="posto_codigo_correios[]" value="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>">
@@ -5120,7 +5135,7 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
                 </td>
                 <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre" type="text" name="lacre_iipr[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_iipr']) ? $dado['lacre_iipr'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="iipr"><?php endif; ?></td>
                 <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre <?php if ($grupo === 'CENTRAL IIPR'): ?>central-correios<?php endif; ?>" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_correios']) ? $dado['lacre_correios'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios"><?php endif; ?></td>
-                <td>
+                <td class="acoes-cell">
     <?php if ($grupo === 'POUPA TEMPO'): ?>—
     <?php elseif ($grupo === 'CENTRAL IIPR'): ?>
         <input class="etiqueta-barras central-etiqueta" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
@@ -5129,18 +5144,38 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
         <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
     <?php endif; ?>
 </td>
-                <td>
+                <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
-                        —
+                    <button type="button" class="btn-add-below"
+                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                            data-posicao="abaixo"
+                            onclick="abrirModalInserir(this);">
+                        Adicionar linha abaixo
+                    </button>
                     <?php elseif ($grupo === 'REGIONAIS'): ?>
                     <button type="button" class="btn-excluir-regional"
                             onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
                         Excluir Regional
                     </button>
+                    <button type="button" class="btn-add-below"
+                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                            data-posicao="abaixo"
+                            onclick="abrirModalInserir(this);">
+                        Adicionar linha abaixo
+                    </button>
                     <?php else: ?>
                     <button type="button" class="btn-excluir"
                             onclick="excluirPosto('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
                         Excluir
+                    </button>
+                    <button type="button" class="btn-add-below"
+                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                            data-posicao="abaixo"
+                            onclick="abrirModalInserir(this);">
+                        Adicionar linha abaixo
                     </button>
                     <?php endif; ?>
                 </td>
@@ -5181,6 +5216,7 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
                 <option value="CAPITAL">CAPITAL</option>
                 <option value="CENTRAL IIPR">CENTRAL IIPR</option>
                 <option value="REGIONAIS">REGIONAIS</option>
+                <option value="POUPA TEMPO">POUPA TEMPO</option>
             </select>
             
             <label for="novo_nome">Nome do Posto:</label>
