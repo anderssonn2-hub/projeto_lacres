@@ -8,11 +8,7 @@
    - ATUALIZADO: Salva nome_posto, endereco e lacre_iipr no banco de dados
    - Compatível com PHP 5.3.3
    
-    v9.24.2: Impressao e rodape (18/02/2026)
-    - [CORRIGIDO] Impressao/PDF apenas das folhas marcadas
-    - [CORRIGIDO] Rodape: "Produzido por" e "CELEPAR" + "IIPR-POUPA-TEMPO"
-
-    v9.21.5: Ajustes Finais de Layout e UX (29/01/2026)
+   v9.21.5: Ajustes Finais de Layout e UX (29/01/2026)
    - [CORRIGIDO] ✅ Rodapé reduzido para caber na página (padding menor)
    - [CORRIGIDO] ✅ Botão "DIVIDIR" 100% centralizado horizontalmente
    - [CORRIGIDO] ✅ Lotes desmarcados ocultos na impressão (células vazias removidas)
@@ -222,8 +218,6 @@ try {
 $mensagem_status = '';
 $tipo_mensagem = '';
 $deve_imprimir = false;
-// v9.24.2: Lista de folhas selecionadas para refletir no HTML
-$folhas_selecionadas_render = array();
 
 // Variáveis para manter os dados do POST após salvamento
 $dados_salvos = array();
@@ -245,10 +239,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         $folhas_post = isset($_POST['folha_posto']) && is_array($_POST['folha_posto']) ? $_POST['folha_posto'] : array();
         $folhas_sel_raw = isset($_POST['folhas_selecionadas']) ? trim($_POST['folhas_selecionadas']) : '';
         $folhas_selecionadas = array_filter(array_map('trim', explode(',', $folhas_sel_raw)));
-        if (empty($folhas_selecionadas)) {
-            $folhas_selecionadas = array_keys($folhas_post);
-        }
-        $folhas_selecionadas_render = $folhas_selecionadas;
+        // v9.23.9: se houver seleção, salva só as folhas marcadas; se não houver, salva todas as folhas com lacre preenchido
+        $temFiltroSelecao = !empty($folhas_selecionadas);
 
         if (empty($lacres) && empty($nomes)) {
             throw new Exception('Nenhum dado de posto foi informado.');
@@ -257,15 +249,23 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         // v9.22.2: Capturar lotes confirmados por folha
         $lotes_post = isset($_POST['lotes_confirmados']) && is_array($_POST['lotes_confirmados']) ? $_POST['lotes_confirmados'] : array();
 
-        // v9.22.2: Filtrar apenas folhas selecionadas e com lacre preenchido
+        // v9.23.9: salvar apenas folhas com lacre preenchido; se o usuário marcou folhas, restringe à seleção
         $folha_por_posto = array();
-        foreach ($folhas_selecionadas as $folha_id) {
-            if (!isset($folhas_post[$folha_id])) continue;
-            $posto = $folhas_post[$folha_id];
-            $lacre = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
-            if ($lacre === '') continue;
-            if (!isset($folha_por_posto[$posto])) {
-                $folha_por_posto[$posto] = $folha_id;
+
+        if ($temFiltroSelecao) {
+            foreach ($folhas_selecionadas as $folha_id) {
+                if (!isset($folhas_post[$folha_id])) continue;
+                $posto = $folhas_post[$folha_id];
+                $lacre = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
+                if ($lacre === '') continue; // nunca salva folha sem lacre
+                if (!isset($folha_por_posto[$posto])) $folha_por_posto[$posto] = $folha_id;
+            }
+        } else {
+            // Sem seleção: salva todas as folhas que tiverem lacre preenchido
+            foreach ($folhas_post as $folha_id => $posto) {
+                $lacre = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
+                if ($lacre === '') continue;
+                if (!isset($folha_por_posto[$posto])) $folha_por_posto[$posto] = $folha_id;
             }
         }
 
@@ -870,7 +870,7 @@ if (isset($id_despacho_post) && $id_despacho_post > 0) {
 <title><?php echo htmlspecialchars($titulo_pdf, ENT_QUOTES, 'UTF-8'); ?></title>
 <style>
 /* ====== v8.15.3: Layout melhorado - baseado em modelo antigo ====== */
-/* v9.24.x: Layout mais enxuto para evitar sobreposicao entre paginas */
+/* v9.23.7: Layout mais enxuto (cabe mais conteúdo por folha sem estourar) */
 table{border:1px solid #000;border-collapse:collapse;margin:6px 0;width:100%;}
 th,td{border:1px solid #000;padding:5px!important;text-align:center}
 th{background:#f2f2f2}
@@ -898,7 +898,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     display:block;
     page-break-after:always;
     position:relative;
-    overflow:hidden;
+    overflow:hidden; /* evita conteúdo "invadir" a próxima folha na tela */
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
 
@@ -1033,16 +1033,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 /* v9.21.6: Espaçador ajustável do rodapé */
 .espacador-rodape{min-height:10px;padding-top:10px}
 
-/* v9.24.x: Ajustes do cabecalho e titulo de lotes */
-.cabecalho-pt{padding:6px}
-.cabecalho-pt-titulo{margin:4px 0; line-height:1.2}
-.titulo-lotes{text-align:center; margin:12px 0 6px 0; font-size:15px; font-weight:bold;}
-
-/* v9.24.x: Coluna de mover lotes */
-.col-mover{width:44px; text-align:center}
-.btn-mover-lote{display:inline-block; margin:0 2px; padding:2px 5px; font-size:11px; border:1px solid #666; background:#f2f2f2; cursor:pointer}
-.btn-mover-lote:hover{background:#e2e2e2}
-
 @media print{
     body{background:#fff;margin:0;padding:0}
     .controles-pagina,.nao-imprimir{display:none !important}
@@ -1064,7 +1054,9 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
         max-height:277mm;
         overflow:hidden;
     }
-    
+
+    .folha-a4-oficio:last-of-type{page-break-after:auto !important;}
+
     /* v9.12.0: Page break para páginas divididas */
     .pagina-split-1{
         page-break-after:always !important;
@@ -1152,15 +1144,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     
     /* v9.8.6: Remover completamente coluna de checkboxes na impressão */
     .col-checkbox{
-        display:none !important;
-        width:0 !important;
-        padding:0 !important;
-        margin:0 !important;
-        border:none !important;
-    }
-
-    /* v9.24.x: Remover coluna de mover na impressao */
-    .col-mover{
         display:none !important;
         width:0 !important;
         padding:0 !important;
@@ -1262,9 +1245,9 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     background:#f0f8ff;
     border:2px solid #007bff;
     border-radius:8px;
-    padding:15px;
-    margin:15px 0;
-    box-shadow:0 2px 8px rgba(0,0,0,0.1);
+    padding:10px;          /* v9.23.9: mais enxuto */
+    margin:8px 0;          /* v9.23.9: reduz espaço acima/abaixo */
+    box-shadow:0 1px 6px rgba(0,0,0,0.10);
 }
 
 /* v9.21.7: Realce verde para lote conferido no layout 3 colunas */
@@ -1283,25 +1266,26 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .campo-leitura{
     display:flex;
     align-items:center;
-    gap:10px;
-    margin-bottom:10px;
+    gap:8px;
+    margin-bottom:6px;   /* v9.23.9 */
 }
 
 .campo-leitura label{
     font-weight:bold;
-    min-width:120px;
+    min-width:70px;      /* v9.23.9: cabe melhor */
 }
 
-#input_conferencia{
+.input-conferencia{
     flex:1;
-    padding:10px;
-    font-size:16px;
+    padding:6px 8px;      /* v9.23.9: menos altura */
+    font-size:14px;
     border:2px solid #007bff;
     border-radius:4px;
     font-family:monospace;
+    height:32px;
 }
 
-#input_conferencia:focus{
+.input-conferencia:focus{
     outline:none;
     border-color:#0056b3;
     box-shadow:0 0 8px rgba(0,123,255,0.3);
@@ -1418,10 +1402,10 @@ function confirmarGravarPT(comImpressao) {
 function executarGravacaoPT(modo, comImpressao) {
     var form = document.getElementById('formOficio');
     if (form) {
-        atualizarFolhasSelecionadasInput();
         document.getElementById('modo_oficio_pt').value = modo;
         document.getElementById('acaoForm').value = 'salvar_oficio_completo';
         document.getElementById('imprimir_apos_salvar').value = comImpressao ? '1' : '0';
+        atualizarFolhasSelecionadasHidden();
         form.submit();
     }
 }
@@ -1434,9 +1418,38 @@ function gravarEImprimir() {
 // v9.8.2: Recalcula total baseado nos lotes marcados
 // v9.20.1: Recalcular total - CORRIGIDO para páginas clonadas
 // v9.21.1: CORREÇÃO DEFINITIVA - busca por evento e elemento clicado
-function atualizarTotaisContainer(container, posto) {
-    if (!container) return;
-
+function recalcularTotal(posto) {
+    // v9.21.1: Busca o container mais próximo do elemento que disparou o evento
+    var elementoAtual = event ? event.target : null;
+    var container = null;
+    
+    if (elementoAtual) {
+        // Sobe na árvore DOM até encontrar o container .folha-a4-oficio
+        container = elementoAtual.closest('.folha-a4-oficio');
+    }
+    
+    // Se não encontrou pelo evento, busca pelo data-posto (fallback)
+    if (!container) {
+        var containers = document.querySelectorAll('.folha-a4-oficio[data-posto="' + posto + '"]');
+        if (containers.length > 0) {
+            // Se há múltiplos containers (clones), tenta encontrar o correto
+            if (elementoAtual) {
+                for (var i = 0; i < containers.length; i++) {
+                    if (containers[i].contains(elementoAtual)) {
+                        container = containers[i];
+                        break;
+                    }
+                }
+            }
+            if (!container) container = containers[0];
+        }
+    }
+    
+    if (!container) {
+        console.warn('Container não encontrado para posto:', posto);
+        return;
+    }
+    
     // Busca checkboxes APENAS dentro deste container
     var checkboxes = container.querySelectorAll('.checkbox-lote');
     var total = 0;
@@ -1492,8 +1505,8 @@ function atualizarTotaisContainer(container, posto) {
         var todosMarcados = true;
         var algumMarcado = false;
         
-        for (var j = 0; j < checkboxes.length; j++) {
-            if (checkboxes[j].checked) {
+        for (var i = 0; i < checkboxes.length; i++) {
+            if (checkboxes[i].checked) {
                 algumMarcado = true;
             } else {
                 todosMarcados = false;
@@ -1503,75 +1516,6 @@ function atualizarTotaisContainer(container, posto) {
         marcarTodos.checked = todosMarcados;
         marcarTodos.indeterminate = algumMarcado && !todosMarcados;
     }
-}
-
-function recalcularTotal(posto) {
-    // v9.21.1: Busca o container mais próximo do elemento que disparou o evento
-    var elementoAtual = event ? event.target : null;
-    var container = null;
-    
-    if (elementoAtual) {
-        // Sobe na árvore DOM até encontrar o container .folha-a4-oficio
-        container = elementoAtual.closest('.folha-a4-oficio');
-    }
-    
-    // Se não encontrou pelo evento, busca pelo data-posto (fallback)
-    if (!container) {
-        var containers = document.querySelectorAll('.folha-a4-oficio[data-posto="' + posto + '"]');
-        if (containers.length > 0) {
-            // Se há múltiplos containers (clones), tenta encontrar o correto
-            if (elementoAtual) {
-                for (var i = 0; i < containers.length; i++) {
-                    if (containers[i].contains(elementoAtual)) {
-                        container = containers[i];
-                        break;
-                    }
-                }
-            }
-            if (!container) container = containers[0];
-        }
-    }
-    
-    if (!container) {
-        console.warn('Container não encontrado para posto:', posto);
-        return;
-    }
-
-    atualizarTotaisContainer(container, posto);
-}
-
-// v9.24.x: Move lote entre folhas do mesmo posto
-function moverLote(botao, direcao) {
-    var linha = botao.closest('tr');
-    var containerAtual = botao.closest('.folha-a4-oficio');
-    if (!linha || !containerAtual) return;
-
-    var posto = containerAtual.getAttribute('data-posto');
-    if (!posto) return;
-
-    var folhas = document.querySelectorAll('.folha-a4-oficio[data-posto="' + posto + '"]');
-    var idxAtual = -1;
-    for (var i = 0; i < folhas.length; i++) {
-        if (folhas[i] === containerAtual) {
-            idxAtual = i;
-            break;
-        }
-    }
-    if (idxAtual < 0) return;
-
-    var idxAlvo = idxAtual + direcao;
-    if (idxAlvo < 0 || idxAlvo >= folhas.length) {
-        return;
-    }
-
-    var containerAlvo = folhas[idxAlvo];
-    var tbodyAlvo = containerAlvo.querySelector('tbody');
-    if (!tbodyAlvo) return;
-
-    tbodyAlvo.appendChild(linha);
-
-    atualizarTotaisContainer(containerAtual, posto);
-    atualizarTotaisContainer(containerAlvo, posto);
 }
 
 // v9.20.1: Marca/desmarca todos os lotes de um posto (CORRIGIDO para clones)
@@ -1606,7 +1550,6 @@ function apenasImprimir() {
 
 // v9.22.0: Imprimir apenas folhas selecionadas
 function imprimirSelecionados() {
-    atualizarSelecaoFolhas();
     document.body.classList.add('imprimir-selecionados');
     window.print();
     setTimeout(function(){
@@ -1614,23 +1557,9 @@ function imprimirSelecionados() {
     }, 500);
 }
 
-// v9.24.2: Atualiza hidden com as folhas marcadas
-function atualizarFolhasSelecionadasInput() {
-    var input = document.getElementById('folhas_selecionadas');
-    if (!input) return;
-    var checks = document.querySelectorAll('.selecionar-folha');
-    var selecionadas = [];
-    for (var i = 0; i < checks.length; i++) {
-        if (checks[i].checked) {
-            var folhaId = checks[i].getAttribute('data-folha');
-            if (folhaId) selecionadas.push(folhaId);
-        }
-    }
-    input.value = selecionadas.join(',');
-}
-
 // v9.22.0: Atualiza seleção visual das folhas
 function atualizarSelecaoFolhas() {
+
     var checks = document.querySelectorAll('.selecionar-folha');
     for (var i = 0; i < checks.length; i++) {
         var cb = checks[i];
@@ -1646,12 +1575,51 @@ function atualizarSelecaoFolhas() {
     }
 }
 
+
+// v9.23.9: Preencher hidden folhas_selecionadas antes de salvar (usa checkboxes "Imprimir esta folha")
+function atualizarFolhasSelecionadasHidden() {
+    var checks = document.querySelectorAll('.selecionar-folha');
+    var selecionadas = [];
+    for (var i = 0; i < checks.length; i++) {
+        if (checks[i].checked) {
+            var id = checks[i].getAttribute('data-folha');
+            if (id) selecionadas.push(id);
+        }
+    }
+    var hidden = document.getElementById('folhas_selecionadas');
+    if (hidden) hidden.value = selecionadas.join(',');
+    return selecionadas;
+}
+
+// v9.23.9: Se o lacre for preenchido/limpo, marca/desmarca a folha automaticamente
+function bindAutoSelecaoPorLacre() {
+    var inputs = document.querySelectorAll('input[name^="lacre_iipr["]');
+    for (var i = 0; i < inputs.length; i++) {
+        inputs[i].addEventListener('input', function(){
+            var folha = this.closest('.folha-a4-oficio');
+            if (!folha) return;
+            var folhaId = folha.getAttribute('data-folha-id');
+            if (!folhaId) return;
+            var cb = document.querySelector('.selecionar-folha[data-folha="' + folhaId + '"]');
+            if (!cb) return;
+            cb.checked = (this.value || '').trim() !== '';
+            atualizarSelecaoFolhas();
+            atualizarFolhasSelecionadasHidden();
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function(){
     var checks = document.querySelectorAll('.selecionar-folha');
     for (var i = 0; i < checks.length; i++) {
-        checks[i].addEventListener('change', atualizarSelecaoFolhas);
+        checks[i].addEventListener('change', function(){
+            atualizarSelecaoFolhas();
+            atualizarFolhasSelecionadasHidden();
+        });
     }
     atualizarSelecaoFolhas();
+    atualizarFolhasSelecionadasHidden();
+    bindAutoSelecaoPorLacre();
 });
 
 // ============================================================
@@ -1813,7 +1781,13 @@ if (document.readyState === 'loading') {
             $valorLacre = '';
         }
 
-        // v9.24.x: Paginação mais conservadora para evitar sobreposição
+        // v9.23.7: Paginação automática mais conservadora.
+        // Motivo: quando há muitos lotes, o conteúdo pode "estourar" a altura
+        // da folha A4 e acabar empurrando elementos (ex.: botão DIVIDIR na tela
+        // e/ou rodapé de assinatura no PDF) para a página seguinte, gerando
+        // páginas em branco e/ou páginas somente com assinatura.
+        // Ajuste: reduzir quantidade de lotes por folha e tornar o layout
+        // mais enxuto (CSS abaixo) para aumentar a capacidade sem overflow.
         $max_lotes_por_pagina = 16;
         $lotes_paginas = $modo_branco ? array(array()) : array_chunk($lotes_array, $max_lotes_por_pagina);
         foreach ($lotes_paginas as $pagina_idx => $lotes_pagina):
@@ -1836,20 +1810,20 @@ if (document.readyState === 'loading') {
         </div>
       </div>
 
-            <div class="cols100 center border-1px p5 moldura cabecalho-pt">
-                <h4 class="left cabecalho-pt-titulo">
-                    <br><span class="nometit">POUPATEMPO PARANA</span>
-                    <!-- ENDEREÇO editável como input -->
-                    <br><span class="nometit">ENDERECO: 
-                        <input type="text" 
-                                     name="endereco_posto[<?php echo e($codigo3); ?>]" 
-                                     value="<?php echo e($valorEndereco); ?>" 
-                                     class="input-editavel"
-                                     style="width:90%;">
-                    </span>
-                    <br><span class="nometit"></span>
-                </h4>
-            </div>
+      <div class="cols100 center border-1px p5 moldura cabecalho-pt">
+        <h4 class="cabecalho-pt-titulo">
+          <span class="nometit titulo-pt">POUPA TEMPO PARANÁ</span>
+          <!-- ENDEREÇO editável como input -->
+          <<br><span class="nometit endereco-pt">ENDERECO: 
+            <input type="text" 
+                   name="endereco_posto[<?php echo e($codigo3); ?>]" 
+                   value="<?php echo e($valorEndereco); ?>" 
+                   class="input-editavel"
+                   style="width:90%;">
+          </span>
+          <br><span class="nometit"></span>
+        </h4>
+      </div>
 
       <!-- v9.21.1: Adiciona margem lateral para não encostar na borda -->
       <div class="cols100 processo border-1px" style="padding-left:10px; padding-right:10px;">
@@ -1897,19 +1871,14 @@ if (document.readyState === 'loading') {
                     <!-- v9.22.1: Seleção de folha para impressão (só marca se tiver lacre) -->
                     <div class="nao-imprimir" style="margin:8px 0;">
                         <label style="font-size:12px; font-weight:bold;">
-                            <?php
-                                $folha_selecionada = !empty($folhas_selecionadas_render)
-                                    ? in_array($folha_id, $folhas_selecionadas_render, true)
-                                    : (!empty($valorLacre));
-                            ?>
-                            <input type="checkbox" class="selecionar-folha" data-folha="<?php echo e($folha_id); ?>" <?php echo ($folha_selecionada ? 'checked' : ''); ?>>
+                            <input type="checkbox" class="selecionar-folha" data-folha="<?php echo e($folha_id); ?>" <?php echo (!empty($valorLacre) ? 'checked' : ''); ?>>
                             Imprimir esta folha
                         </label>
                     </div>
 
           <!-- v9.9.2: Painel de Conferência Simplificado -->
           <?php if (!empty($lotes_array)): ?>
-          <div class="painel-conferencia controle-conferencia" style="margin-top:15px;">
+          <div class="painel-conferencia controle-conferencia" style="margin-top:8px;">
             <div class="campo-leitura">
               <label for="input_conferencia_<?php echo e($codigo3); ?>">Leitura:</label>
               <input type="text" 
@@ -1935,8 +1904,7 @@ if (document.readyState === 'loading') {
                             <thead>
                                 <tr style="background:#e0e0e0;">
                                     <th class="col-checkbox nao-imprimir" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
-                                    <th class="col-mover nao-imprimir" style="width:44px; padding:4px; border:1px solid #000; font-size:12px;"></th>
-                                    <th style="width:56%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
+                                    <th style="width:70%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
                                     <th style="width:30%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
                                 </tr>
                             </thead>
@@ -1948,10 +1916,6 @@ if (document.readyState === 'loading') {
                                                      data-quantidade="<?php echo e($lote['quantidade']); ?>" 
                                                      data-lote="<?php echo e($lote['lote']); ?>" checked 
                                                      onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
-                                    </td>
-                                    <td class="col-mover nao-imprimir" style="text-align:center; padding:4px; border:1px solid #000;">
-                                        <button type="button" class="btn-mover-lote" onclick="moverLote(this, -1)" title="Mover para cima">↑</button>
-                                        <button type="button" class="btn-mover-lote" onclick="moverLote(this, 1)" title="Mover para baixo">↓</button>
                                     </td>
                                     <td style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote['lote']); ?></td>
                                     <td style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
@@ -1996,25 +1960,25 @@ if (document.readyState === 'loading') {
     <div class="cols100 border-1px rodape-oficio" style="padding:8px 15px;">
         <div style="display:flex; justify-content:space-between; gap:15px;">
           <!-- Conferido por -->
-                    <div style="flex:1; border-right:1px solid #000; padding-right:12px;">
-                        <div style="text-align:center; margin-bottom:40px;">
-                            <strong>Produzido por:</strong>
-                        </div>
-                        <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
-                            <div style="margin-bottom:3px;">______________________________</div>
-                            <div style="font-size:12px;"><strong>CELEPAR - Data:</strong> ___/___/______</div>
-                        </div>
-                    </div>
+          <div style="flex:1; border-right:1px solid #000; padding-right:12px;">
+            <div style="text-align:center; margin-bottom:40px;">
+              <strong>Conferido por:</strong>
+            </div>
+            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+              <div style="margin-bottom:3px;">______________________________</div>
+              <div style="font-size:12px;"><strong>IIPR - Data:</strong> ___/___/______</div>
+            </div>
+          </div>
           
           <!-- Recebido por -->
           <div style="flex:1; padding-left:12px;">
             <div style="text-align:center; margin-bottom:40px;">
               <strong>Recebido por:</strong>
             </div>
-                        <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
-                            <div style="margin-bottom:3px;">______________________________</div>
-                            <div style="font-size:12px;"><strong>IIPR-POUPA-TEMPO - Data:</strong> ___/___/______</div>
-                        </div>
+            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+              <div style="margin-bottom:3px;">______________________________</div>
+              <div style="font-size:12px;"><strong>Poupatempo - Data:</strong> ___/___/______</div>
+            </div>
           </div>
         </div>
       </div>
@@ -2057,7 +2021,7 @@ if ($deve_imprimir && $tipo_mensagem === 'sucesso'):
 <script type="text/javascript">
 // Imprime após pequeno delay para garantir que a página renderizou
 setTimeout(function() {
-    imprimirSelecionados();
+    window.print();
 }, 500);
 </script>
 <?php endif; ?>

@@ -6878,26 +6878,46 @@ document.addEventListener("DOMContentLoaded", function() {
                     }
                 }
                 
-                // Se tem duplicata (mais de 1 ocorrência), limpar campo e alertar
+                // Se tem duplicata (mais de 1 ocorrência), pedir confirmacao para manter
                 if (totalOcorrencias > 1) {
-                    alert('Já existe outro posto com esta mesma etiqueta dos Correios. Cada etiqueta deve ser única para capital e regionais.');
-                    // Limpar apenas o campo atual, sem reverter a anteriores
-                    this.value = '';
-                    this.style.background = '';
-                    // Mostrar aviso no div de alerta associado
-                    var alertaDiv = document.getElementById('alerta-' + indice);
-                    if (alertaDiv) {
-                        alertaDiv.textContent = 'Campo limpo. Digite novamente sem duplicar.';
-                        alertaDiv.style.display = 'block';
-                        alertaDiv.style.color = '#d00';
-                        alertaDiv.style.fontSize = '11px';
-                        alertaDiv.style.fontWeight = 'bold';
+                    var jaConfirmado = this.getAttribute('data-dup-confirmado') === '1';
+                    var manterDuplicada = jaConfirmado;
+                    if (!jaConfirmado) {
+                        manterDuplicada = confirm('Etiqueta repetida detectada. Deseja manter este mesmo display em mais de um posto?');
                     }
-                    // Recolocar foco no campo para permitir nova digitação (NÃO avança)
-                    this.focus();
+
+                    if (manterDuplicada) {
+                        this.setAttribute('data-dup-confirmado', '1');
+                        this.style.background = '#fff3cd';
+                        var alertaDivDup = document.getElementById('alerta-' + indice);
+                        if (alertaDivDup) {
+                            alertaDivDup.textContent = 'Etiqueta repetida (confirmada).';
+                            alertaDivDup.style.display = 'block';
+                            alertaDivDup.style.color = '#c00';
+                            alertaDivDup.style.fontSize = '11px';
+                            alertaDivDup.style.fontWeight = 'bold';
+                        }
+                        focarProximaEtiqueta(this);
+                    } else {
+                        // Limpar apenas o campo atual, sem reverter a anteriores
+                        this.value = '';
+                        this.removeAttribute('data-dup-confirmado');
+                        this.style.background = '';
+                        var alertaDiv = document.getElementById('alerta-' + indice);
+                        if (alertaDiv) {
+                            alertaDiv.textContent = 'Campo limpo. Digite novamente sem duplicar.';
+                            alertaDiv.style.display = 'block';
+                            alertaDiv.style.color = '#d00';
+                            alertaDiv.style.fontSize = '11px';
+                            alertaDiv.style.fontWeight = 'bold';
+                        }
+                        // Recolocar foco no campo para permitir nova digitação (NÃO avança)
+                        this.focus();
+                    }
                 } else {
                     // Aceita o valor - limpar aviso
                     this.style.background = '';
+                    this.removeAttribute('data-dup-confirmado');
                     var alertaDiv = document.getElementById('alerta-' + indice);
                     if (alertaDiv) { alertaDiv.style.display = 'none'; alertaDiv.textContent = ''; }
                     // v8.4: Se aceito, avançar para o próximo input de etiqueta
