@@ -4,6 +4,8 @@
  *
  * CHANGELOG v9.24.4 (20/02/2026):
  * - [AJUSTE] Botao "Adicionar linha abaixo" visivel ao lado de Excluir/Excluir Regional
+ * - [CORRIGIDO] Linha inserida aparece exatamente abaixo da referencia
+ * - [CORRIGIDO] Auto-impressao restaura lacres/etiquetas antes do PDF
  * - [MANTIDO] Modal de insercao permite grupo POUPA TEMPO
  * 
  * CHANGELOG v9.21.6 (10/02/2026):
@@ -2889,11 +2891,32 @@ if (isset($postos_visiveis['001']) && $postos_visiveis['001']['tipo'] !== 'CAPIT
     $postos_visiveis['001']['tipo'] = 'CAPITAL';
 }
 
+$postos_manuais_inserir = array();
 // Adicionar postos manuais
 if (!empty($_SESSION['postos_manuais'])) {
     foreach ($_SESSION['postos_manuais'] as $codigo => $posto) {
         // Verificar exclusão no sistema tradicional
         if (isset($_SESSION['linhas_removidas'][$codigo]) && $_SESSION['linhas_removidas'][$codigo] === true) {
+            continue;
+        }
+
+        $temReferencia = isset($posto['referencia']) && $posto['referencia'] !== '' &&
+            isset($posto['posicao']) && $posto['posicao'] !== '' &&
+            isset($posto['tipo']) && $posto['tipo'] !== '';
+
+        if ($temReferencia) {
+            $grupoRef = $posto['tipo'];
+            if (!isset($postos_manuais_inserir[$grupoRef])) {
+                $postos_manuais_inserir[$grupoRef] = array();
+            }
+            $postos_manuais_inserir[$grupoRef][] = array(
+                'posto_codigo' => $codigo,
+                'posto_nome' => $posto['posto_nome'],
+                'tipo' => $posto['tipo'],
+                'quantidade' => isset($posto['quantidade']) ? $posto['quantidade'] : 1,
+                'referencia' => $posto['referencia'],
+                'posicao' => $posto['posicao']
+            );
             continue;
         }
         
@@ -3004,6 +3027,68 @@ foreach ($dados['REGIONAIS'] as $key => $posto) {
     }
 }
 $dados['REGIONAIS'] = array_values($dados['REGIONAIS']);
+
+// Inserir postos manuais exatamente acima/abaixo da referencia
+if (!empty($postos_manuais_inserir)) {
+    foreach ($postos_manuais_inserir as $grupoRef => $listaInsercoes) {
+        if (!isset($dados[$grupoRef]) || !is_array($dados[$grupoRef])) {
+            continue;
+        }
+        foreach ($listaInsercoes as $novoPosto) {
+            $referencia = trim((string)$novoPosto['referencia']);
+            $refDigits = preg_replace('/\D+/', '', $referencia);
+            $posicao = $novoPosto['posicao'];
+            $idxRef = -1;
+            $totalGrupo = count($dados[$grupoRef]);
+            for ($i = 0; $i < $totalGrupo; $i++) {
+                if (!isset($dados[$grupoRef][$i]['posto_codigo'])) {
+                    continue;
+                }
+                $postoCodigo = (string)$dados[$grupoRef][$i]['posto_codigo'];
+                if ($postoCodigo === $referencia) {
+                    $idxRef = $i;
+                    break;
+                }
+                if ($refDigits !== '') {
+                    $postoDigits = preg_replace('/\D+/', '', $postoCodigo);
+                    if ($postoDigits !== '' && ltrim($postoDigits, '0') === ltrim($refDigits, '0')) {
+                        $idxRef = $i;
+                        break;
+                    }
+                }
+            }
+
+            if ($idxRef < 0 && $referencia !== '') {
+                // Fallback por nome (se referencia nao for codigo)
+                for ($j = 0; $j < $totalGrupo; $j++) {
+                    if (isset($dados[$grupoRef][$j]['posto_nome']) && $dados[$grupoRef][$j]['posto_nome'] === $referencia) {
+                        $idxRef = $j;
+                        break;
+                    }
+                }
+            }
+
+            if ($idxRef >= 0) {
+                // ok
+            }
+
+            $insertPos = $totalGrupo;
+            if ($idxRef >= 0) {
+                $insertPos = ($posicao === 'acima') ? $idxRef : ($idxRef + 1);
+            }
+
+            $entry = array(
+                'posto_codigo' => $novoPosto['posto_codigo'],
+                'posto_nome' => $novoPosto['posto_nome'],
+                'tipo' => $novoPosto['tipo'],
+                'quantidade' => $novoPosto['quantidade']
+            );
+
+            array_splice($dados[$grupoRef], $insertPos, 0, array($entry));
+        }
+        $dados[$grupoRef] = array_values($dados[$grupoRef]);
+    }
+}
 
 // v8.14.2: Carregar lacres do BD do último ofício salvo (para impressão correta)
 // v8.14.9.3: NÃO carregar se usuário clicou "Limpar Sessão"
@@ -8208,6 +8293,8 @@ if (isset($_SESSION['auto_imprimir_correios']) && $_SESSION['auto_imprimir_corre
         function autoImprimirCorreios() {
             // Pequeno delay para garantir renderização
             setTimeout(function() {
+                try { if (typeof restaurarEstadoEtiquetasCorreios === 'function') { restaurarEstadoEtiquetasCorreios(); } } catch (e) { /* ignore */ }
+                try { if (typeof preencherInputsParaImpressao === 'function') { preencherInputsParaImpressao(); } } catch (e) { /* ignore */ }
                 alert('Ofício Correios Nº " . $ultimo_oficio . " salvo com sucesso!\\n\\nA impressão será iniciada automaticamente.');
                 window.print();
             }, 500);
