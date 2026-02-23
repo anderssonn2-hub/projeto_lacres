@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v9.24.1
+/* conferencia_pacotes.php — v9.24.2
+ * CHANGELOG v9.24.2:
+ * - [CORRIGIDO] Pacotes nao listados salvam no ciPostosCsv ao adicionar
+ * - [NOVO] Aviso "Pacote de outra data" quando filtro nao inclui o pacote
+ *
  * CHANGELOG v9.24.1:
  * - [NOVO] Escolha obrigatoria de tipo apos informar responsavel
  * - [NOVO] Tela inicial separada (inicio.php)
@@ -214,6 +218,62 @@ try {
         $stmtPostos = null;
         $pdo = null;
         die(json_encode(array('success' => true, 'inseridos' => $ok, 'erros' => $erros)));
+    }
+
+    // v9.24.2: Verificar se pacote existe em outra data
+    if (isset($_POST['verificar_pacote_data'])) {
+        $codbar = isset($_POST['codbar']) ? preg_replace('/\D+/', '', $_POST['codbar']) : '';
+        $datasFiltro = array();
+        if (isset($_POST['datas_sql'])) {
+            $tmp = json_decode($_POST['datas_sql'], true);
+            if (is_array($tmp)) { $datasFiltro = $tmp; }
+        }
+
+        if (strlen($codbar) !== 19) {
+            die(json_encode(array('success' => false, 'status' => 'invalido')));
+        }
+
+        $lote = substr($codbar, 0, 8);
+        $regional = substr($codbar, 8, 3);
+        $posto = substr($codbar, 11, 3);
+
+        $status = 'nao_encontrado';
+        $dataEncontrada = '';
+
+        try {
+            if (!empty($datasFiltro)) {
+                $ph = implode(',', array_fill(0, count($datasFiltro), '?'));
+                $sqlCheck = "SELECT COUNT(*) FROM ciPostosCsv WHERE lote = ? AND regional = ? AND posto = ? AND DATE(dataCarga) IN ($ph)";
+                $stmtCheck = $pdo->prepare($sqlCheck);
+                $params = array_merge(array($lote, $regional, $posto), $datasFiltro);
+                $stmtCheck->execute($params);
+                $existeNaData = (int)$stmtCheck->fetchColumn();
+                if ($existeNaData > 0) {
+                    $status = 'na_data';
+                }
+            }
+
+            if (empty($datasFiltro)) {
+                $stmtAny = $pdo->prepare("SELECT DATE(dataCarga) as data FROM ciPostosCsv WHERE lote = ? AND regional = ? AND posto = ? ORDER BY dataCarga DESC LIMIT 1");
+                $stmtAny->execute(array($lote, $regional, $posto));
+                $rowAny = $stmtAny->fetch(PDO::FETCH_ASSOC);
+                if ($rowAny && !empty($rowAny['data'])) {
+                    $status = 'na_data';
+                }
+            } elseif ($status !== 'na_data') {
+                $stmtAny = $pdo->prepare("SELECT DATE(dataCarga) as data FROM ciPostosCsv WHERE lote = ? AND regional = ? AND posto = ? ORDER BY dataCarga DESC LIMIT 1");
+                $stmtAny->execute(array($lote, $regional, $posto));
+                $rowAny = $stmtAny->fetch(PDO::FETCH_ASSOC);
+                if ($rowAny && !empty($rowAny['data'])) {
+                    $status = 'outra_data';
+                    $dataEncontrada = $rowAny['data'];
+                }
+            }
+        } catch (Exception $ex) {
+            $status = 'erro';
+        }
+
+        die(json_encode(array('success' => true, 'status' => $status, 'data' => $dataEncontrada)));
     }
 
     // Handler AJAX excluir
@@ -1501,6 +1561,7 @@ document.addEventListener("DOMContentLoaded", function() {
     var postosBloqueados = <?php echo json_encode($postos_bloqueados); ?>;
     var postosBloqueadosMap = {};
     var tipoEscolhido = false;
+    var datasFiltroSql = <?php echo json_encode($datas_sql); ?>;
 
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
@@ -1682,6 +1743,51 @@ document.addEventListener("DOMContentLoaded", function() {
         return true;
     }
 
+    function removerPendentePorCodbar(codbar) {
+        if (!codbar) return;
+        for (var i = pacotesPendentes.length - 1; i >= 0; i--) {
+            if (pacotesPendentes[i].codbar === codbar) {
+                pacotesPendentes.splice(i, 1);
+            }
+        }
+        renderizarPacotesPendentes();
+    }
+
+    function formatarDataBr(dataSql) {
+        if (!dataSql || typeof dataSql !== 'string') return '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dataSql)) {
+            var p = dataSql.split('-');
+            return p[2] + '-' + p[1] + '-' + p[0];
+        }
+        return dataSql;
+    }
+
+    function verificarPacoteOutraData(codbar, callback) {
+        var formData = new FormData();
+        formData.append('verificar_pacote_data', '1');
+        formData.append('codbar', codbar || '');
+        formData.append('datas_sql', JSON.stringify(datasFiltroSql || []));
+        fetch(window.location.href, { method: 'POST', body: formData })
+            .then(function(resp){ return resp.json(); })
+            .then(function(data){ if (callback) callback(data); })
+            .catch(function(){ if (callback) callback({ success:false, status:'erro' }); });
+    }
+
+    function salvarPacoteNaoListado(obj, callback) {
+        if (!usuarioAtual) {
+            if (callback) callback(false);
+            return;
+        }
+        var formData = new FormData();
+        formData.append('inserir_pacotes_nao_listados', '1');
+        formData.append('usuario', usuarioAtual);
+        formData.append('pacotes', JSON.stringify([obj]));
+        fetch(window.location.href, { method: 'POST', body: formData })
+            .then(function(resp){ return resp.json(); })
+            .then(function(data){ if (callback) callback(!!(data && data.success)); })
+            .catch(function(){ if (callback) callback(false); });
+    }
+
     if (btnAdicionarPacote) {
         btnAdicionarPacote.addEventListener('click', function() {
             var obj = {
@@ -1704,7 +1810,14 @@ document.addEventListener("DOMContentLoaded", function() {
             } else {
                 adicionarPacotePendente(obj);
             }
-            fecharModalPacote();
+            salvarPacoteNaoListado(obj, function(ok) {
+                if (ok) {
+                    removerPendentePorCodbar(obj.codbar);
+                } else {
+                    alert('Erro ao salvar pacote nao listado.');
+                }
+                fecharModalPacote();
+            });
         });
     }
 
@@ -1888,26 +2001,37 @@ document.addEventListener("DOMContentLoaded", function() {
         var linha = document.querySelector('tr[data-codigo="' + valor + '"]');
         
         if (!linha) {
-            var now = new Date();
-            var mm = String(now.getMonth() + 1).padStart(2, '0');
-            var dd = String(now.getDate()).padStart(2, '0');
-            var dataPadrao = now.getFullYear() + '-' + mm + '-' + dd;
+            verificarPacoteOutraData(valor, function(resp) {
+                if (resp && resp.success && resp.status === 'outra_data') {
+                    if (mensagemLeitura) {
+                        mensagemLeitura.innerHTML = '<strong>Pacote de outra data:</strong> ' + formatarDataBr(resp.data || '');
+                    }
+                    falarTexto('pacote de outra data');
+                    input.value = "";
+                    return;
+                }
 
-            var obj = {
-                codbar: valor,
-                lote: valor.substr(0, 8),
-                regional: valor.substr(8, 3),
-                posto: valor.substr(11, 3),
-                quantidade: parseInt(valor.substr(14, 5), 10) || 1,
-                dataexp: dataPadrao,
-                responsavel: ''
-            };
-            adicionarPacotePendente(obj);
-            falarTexto('pacote nao encontrado');
-            if (mensagemLeitura) {
-                mensagemLeitura.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
-            }
-            input.value = "";
+                var now = new Date();
+                var mm = String(now.getMonth() + 1).padStart(2, '0');
+                var dd = String(now.getDate()).padStart(2, '0');
+                var dataPadrao = now.getFullYear() + '-' + mm + '-' + dd;
+
+                var obj = {
+                    codbar: valor,
+                    lote: valor.substr(0, 8),
+                    regional: valor.substr(8, 3),
+                    posto: valor.substr(11, 3),
+                    quantidade: parseInt(valor.substr(14, 5), 10) || 1,
+                    dataexp: dataPadrao,
+                    responsavel: ''
+                };
+                adicionarPacotePendente(obj);
+                falarTexto('pacote nao encontrado');
+                if (mensagemLeitura) {
+                    mensagemLeitura.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
+                }
+                input.value = "";
+            });
             return;
         }
 
