@@ -1038,10 +1038,21 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .cabecalho-pt-titulo{margin:4px 0; line-height:1.2}
 .titulo-lotes{text-align:center; margin:12px 0 6px 0; font-size:15px; font-weight:bold;}
 
-/* v9.24.x: Coluna de mover lotes */
+/* v9.24.5: Botao voltar ao inicio */
+.btn-voltar-inicio{display:inline-flex; align-items:center; padding:6px 10px; border-radius:6px; background:#1f2b6d; color:#fff; text-decoration:none; font-size:12px; font-weight:bold;}
+.btn-voltar-inicio:hover{background:#162057;}
+
+/* v9.24.x: Coluna de mover lotes (apenas quando ha mais de 1 pagina) */
 .col-mover{width:44px; text-align:center}
+.folha-a4-oficio .col-mover{display:none}
+.folha-a4-oficio.mover-ativo .col-mover{display:table-cell}
 .btn-mover-lote{display:inline-block; margin:0 2px; padding:2px 5px; font-size:11px; border:1px solid #666; background:#f2f2f2; cursor:pointer}
 .btn-mover-lote:hover{background:#e2e2e2}
+
+/* v9.24.5: Grade mais compacta para caber mais lotes */
+.lotes-detalhe-1col th,
+.lotes-detalhe-1col td{padding:4px 6px; font-size:10px; line-height:1.1}
+.lotes-detalhe-1col tbody tr{height:18px}
 
 @media print{
     body{background:#fff;margin:0;padding:0}
@@ -1646,10 +1657,31 @@ function atualizarSelecaoFolhas() {
     }
 }
 
+function sincronizarImpressaoPorLacre(inputLacre) {
+    if (!inputLacre) return;
+    var folha = inputLacre.closest('.folha-a4-oficio');
+    if (!folha) return;
+    var cb = folha.querySelector('.selecionar-folha');
+    if (!cb) return;
+    var temValor = inputLacre.value.trim() !== '';
+    cb.checked = temValor;
+    atualizarSelecaoFolhas();
+    atualizarFolhasSelecionadasInput();
+}
+
 document.addEventListener('DOMContentLoaded', function(){
     var checks = document.querySelectorAll('.selecionar-folha');
     for (var i = 0; i < checks.length; i++) {
         checks[i].addEventListener('change', atualizarSelecaoFolhas);
+    }
+    var lacres = document.querySelectorAll('input[name^="lacre_iipr["]');
+    for (var j = 0; j < lacres.length; j++) {
+        lacres[j].addEventListener('input', function() {
+            sincronizarImpressaoPorLacre(this);
+        });
+        lacres[j].addEventListener('change', function() {
+            sincronizarImpressaoPorLacre(this);
+        });
     }
     atualizarSelecaoFolhas();
 });
@@ -1744,6 +1776,7 @@ if (document.readyState === 'loading') {
     <input type="hidden" name="folhas_selecionadas" id="folhas_selecionadas" value="">
 
   <div class="controles-pagina nao-imprimir">
+        <a href="inicio.php" class="btn-voltar-inicio">← Inicio</a>
     <h2>Modelo de Oficio - Poupatempo</h2>
     
     <?php if (!empty($mensagem_status)): ?>
@@ -1813,9 +1846,10 @@ if (document.readyState === 'loading') {
             $valorLacre = '';
         }
 
-        // v9.24.x: Paginação mais conservadora para evitar sobreposição
-        $max_lotes_por_pagina = 16;
+        // v9.24.5: Paginação mais conservadora para evitar sobreposição
+        $max_lotes_por_pagina = 15;
         $lotes_paginas = $modo_branco ? array(array()) : array_chunk($lotes_array, $max_lotes_por_pagina);
+        $tem_paginas_multiplas = count($lotes_paginas) > 1;
         foreach ($lotes_paginas as $pagina_idx => $lotes_pagina):
             $folha_id = $codigo3 . '_' . ($pagina_idx + 1);
             $qtd_pagina = 0;
@@ -1824,7 +1858,7 @@ if (document.readyState === 'loading') {
             }
             $valorQuantidade = $modo_branco ? '' : $qtd_pagina;
   ?>
-  <div class="folha-a4-oficio" data-posto="<?php echo e($codigo3); ?>" data-folha-id="<?php echo e($folha_id); ?>">
+    <div class="folha-a4-oficio<?php echo $tem_paginas_multiplas ? ' mover-ativo' : ''; ?>" data-posto="<?php echo e($codigo3); ?>" data-folha-id="<?php echo e($folha_id); ?>">
     <div class="oficio">
       <div class="cols100 border-1px">
         <div class="cols25 fleft margin2px">
@@ -1930,31 +1964,31 @@ if (document.readyState === 'loading') {
                     <!-- v9.22.0: Título LOTES (1 por linha) -->
                     <h3 class="titulo-lotes">LOTES</h3>
 
-                    <div class="tabela-lotes" style="margin:4px 10px; padding:0; max-width:calc(100% - 20px);">
+                    <div class="tabela-lotes" style="margin:2px 10px; padding:0; max-width:calc(100% - 20px);">
                         <table style="width:100%; border-collapse:collapse; border:1px solid #000;" class="lotes-detalhe-1col">
                             <thead>
                                 <tr style="background:#e0e0e0;">
-                                    <th class="col-checkbox nao-imprimir" style="width:30px; padding:4px; border:1px solid #000; font-size:12px;"></th>
-                                    <th class="col-mover nao-imprimir" style="width:44px; padding:4px; border:1px solid #000; font-size:12px;"></th>
-                                    <th style="width:56%; text-align:left; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Lote</th>
-                                    <th style="width:30%; text-align:center; padding:6px; border:1px solid #000; font-size:12px; font-weight:bold;">Qtd</th>
+                                    <th class="col-checkbox nao-imprimir" style="width:30px; padding:3px; border:1px solid #000; font-size:10px;"></th>
+                                    <th class="col-mover nao-imprimir" style="width:44px; padding:3px; border:1px solid #000; font-size:10px;"></th>
+                                    <th style="width:56%; text-align:left; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Lote</th>
+                                    <th style="width:30%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Qtd</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($lotes_pagina as $lote): ?>
                                 <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote['lote']); ?>" data-checked="1">
-                                    <td class="col-checkbox nao-imprimir" style="text-align:center; padding:4px; border:1px solid #000;">
+                                    <td class="col-checkbox nao-imprimir" style="text-align:center; padding:3px; border:1px solid #000;">
                                         <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
                                                      data-quantidade="<?php echo e($lote['quantidade']); ?>" 
                                                      data-lote="<?php echo e($lote['lote']); ?>" checked 
                                                      onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
                                     </td>
-                                    <td class="col-mover nao-imprimir" style="text-align:center; padding:4px; border:1px solid #000;">
+                                    <td class="col-mover nao-imprimir" style="text-align:center; padding:3px; border:1px solid #000;">
                                         <button type="button" class="btn-mover-lote" onclick="moverLote(this, -1)" title="Mover para cima">↑</button>
                                         <button type="button" class="btn-mover-lote" onclick="moverLote(this, 1)" title="Mover para baixo">↓</button>
                                     </td>
-                                    <td style="text-align:left; padding:6px; border:1px solid #000; font-size:11px;"><?php echo e($lote['lote']); ?></td>
-                                    <td style="text-align:center; padding:6px; border:1px solid #000; font-size:11px;">
+                                    <td style="text-align:left; padding:4px; border:1px solid #000; font-size:10px;"><?php echo e($lote['lote']); ?></td>
+                                    <td style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
                                         <span class="valor-tela"><?php echo number_format($lote['quantidade'], 0, ',', '.'); ?></span>
                                     </td>
                                 </tr>

@@ -562,11 +562,27 @@ try {
         .filtros, .tabs, .btn, .acoes { display: none; }
         .painel { box-shadow: none; }
     }
+
+    .btn-voltar-inicio{
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:6px 10px;
+        border-radius:6px;
+        background:#1f2b6d;
+        color:#fff;
+        text-decoration:none;
+        font-size:12px;
+        font-weight:600;
+        margin-bottom:12px;
+    }
+    .btn-voltar-inicio:hover{background:#162057;}
 </style>
 </head>
 <body>
 
 <div class="container">
+    <a href="inicio.php" class="btn-voltar-inicio">← Inicio</a>
     <h1>Consulta de Producao de Cedulas - Versao 8.15.8</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->

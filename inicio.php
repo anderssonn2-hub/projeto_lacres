@@ -59,6 +59,8 @@
         .btn-conf { background: linear-gradient(135deg, #2f80ed 0%, #56ccf2 100%); }
         .btn-cons { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
         .btn-lacres { background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); color: #4a3200; }
+        .btn-vocal { background: linear-gradient(135deg, #c62828 0%, #ef5350 100%); }
+        .btn-oficio { background: linear-gradient(135deg, #0f2027 0%, #2c5364 100%); }
         @media (max-width: 600px) {
             .card { padding: 20px; }
             h1 { font-size: 20px; }
@@ -82,6 +84,14 @@
             <a class="btn btn-lacres" href="lacres_novo.php">
                 Lacres e oficios
                 <span>Geracao e controle de lacres</span>
+            </a>
+            <a class="btn btn-vocal" href="encontra_posto.php">
+                Vocalizar postos
+                <span>Leitura rapida com voz</span>
+            </a>
+            <a class="btn btn-oficio" href="gera_oficio_poupa_tempo.php">
+                Gerar oficio Poupa Tempo
+                <span>Selecionar datas e imprimir</span>
             </a>
         </div>
     </div>

@@ -4714,8 +4714,14 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
 .btn-oficio-pt:hover{filter:brightness(.95);}
 .btn-oficio-pt i{margin-right:6px;}
 </style>
+<style>
+.btn-voltar-inicio{position:fixed;top:12px;left:12px;z-index:9999;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:6px;background:#1f2b6d;color:#fff;text-decoration:none;font-size:12px;font-weight:600;}
+.btn-voltar-inicio:hover{background:#162057;}
+</style>
 </head>
 <body>
+
+<a href="inicio.php" class="btn-voltar-inicio nao-imprimir">← Inicio</a>
 
 <input type="hidden" id="id_despacho" value="<?php echo isset($_SESSION['id_despacho_correios']) && $_SESSION['id_despacho_correios'] > 0 ? (int)$_SESSION['id_despacho_correios'] : (int)$id_despacho_atual; ?>">
 

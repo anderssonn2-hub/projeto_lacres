@@ -1,5 +1,11 @@
 <?php
-/* conferencia_pacotes.php — v9.24.2
+/* conferencia_pacotes.php — v9.24.5
+ * CHANGELOG v9.24.5:
+ * - [AJUSTE] Responsavel aparece apenas uma vez por sessao
+ * - [AJUSTE] Contagem por tabela atualiza ao conferir
+ * - [NOVO] Ordenacao por Lote e Data de Expedicao
+ * - [NOVO] Link "Voltar ao Inicio" na barra superior
+ *
  * CHANGELOG v9.24.2:
  * - [CORRIGIDO] Pacotes nao listados salvam no ciPostosCsv ao adicionar
  * - [NOVO] Aviso "Pacote de outra data" quando filtro nao inclui o pacote
@@ -704,7 +710,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v9.24.1</title>
+    <title>Conferência de Pacotes v9.24.5</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -715,6 +721,23 @@ try {
             padding-left: 10px; 
             border-left: 4px solid #007bff; 
         }
+
+        .btn-voltar {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            text-decoration: none;
+            background: #1f2b6d;
+            color: #fff;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        .btn-voltar:hover { background: #162057; }
+
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable .sort-indicator { margin-left: 6px; font-size: 11px; opacity: 0.7; }
         
         .radio-box {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1077,7 +1100,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v9.24.1</div>
+    <div class="versao">v9.24.5</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1122,7 +1145,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v9.24.1</h2>
+<h2>📋 Conferência de Pacotes v9.24.5</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1146,6 +1169,9 @@ try {
 
 <!-- Barras no topo -->
 <div class="barras-topo">
+    <div class="radio-box">
+        <a class="btn-voltar" href="inicio.php">← Inicio</a>
+    </div>
     <div class="radio-box">
         <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Responsável da conferência</div>
         <span class="usuario-badge" id="usuarioBadge">Não informado</span>
@@ -1389,7 +1415,7 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     }
     
     echo '<h3>' . htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
-    echo ' <span style="color:#666; font-weight:normal; font-size:14px;">(' . $total_pacotes . ' pacotes / ' . $total_conferidos . ' conferidos)</span>';
+    echo ' <span class="contagem-pacotes" data-total="' . $total_pacotes . '" data-conferidos="' . $total_conferidos . '" style="color:#666; font-weight:normal; font-size:14px;">(' . $total_pacotes . ' pacotes / ' . $total_conferidos . ' conferidos)</span>';
     if ($ehPoupaTempo) {
         echo ' <span class="tag-pt">POUPA TEMPO</span>';
     }
@@ -1397,9 +1423,9 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     echo '<table>';
     echo '<thead><tr>';
     echo '<th>Regional</th>';
-    echo '<th>Lote</th>';
+    echo '<th class="sortable" data-sort="lote">Lote <span class="sort-indicator">↕</span></th>';
     echo '<th>Posto</th>';
-    echo '<th>Data Expedição</th>';
+    echo '<th class="sortable" data-sort="data">Data Expedição <span class="sort-indicator">↕</span></th>';
     echo '<th>Quantidade</th>';
     echo '<th>Código de Barras</th>';
     echo '</tr></thead>';
@@ -1562,10 +1588,87 @@ document.addEventListener("DOMContentLoaded", function() {
     var postosBloqueadosMap = {};
     var tipoEscolhido = false;
     var datasFiltroSql = <?php echo json_encode($datas_sql); ?>;
+    var storageUsuarioKey = 'conferencia_responsavel';
+    var storageTipoKey = 'conferencia_tipo_inicio';
 
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
     var tocando = false;
+
+    function obterTituloTabela(tabela) {
+        var titulo = tabela ? tabela.previousElementSibling : null;
+        while (titulo && titulo.tagName !== 'H3') {
+            titulo = titulo.previousElementSibling;
+        }
+        return titulo;
+    }
+
+    function atualizarResumoTabela(tabela) {
+        if (!tabela) return;
+        var tbody = tabela.tBodies && tabela.tBodies[0] ? tabela.tBodies[0] : null;
+        if (!tbody) return;
+        var linhas = tbody.rows;
+        var total = linhas.length;
+        var conferidos = 0;
+        for (var i = 0; i < linhas.length; i++) {
+            if (linhas[i].classList.contains('confirmado')) {
+                conferidos++;
+            }
+        }
+        var titulo = obterTituloTabela(tabela);
+        if (!titulo) return;
+        var span = titulo.querySelector('.contagem-pacotes');
+        if (!span) return;
+        span.textContent = '(' + total + ' pacotes / ' + conferidos + ' conferidos)';
+        span.setAttribute('data-total', String(total));
+        span.setAttribute('data-conferidos', String(conferidos));
+    }
+
+    function atualizarResumoTodasTabelas() {
+        var tabelas = document.querySelectorAll('#tabelas table');
+        for (var i = 0; i < tabelas.length; i++) {
+            atualizarResumoTabela(tabelas[i]);
+        }
+    }
+
+    function normalizarDataOrdem(valor) {
+        if (!valor) return '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return valor;
+        if (/^\d{2}-\d{2}-\d{4}$/.test(valor)) {
+            var p = valor.split('-');
+            return p[2] + '-' + p[1] + '-' + p[0];
+        }
+        return valor;
+    }
+
+    function obterValorOrdenacao(linha, chave) {
+        if (!linha) return '';
+        if (chave === 'lote') {
+            return linha.getAttribute('data-lote') || '';
+        }
+        if (chave === 'data') {
+            var ds = linha.getAttribute('data-data-sql') || linha.getAttribute('data-data') || '';
+            return normalizarDataOrdem(ds);
+        }
+        return '';
+    }
+
+    function ordenarTabela(tabela, chave, asc) {
+        if (!tabela) return;
+        var tbody = tabela.tBodies && tabela.tBodies[0] ? tabela.tBodies[0] : null;
+        if (!tbody) return;
+        var linhas = Array.prototype.slice.call(tbody.rows);
+        linhas.sort(function(a, b) {
+            var va = obterValorOrdenacao(a, chave);
+            var vb = obterValorOrdenacao(b, chave);
+            if (va < vb) return asc ? -1 : 1;
+            if (va > vb) return asc ? 1 : -1;
+            return 0;
+        });
+        for (var i = 0; i < linhas.length; i++) {
+            tbody.appendChild(linhas[i]);
+        }
+    }
 
     function tocarProximoSom() {
         if (filaSons.length === 0) {
@@ -1676,6 +1779,9 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         tipoEscolhido = true;
         if (overlayTipo) overlayTipo.style.display = 'none';
+        try {
+            sessionStorage.setItem(storageTipoKey, tipo);
+        } catch (e) {}
         if (input) input.focus();
     }
 
@@ -1893,7 +1999,7 @@ document.addEventListener("DOMContentLoaded", function() {
         usuarioInputModal.focus();
     }
 
-    function liberarPaginaComUsuario(nome) {
+    function liberarPaginaComUsuario(nome, restaurar) {
         usuarioAtual = nome;
         if (usuarioBadge) {
             usuarioBadge.textContent = nome;
@@ -1905,6 +2011,19 @@ document.addEventListener("DOMContentLoaded", function() {
             conteudoPagina.classList.remove('page-locked');
         }
         tipoEscolhido = false;
+        try {
+            sessionStorage.setItem(storageUsuarioKey, nome);
+        } catch (e) {}
+        if (restaurar) {
+            var tipoSalvo = '';
+            try {
+                tipoSalvo = sessionStorage.getItem(storageTipoKey) || '';
+            } catch (e2) {}
+            if (tipoSalvo) {
+                selecionarTipoConferencia(tipoSalvo);
+                return;
+            }
+        }
         if (overlayTipo) {
             overlayTipo.style.display = 'flex';
         }
@@ -1918,7 +2037,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (usuarioInputModal) usuarioInputModal.focus();
                 return;
             }
-            liberarPaginaComUsuario(nome);
+            liberarPaginaComUsuario(nome, false);
         });
     }
 
@@ -1941,6 +2060,29 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     }
+
+    var thSort = document.querySelectorAll('th.sortable');
+    for (var ti = 0; ti < thSort.length; ti++) {
+        thSort[ti].addEventListener('click', function() {
+            var chave = this.getAttribute('data-sort') || '';
+            if (!chave) return;
+            var atual = this.getAttribute('data-order') || 'asc';
+            var asc = atual !== 'asc';
+            this.setAttribute('data-order', asc ? 'asc' : 'desc');
+            var tabela = this.closest('table');
+            ordenarTabela(tabela, chave, asc);
+        });
+    }
+
+    try {
+        var nomeSalvo = sessionStorage.getItem(storageUsuarioKey) || '';
+        if (nomeSalvo) {
+            if (usuarioInputModal) usuarioInputModal.value = nomeSalvo;
+            liberarPaginaComUsuario(nomeSalvo, true);
+        }
+    } catch (e3) {}
+
+    atualizarResumoTodasTabelas();
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
@@ -2125,6 +2267,7 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Marca como conferido
         linha.classList.add("confirmado");
+        atualizarResumoTabela(linha.closest('table'));
         
         // Toca os sons: beep na leitura válida, alerta se necessário
         if (!muteBeep || !muteBeep.checked) {
@@ -2221,6 +2364,7 @@ document.addEventListener("DOMContentLoaded", function() {
             for (var j = 0; j < trsConfirmados.length; j++) {
                 trsConfirmados[j].classList.remove("confirmado");
             }
+            atualizarResumoTodasTabelas();
             
             regionalAtual = null;
             tipoAtual = null; // v9.2: Reseta tipo
