@@ -80,9 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gerar_oficio_pt'])) {
             FROM ciPostosCsv c
             INNER JOIN ciRegionais r 
                     ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
-            WHERE DATE(c.dataCarga) IN ($ph_datas)
-              AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
-              AND LPAD(c.posto,3,'0') IN ($ph_postos)
+                        WHERE DATE(c.dataCarga) IN ($ph_datas)
+                            AND COALESCE(c.quantidade,0) > 0
+                            AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
+                            AND LPAD(c.posto,3,'0') IN ($ph_postos)
             GROUP BY 
                 LPAD(c.posto,3,'0'), r.nome, r.endereco
             ORDER BY 
@@ -192,8 +193,9 @@ if ($data_inicial_cal !== '' || $data_final_cal !== '' || $datas_alternadas !== 
             FROM ciPostosCsv c
             INNER JOIN ciRegionais r 
                     ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
-            WHERE DATE(c.dataCarga) IN ($ph)
-              AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
+                        WHERE DATE(c.dataCarga) IN ($ph)
+                            AND COALESCE(c.quantidade,0) > 0
+                            AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
             GROUP BY 
                 LPAD(c.posto,3,'0'), r.nome, r.endereco
             ORDER BY 

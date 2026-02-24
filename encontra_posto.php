@@ -5,8 +5,6 @@
  * Sem modal de responsavel, sem salvamento de dados.
  */
 
-require_once __DIR__ . '/db_singleton.php';
-
 function e($s) {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
@@ -14,7 +12,13 @@ function e($s) {
 $dbOk = false;
 
 try {
-    $pdo = getDb();
+    $pdo = new PDO(
+        "mysql:host=10.15.61.169;dbname=controle;charset=utf8",
+        "controle_mat",
+        "375256"
+    );
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     $dbOk = true;
 
     if (isset($_POST['ajax_buscar_posto'])) {

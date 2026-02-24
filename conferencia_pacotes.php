@@ -688,11 +688,12 @@ try {
     // v9.24.0: Carregar postos bloqueados
     $postos_bloqueados = array();
     try {
-        $stmtBloq = $pdo->query("SELECT posto, nome FROM ciPostosBloqueados WHERE ativo = 1 ORDER BY posto ASC");
+        $stmtBloq = $pdo->query("SELECT posto, nome, motivo FROM ciPostosBloqueados WHERE ativo = 1 ORDER BY posto ASC");
         while ($row = $stmtBloq->fetch(PDO::FETCH_ASSOC)) {
             $postos_bloqueados[] = array(
                 'posto' => $row['posto'],
-                'nome' => $row['nome']
+                'nome' => $row['nome'],
+                'motivo' => $row['motivo']
             );
         }
     } catch (Exception $e) {
@@ -2129,9 +2130,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
         var postoLido = valor.substr(11, 3);
         if (postosBloqueadosMap[postoLido]) {
-            falarTexto('nao enviar este posto');
+            var dadosBloq = postosBloqueadosMap[postoLido] || {};
+            var motivoBloq = (dadosBloq.motivo || dadosBloq.nome || '').toString().trim();
+            var textoVoz = motivoBloq ? motivoBloq : 'posto bloqueado';
+            falarTexto(textoVoz);
             if (mensagemLeitura) {
-                mensagemLeitura.innerHTML = '<strong>Posto bloqueado:</strong> ' + postoLido + ' ' + (postosBloqueadosMap[postoLido].nome || '');
+                mensagemLeitura.innerHTML = '<strong>Posto bloqueado:</strong> ' + postoLido + ' ' + (motivoBloq || '');
             }
             input.value = "";
             return;
@@ -2424,7 +2428,8 @@ document.addEventListener("DOMContentLoaded", function() {
             var div = document.createElement('div');
             div.className = 'bloqueio-item';
             div.setAttribute('data-posto', p.posto);
-            div.innerHTML = '<div><span class="posto">' + p.posto + '</span> ' + (p.nome || '') + '</div>' +
+            var motivoTxt = (p.motivo || p.nome || '').toString().trim();
+            div.innerHTML = '<div><span class="posto">' + p.posto + '</span> ' + motivoTxt + '</div>' +
                 '<button type="button" class="btn-acao btn-cancelar" data-remover="' + p.posto + '">Remover</button>';
             listaPostosBloqueados.appendChild(div);
         }

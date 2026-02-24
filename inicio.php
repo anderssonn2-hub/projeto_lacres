@@ -60,6 +60,7 @@
         .btn-cons { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
         .btn-lacres { background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%); color: #4a3200; }
         .btn-vocal { background: linear-gradient(135deg, #c62828 0%, #ef5350 100%); }
+        .btn-bloq { background: linear-gradient(135deg, #512da8 0%, #7e57c2 100%); }
         .btn-oficio { background: linear-gradient(135deg, #0f2027 0%, #2c5364 100%); }
         @media (max-width: 600px) {
             .card { padding: 20px; }
@@ -86,12 +87,16 @@
                 <span>Geracao e controle de lacres</span>
             </a>
             <a class="btn btn-vocal" href="encontra_posto.php">
-                Vocalizar postos
+                Quem eu sou?
                 <span>Leitura rapida com voz</span>
             </a>
             <a class="btn btn-oficio" href="gera_oficio_poupa_tempo.php">
                 Gerar oficio Poupa Tempo
                 <span>Selecionar datas e imprimir</span>
+            </a>
+            <a class="btn btn-bloq" href="bloqueados.php">
+                Bloqueio de postos
+                <span>Definir postos nao enviados</span>
             </a>
         </div>
     </div>
