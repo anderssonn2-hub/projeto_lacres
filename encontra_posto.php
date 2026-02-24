@@ -278,7 +278,7 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v2.1</span>
+        <span class="versao">v0.9.24.6</span>
     </div>
     <label class="toggle-voz">
         <input type="checkbox" id="toggleVoz" checked>

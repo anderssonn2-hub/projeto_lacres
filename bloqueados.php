@@ -34,6 +34,18 @@ try {
         $pdo->exec("ALTER TABLE ciPostosBloqueados ADD COLUMN motivo VARCHAR(255) DEFAULT NULL AFTER nome");
     }
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ciPostosBloqueadosHistorico (
+        id INT NOT NULL AUTO_INCREMENT,
+        posto VARCHAR(10) NOT NULL,
+        acao VARCHAR(20) NOT NULL,
+        motivo VARCHAR(255) DEFAULT NULL,
+        responsavel VARCHAR(120) NOT NULL,
+        criado DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        KEY idx_posto (posto),
+        KEY idx_criado (criado)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
     if (isset($_POST['ajax_listar_bloqueados'])) {
         header('Content-Type: application/json');
         $stmt = $pdo->query("SELECT id, posto, nome, motivo, criado FROM ciPostosBloqueados WHERE ativo = 1 ORDER BY posto ASC");
@@ -45,9 +57,13 @@ try {
         header('Content-Type: application/json');
         $postos_raw = isset($_POST['postos']) ? trim($_POST['postos']) : '';
         $motivo = isset($_POST['motivo']) ? trim($_POST['motivo']) : '';
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
 
         if ($motivo === '') {
             die(json_encode(array('success' => false, 'erro' => 'Motivo obrigatorio')));
+        }
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
         }
 
         $postos_list = preg_split('/[\s,;]+/', $postos_raw);
@@ -69,6 +85,8 @@ try {
                 $stmtIns = $pdo->prepare("INSERT INTO ciPostosBloqueados (posto, nome, motivo, ativo, criado) VALUES (?, ?, ?, 1, NOW())");
                 $stmtIns->execute(array($p_pad, '', $motivo));
             }
+            $stmtHist = $pdo->prepare("INSERT INTO ciPostosBloqueadosHistorico (posto, acao, motivo, responsavel, criado) VALUES (?, 'BLOQUEIO', ?, ?, NOW())");
+            $stmtHist->execute(array($p_pad, $motivo, $responsavel));
             $postos_afetados[] = $p_pad;
             $ok++;
         }
@@ -80,10 +98,14 @@ try {
         header('Content-Type: application/json');
         $postos_json = isset($_POST['postos']) ? trim($_POST['postos']) : '';
         $motivo = isset($_POST['motivo']) ? trim($_POST['motivo']) : '';
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
         $postos_arr = json_decode($postos_json, true);
 
         if ($motivo === '') {
             die(json_encode(array('success' => false, 'erro' => 'Motivo obrigatorio')));
+        }
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
         }
 
         if (!is_array($postos_arr) || count($postos_arr) === 0) {
@@ -107,6 +129,8 @@ try {
                 $stmtIns = $pdo->prepare("INSERT INTO ciPostosBloqueados (posto, nome, motivo, ativo, criado) VALUES (?, ?, ?, 1, NOW())");
                 $stmtIns->execute(array($p, '', $motivo));
             }
+            $stmtHist = $pdo->prepare("INSERT INTO ciPostosBloqueadosHistorico (posto, acao, motivo, responsavel, criado) VALUES (?, 'BLOQUEIO', ?, ?, NOW())");
+            $stmtHist->execute(array($p, $motivo, $responsavel));
             $postos_afetados[] = $p;
             $ok++;
         }
@@ -118,10 +142,14 @@ try {
         header('Content-Type: application/json');
         $postos_json = isset($_POST['postos']) ? trim($_POST['postos']) : '';
         $motivo = isset($_POST['motivo']) ? trim($_POST['motivo']) : '';
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
         $postos_arr = json_decode($postos_json, true);
 
         if ($motivo === '') {
             die(json_encode(array('success' => false, 'erro' => 'Motivo obrigatorio')));
+        }
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
         }
 
         if (!is_array($postos_arr) || count($postos_arr) === 0) {
@@ -135,6 +163,8 @@ try {
             if ($p === '') continue;
             $stmtDel = $pdo->prepare("DELETE FROM ciPostosBloqueados WHERE posto = ?");
             $stmtDel->execute(array($p));
+            $stmtHist = $pdo->prepare("INSERT INTO ciPostosBloqueadosHistorico (posto, acao, motivo, responsavel, criado) VALUES (?, 'DESBLOQUEIO', ?, ?, NOW())");
+            $stmtHist->execute(array($p, $motivo, $responsavel));
             $postos_afetados[] = $p;
             $ok++;
         }
@@ -145,21 +175,40 @@ try {
     if (isset($_POST['ajax_desbloquear_posto'])) {
         header('Content-Type: application/json');
         $posto = isset($_POST['posto']) ? trim($_POST['posto']) : '';
+        $motivo = isset($_POST['motivo']) ? trim($_POST['motivo']) : '';
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
         if ($posto === '') {
             die(json_encode(array('success' => false, 'erro' => 'Posto obrigatorio')));
         }
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
+        }
         $stmtDel = $pdo->prepare("DELETE FROM ciPostosBloqueados WHERE posto = ?");
         $stmtDel->execute(array($posto));
+        $stmtHist = $pdo->prepare("INSERT INTO ciPostosBloqueadosHistorico (posto, acao, motivo, responsavel, criado) VALUES (?, 'DESBLOQUEIO', ?, ?, NOW())");
+        $stmtHist->execute(array($posto, $motivo, $responsavel));
         die(json_encode(array('success' => true)));
     }
 
     if (isset($_POST['ajax_desbloquear_todos'])) {
         header('Content-Type: application/json');
         $motivo = isset($_POST['motivo']) ? trim($_POST['motivo']) : '';
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
         if ($motivo === '') {
             die(json_encode(array('success' => false, 'erro' => 'Motivo obrigatorio')));
         }
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
+        }
+        $stmtAll = $pdo->query("SELECT posto FROM ciPostosBloqueados WHERE ativo = 1");
+        $postosAll = $stmtAll->fetchAll(PDO::FETCH_ASSOC);
         $pdo->exec("DELETE FROM ciPostosBloqueados");
+        foreach ($postosAll as $p) {
+            $postoVal = isset($p['posto']) ? $p['posto'] : '';
+            if ($postoVal === '') continue;
+            $stmtHist = $pdo->prepare("INSERT INTO ciPostosBloqueadosHistorico (posto, acao, motivo, responsavel, criado) VALUES (?, 'DESBLOQUEIO', ?, ?, NOW())");
+            $stmtHist->execute(array($postoVal, $motivo, $responsavel));
+        }
         die(json_encode(array('success' => true)));
     }
 
@@ -420,7 +469,7 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Bloqueios de Postos</h1>
-        <span class="versao">v2.1</span>
+        <span class="versao">v0.9.24.6</span>
     </div>
 </div>
 
@@ -440,6 +489,10 @@ try {
                 <label>Motivo (obrigatorio):</label>
                 <input type="text" id="inputMotivo" class="input-motivo" placeholder="Ex: Sem funcionario">
             </div>
+            <div>
+                <label>Responsavel (obrigatorio):</label>
+                <input type="text" id="inputResponsavel" class="input-motivo" placeholder="Ex: Joao Silva">
+            </div>
             <button class="btn-bloquear" onclick="bloquearPostos()">Bloquear</button>
         </div>
         <div id="msgBloquear" class="msg-status"></div>
@@ -455,6 +508,10 @@ try {
             <div>
                 <label>Motivo (obrigatorio):</label>
                 <input type="text" id="inputMotivoGrupo" placeholder="Ex: Ferias regional">
+            </div>
+            <div>
+                <label>Responsavel (obrigatorio):</label>
+                <input type="text" id="inputResponsavelGrupo" placeholder="Ex: Maria Souza">
             </div>
         </div>
         <div>
@@ -473,6 +530,10 @@ try {
             <div>
                 <label style="font-size:12px; color:#666; font-weight:700; display:block; margin-bottom:4px;">Motivo para desbloquear todos:</label>
                 <input type="text" id="inputMotivoDesbloquearTodos" style="padding:8px 12px; border:2px solid #757575; border-radius:6px; font-size:13px; width:250px;">
+            </div>
+            <div>
+                <label style="font-size:12px; color:#666; font-weight:700; display:block; margin-bottom:4px;">Responsavel pelo desbloqueio:</label>
+                <input type="text" id="inputResponsavelDesbloquearTodos" style="padding:8px 12px; border:2px solid #757575; border-radius:6px; font-size:13px; width:220px;">
             </div>
             <button class="btn-limpar-todos" onclick="desbloquearTodos()">Desbloquear Todos</button>
         </div>
@@ -556,6 +617,7 @@ function renderizarBloqueados(lista) {
 function bloquearPostos() {
     var postos = document.getElementById('inputPostos').value.replace(/^\s+|\s+$/g, '');
     var motivo = document.getElementById('inputMotivo').value.replace(/^\s+|\s+$/g, '');
+    var responsavel = document.getElementById('inputResponsavel').value.replace(/^\s+|\s+$/g, '');
 
     if (postos === '') {
         alert('Informe pelo menos um posto.');
@@ -564,6 +626,11 @@ function bloquearPostos() {
     if (motivo === '') {
         alert('O motivo e obrigatorio.');
         document.getElementById('inputMotivo').focus();
+        return;
+    }
+    if (responsavel === '') {
+        alert('O responsavel e obrigatorio.');
+        document.getElementById('inputResponsavel').focus();
         return;
     }
 
@@ -589,7 +656,7 @@ function bloquearPostos() {
             } catch (ex) {}
         }
     };
-    xhr.send('ajax_bloquear_postos=1&postos=' + encodeURIComponent(postos) + '&motivo=' + encodeURIComponent(motivo));
+    xhr.send('ajax_bloquear_postos=1&postos=' + encodeURIComponent(postos) + '&motivo=' + encodeURIComponent(motivo) + '&responsavel=' + encodeURIComponent(responsavel));
 }
 
 var inputPostos = document.getElementById('inputPostos');
@@ -607,6 +674,13 @@ if (inputPostos) {
 }
 
 function desbloquearPosto(posto) {
+    var responsavel = document.getElementById('inputResponsavelDesbloquearTodos').value.replace(/^\s+|\s+$/g, '');
+    var motivo = document.getElementById('inputMotivoDesbloquearTodos').value.replace(/^\s+|\s+$/g, '');
+    if (responsavel === '') {
+        alert('Informe o responsavel pelo desbloqueio.');
+        document.getElementById('inputResponsavelDesbloquearTodos').focus();
+        return;
+    }
     if (!confirm('Desbloquear o posto ' + posto + '?')) return;
 
     var xhr = new XMLHttpRequest();
@@ -623,14 +697,20 @@ function desbloquearPosto(posto) {
             } catch (ex) {}
         }
     };
-    xhr.send('ajax_desbloquear_posto=1&posto=' + encodeURIComponent(posto));
+    xhr.send('ajax_desbloquear_posto=1&posto=' + encodeURIComponent(posto) + '&motivo=' + encodeURIComponent(motivo) + '&responsavel=' + encodeURIComponent(responsavel));
 }
 
 function desbloquearTodos() {
     var motivo = document.getElementById('inputMotivoDesbloquearTodos').value.replace(/^\s+|\s+$/g, '');
+    var responsavel = document.getElementById('inputResponsavelDesbloquearTodos').value.replace(/^\s+|\s+$/g, '');
     if (motivo === '') {
         alert('Informe o motivo para desbloquear todos.');
         document.getElementById('inputMotivoDesbloquearTodos').focus();
+        return;
+    }
+    if (responsavel === '') {
+        alert('Informe o responsavel pelo desbloqueio.');
+        document.getElementById('inputResponsavelDesbloquearTodos').focus();
         return;
     }
     if (!confirm('Desbloquear TODOS os postos?\nMotivo: ' + motivo)) return;
@@ -651,7 +731,7 @@ function desbloquearTodos() {
             } catch (ex) {}
         }
     };
-    xhr.send('ajax_desbloquear_todos=1&motivo=' + encodeURIComponent(motivo));
+    xhr.send('ajax_desbloquear_todos=1&motivo=' + encodeURIComponent(motivo) + '&responsavel=' + encodeURIComponent(responsavel));
 }
 
 function carregarGrupos() {
@@ -785,6 +865,7 @@ function coletarPostosSelecionados() {
 function bloquearGrupoSelecionado() {
     var postos = coletarPostosSelecionados();
     var motivo = document.getElementById('inputMotivoGrupo').value.replace(/^\s+|\s+$/g, '');
+    var responsavel = document.getElementById('inputResponsavelGrupo').value.replace(/^\s+|\s+$/g, '');
 
     if (postos.length === 0) {
         alert('Selecione pelo menos um posto.');
@@ -793,6 +874,11 @@ function bloquearGrupoSelecionado() {
     if (motivo === '') {
         alert('O motivo e obrigatorio.');
         document.getElementById('inputMotivoGrupo').focus();
+        return;
+    }
+    if (responsavel === '') {
+        alert('O responsavel e obrigatorio.');
+        document.getElementById('inputResponsavelGrupo').focus();
         return;
     }
     if (!confirm('Bloquear ' + postos.length + ' posto(s) dos grupos selecionados?\nMotivo: ' + motivo)) return;
@@ -815,12 +901,13 @@ function bloquearGrupoSelecionado() {
             } catch (ex) {}
         }
     };
-    xhr.send('ajax_bloquear_grupo=1&postos=' + encodeURIComponent(JSON.stringify(postos)) + '&motivo=' + encodeURIComponent(motivo));
+    xhr.send('ajax_bloquear_grupo=1&postos=' + encodeURIComponent(JSON.stringify(postos)) + '&motivo=' + encodeURIComponent(motivo) + '&responsavel=' + encodeURIComponent(responsavel));
 }
 
 function desbloquearGrupoSelecionado() {
     var postos = coletarPostosSelecionados();
     var motivo = document.getElementById('inputMotivoGrupo').value.replace(/^\s+|\s+$/g, '');
+    var responsavel = document.getElementById('inputResponsavelGrupo').value.replace(/^\s+|\s+$/g, '');
 
     if (postos.length === 0) {
         alert('Selecione pelo menos um posto.');
@@ -829,6 +916,11 @@ function desbloquearGrupoSelecionado() {
     if (motivo === '') {
         alert('O motivo e obrigatorio.');
         document.getElementById('inputMotivoGrupo').focus();
+        return;
+    }
+    if (responsavel === '') {
+        alert('O responsavel e obrigatorio.');
+        document.getElementById('inputResponsavelGrupo').focus();
         return;
     }
     if (!confirm('Desbloquear ' + postos.length + ' posto(s) dos grupos selecionados?\nMotivo: ' + motivo)) return;
@@ -856,7 +948,7 @@ function desbloquearGrupoSelecionado() {
             } catch (ex) {}
         }
     };
-    xhr.send('ajax_desbloquear_postos=1&postos=' + encodeURIComponent(JSON.stringify(postosArr)) + '&motivo=' + encodeURIComponent(motivo));
+    xhr.send('ajax_desbloquear_postos=1&postos=' + encodeURIComponent(JSON.stringify(postosArr)) + '&motivo=' + encodeURIComponent(motivo) + '&responsavel=' + encodeURIComponent(responsavel));
 }
 
 carregarBloqueados();

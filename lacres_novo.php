@@ -1543,6 +1543,48 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $totalPostosDistintos = count($postosUnicos);
         }
         $totalLotesGravados = $totalLotes;
+
+        // v9.24.6: Salvar etiquetas dos Correios em ciMalotes
+        $login_malotes = '';
+        if (isset($_POST['responsavel']) && trim($_POST['responsavel']) !== '') {
+            $login_malotes = trim($_POST['responsavel']);
+        } elseif (isset($_SESSION['ultimo_responsavel']) && trim($_SESSION['ultimo_responsavel']) !== '') {
+            $login_malotes = trim($_SESSION['ultimo_responsavel']);
+        } else {
+            $login_malotes = $usuario;
+        }
+
+        $stmtMalotes = $pdo_controle->prepare("INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $data_malote = date('Y-m-d');
+        $etiquetas_salvas = 0;
+        $etiquetas_duplicadas = array();
+
+        foreach ($etiquetas as $posto_codigo => $etiqueta) {
+            $eti = preg_replace('/\D+/', '', (string)$etiqueta);
+            if (strlen($eti) !== 35) {
+                continue;
+            }
+
+            if (in_array($eti, $etiquetas_duplicadas, true)) {
+                continue;
+            }
+            $etiquetas_duplicadas[] = $eti;
+
+            $cep = substr($eti, 0, 8);
+            $sequencial = substr($eti, -5);
+            $stmtMalotes->execute(array(
+                $eti,
+                $data_malote,
+                null,
+                $login_malotes,
+                1,
+                $cep,
+                $sequencial,
+                $posto_codigo
+            ));
+            $etiquetas_salvas++;
+        }
         
         $pdo_controle->commit();
 
@@ -1676,7 +1718,7 @@ if (false && isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_e_etique
                     try {
                         $cep = substr($etiqueta, 0, 8);
                         $sequencial = substr($etiqueta, -5);
-                        $observacao = "Salva via Gravar+Imprimir por {$login_etiquetas} em " . date('d/m/Y');
+                        $observacao = "Salva via Gravar+Imprimir por {$login_etiquetas} em " . date('d-m-Y');
                         
                         $stmt = $pdo_controle->prepare("INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
                                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
@@ -1825,7 +1867,7 @@ function analisar_expedicao($pdo_controle, $pdo_servico, $datas_filtro) {
             $total_carteiras_geral += (int)$row['expedidas'];
             
             // V7.9: Mostrar data original (não data+1)
-            $data_original = isset($data_original_map[$data]) ? $data_original_map[$data] : date('d/m/Y', strtotime($data . ' -1 day'));
+            $data_original = isset($data_original_map[$data]) ? $data_original_map[$data] : date('d-m-Y', strtotime($data . ' -1 day'));
             $detalhes_expedicao[] = array(
                 'data' => $data_original,
                 'expedidas' => (int)$row['expedidas'],
@@ -1980,7 +2022,8 @@ function inserir_dados_cipostos_barcode($pdo_controle, $codigo_barras, $data, $t
         $nome_posto = obter_nome_posto($pdo_controle, $codigo_posto);
         
         // Converter data do formato brasileiro para SQL
-        $partes = explode('/', $data);
+        $data = trim((string)$data);
+        $partes = preg_split('/[\/-]/', $data);
         if (count($partes) === 3) {
             $data_sql = "{$partes[2]}-{$partes[1]}-{$partes[0]}";
         } else {
@@ -2035,7 +2078,7 @@ function inserir_dados_cipostos_barcode($pdo_controle, $codigo_barras, $data, $t
 // Definições dos grupos de postos
 $CAPITAL = array("001","002","014","015","030","031","032","033","034","035","036","037","039","040","044");
 $CENTRAL = array("010","013","016","018","027","041","042","046","047","051","052","053","054",
-            "055","056","057","058","059","060","061","062","063","064","065","066","067","068",
+            "055","056","057","058","059","061","062","063","064","065","066","067","068",
             "069","070","071","072","073","074","075","076","077","078","079","080","083","084",
             "085","086");
 
@@ -2187,7 +2230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sequencial = substr($etiqueta, -5);
                     
                     // Preparar a observação
-                    $observacao = "Etiqueta gerada por {$login} em " . date('d/m/Y');
+                    $observacao = "Etiqueta gerada por {$login} em " . date('d-m-Y');
                     
                     // Inserir na tabela ciMalotes
                     $stmt = $pdo_controle->prepare("INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
@@ -2281,6 +2324,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Adicionar no array específico
         $_SESSION['excluir_regionais_manual'][] = $codigo;
+
+        // Se for posto manual, remover da lista imediatamente
+        if (strpos($codigo, 'M') === 0 && isset($_SESSION['postos_manuais'][$codigo])) {
+            unset($_SESSION['postos_manuais'][$codigo]);
+        }
         
         // Mensagem de sucesso
         $mensagem_sucesso = "Posto {$codigo} do grupo REGIONAIS foi excluído com sucesso!";
@@ -2520,7 +2568,7 @@ try {
     ");
     $dias_com_producao = array(); // Dias que tiveram produção
     while ($row = $stmt_conferidos->fetch(PDO::FETCH_ASSOC)) {
-        $data_fmt = date('d/m/Y', strtotime($row['data']));
+        $data_fmt = date('d-m-Y', strtotime($row['data']));
         $dias_com_producao[] = $data_fmt;
         
         // Determina label do dia (1=Dom, 6=Sex, 7=Sáb)
@@ -2547,7 +2595,7 @@ try {
             ORDER BY data DESC
         ");
         while ($row = $stmt_conf->fetch(PDO::FETCH_ASSOC)) {
-            $dias_com_conferencia[] = date('d/m/Y', strtotime($row['data']));
+            $dias_com_conferencia[] = date('d-m-Y', strtotime($row['data']));
         }
     } catch (Exception $e) {
         // Se conferencia_pacotes não existir, assume que nenhum dia foi conferido
@@ -2581,9 +2629,10 @@ if (isset($_GET['datas_alternadas']) && !empty(trim($_GET['datas_alternadas'])))
     
     foreach ($datas_array as $data_str) {
         $data_str = trim($data_str);
-        // Validar formato dd/mm/yyyy
-        if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $data_str)) {
-            $data_obj = DateTime::createFromFormat('d/m/Y', $data_str);
+        // Validar formato dd-mm-aaaa ou dd/mm/aaaa
+        if (preg_match('/^\d{2}[-\/]\d{2}[-\/]\d{4}$/', $data_str)) {
+            $data_norm = str_replace('/', '-', $data_str);
+            $data_obj = DateTime::createFromFormat('d-m-Y', $data_norm);
             if ($data_obj) {
                 $data_formatada = $data_obj->format('d-m-Y');
                 if (!in_array($data_formatada, $datas_filtro)) {
@@ -2701,7 +2750,7 @@ $_SESSION['ultimo_lacre_regionais'] = $lacre_regionais;
 // Persistir responsavel selecionado
 $_SESSION['ultimo_responsavel'] = $responsavel;
 $cliente = isset($_GET['cliente']) ? $_GET['cliente'] : 'Cliente Não Informado';
-$data_geracao = date('d/m/Y');
+$data_geracao = date('d-m-Y');
 
 // Verificar posto 001
 $tem_posto_001 = false;
@@ -3471,7 +3520,7 @@ try {
     }
 } catch (Exception $e) {
     // Se falhar, usa padrão antigo
-    $nome_pdf_titulo = 'Ofício Lacres V8.2 - ' . date('d/m/Y');
+    $nome_pdf_titulo = 'Ofício Lacres V8.2 - ' . date('d-m-Y');
 }
 
 if (isset($_SESSION['id_despacho_correios']) && $_SESSION['id_despacho_correios'] > 0) {
@@ -4744,7 +4793,7 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 9.14.0</div>
+<div class="version-info">Versão 0.9.24.6</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir">
@@ -4915,12 +4964,12 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
             </div>
             
             <div class="form-group">
-                <label for="data_inserir">Data (dd/mm/aaaa):</label>
+                  <label for="data_inserir">Data (dd-mm-aaaa):</label>
                 <input type="text"
                        id="data_inserir"
                        name="data_inserir"
-                       placeholder="<?php echo date('d/m/Y') ?>"
-                       pattern="\d{2}/\d{2}/\d{4}"
+                      placeholder="<?php echo date('d-m-Y') ?>"
+                      pattern="\d{2}[-/]\d{2}[-/]\d{4}"
                        required>
             </div>
             
@@ -5003,10 +5052,10 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
                     ➕ Datas Alternadas (opcionais):
                 </label>
                 <input type="text" name="datas_alternadas" id="datas_alternadas" 
-                       placeholder="Ex: 20/01/2026, 22/01/2026, 25/01/2026"
-                       title="Digite datas no formato dd/mm/aaaa separadas por vírgula">
+                       placeholder="Ex: 20-01-2026, 22-01-2026, 25-01-2026"
+                       title="Digite datas no formato dd-mm-aaaa separadas por vírgula">
                 <div style="margin-top:5px;font-size:11px;color:#6c757d;">
-                    💡 Digite datas específicas separadas por vírgula (formato: dd/mm/aaaa)
+                    💡 Digite datas específicas separadas por vírgula (formato: dd-mm-aaaa)
                 </div>
             </div>
         </div>
@@ -7318,17 +7367,17 @@ document.addEventListener('DOMContentLoaded', function() {
         painelAnalise.className = painelAnalise.className + ' collapsed';
     }
     
-    // V8.0: Mascara para data no formato dd/mm/aaaa
+    // V8.0: Mascara para data no formato dd-mm-aaaa
     var dataInput = document.getElementById('data_inserir');
     if (dataInput) {
         dataInput.addEventListener('input', function(e) {
             var value = e.target.value.replace(/\D/g, '');
             
             if (value.length >= 2) {
-                value = value.substring(0, 2) + '/' + value.substring(2);
+                value = value.substring(0, 2) + '-' + value.substring(2);
             }
             if (value.length >= 5) {
-                value = value.substring(0, 5) + '/' + value.substring(5, 9);
+                value = value.substring(0, 5) + '-' + value.substring(5, 9);
             }
             
             e.target.value = value;
@@ -7342,7 +7391,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var ano = hoje.getFullYear();
             dia = dia < 10 ? '0' + dia : dia;
             mes = mes < 10 ? '0' + mes : mes;
-            dataInput.value = dia + '/' + mes + '/' + ano;
+            dataInput.value = dia + '-' + mes + '-' + ano;
         }
     }
 });

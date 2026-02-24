@@ -331,7 +331,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 8.15.8</title>
+<title>Consulta de Producao de Cedulas - Versao 0.9.24.6</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -583,7 +583,7 @@ try {
 
 <div class="container">
     <a href="inicio.php" class="btn-voltar-inicio">← Inicio</a>
-    <h1>Consulta de Producao de Cedulas - Versao 8.15.8</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 0.9.24.6</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">
@@ -1537,7 +1537,7 @@ try {
                                 <?php
                                 if (!empty($est['data_producao'])) {
                                     $dt = DateTime::createFromFormat('Y-m-d', $est['data_producao']);
-                                    echo $dt ? $dt->format('d/m/Y') : e($est['data_producao']);
+                                    echo $dt ? $dt->format('d-m-Y') : e($est['data_producao']);
                                 }
                                 ?>
                             </td>

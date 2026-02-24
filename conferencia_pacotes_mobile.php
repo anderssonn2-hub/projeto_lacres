@@ -1,8 +1,8 @@
 <?php
-/* conferencia_pacotes_mobile.php — v2.1.0 Mobile
+/* conferencia_pacotes_mobile.php — v0.9.24.6 Mobile
  * Versão otimizada para celular com leitura via câmera
  * Mantém mesma lógica de banco e conferência do sistema desktop
- * v2.1.0:
+ * v0.9.24.6:
  * - Bloqueia conferência em regional/tipo divergente (alerta)
  * - Ajustes de confiabilidade da câmera (seleção traseira + fallback)
  */
@@ -366,7 +366,7 @@ if ($pacoteInfo) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Conferência Mobile</title>
+    <title>Conferência Mobile v0.9.24.6</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -807,7 +807,7 @@ if ($pacoteInfo) {
 </div>
 
 <div class="header">
-    <h1>Conferência Mobile v2.1.0</h1>
+    <h1>Conferência Mobile v0.9.24.6</h1>
 </div>
 
 <div id="usuarioDisplay" class="usuario-display" style="display: none;">

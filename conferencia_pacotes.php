@@ -1,5 +1,12 @@
 <?php
-/* conferencia_pacotes.php — v9.24.5
+/* conferencia_pacotes.php — v9.24.6
+ * CHANGELOG v9.24.6:
+ * - [NOVO] Coluna com responsavel pela producao do lote
+ * - [NOVO] Coluna com data/hora da conferencia
+ * - [NOVO] Capital e Central separados por posto
+ * - [NOVO] Historico de bloqueios com responsavel
+ * - [AJUSTE] Bloqueio/desbloqueio exige responsavel
+ *
  * CHANGELOG v9.24.5:
  * - [AJUSTE] Responsavel aparece apenas uma vez por sessao
  * - [AJUSTE] Contagem por tabela atualiza ao conferir
@@ -99,6 +106,7 @@ $datas_sql = array();
 $datas_exib = array();
 $poupaTempoPostos = array();
 $conferencias = array();
+$conferencias_info = array();
 $conferencias_lote = array();
 $dias_com_conferencia = array();
 $dias_sem_conferencia = array();
@@ -123,12 +131,37 @@ try {
         id INT NOT NULL AUTO_INCREMENT,
         posto VARCHAR(10) NOT NULL,
         nome VARCHAR(120) DEFAULT NULL,
+        motivo VARCHAR(255) DEFAULT NULL,
         ativo TINYINT(1) NOT NULL DEFAULT 1,
         criado DATETIME NOT NULL,
         atualizado DATETIME DEFAULT NULL,
         PRIMARY KEY (id),
         UNIQUE KEY posto (posto)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    $colsMotivo = $pdo->query("SHOW COLUMNS FROM ciPostosBloqueados LIKE 'motivo'")->fetchAll();
+    if (count($colsMotivo) === 0) {
+        $pdo->exec("ALTER TABLE ciPostosBloqueados ADD COLUMN motivo VARCHAR(255) DEFAULT NULL AFTER nome");
+    }
+
+    // v9.24.6: Historico de bloqueios
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ciPostosBloqueadosHistorico (
+        id INT NOT NULL AUTO_INCREMENT,
+        posto VARCHAR(10) NOT NULL,
+        acao VARCHAR(20) NOT NULL,
+        motivo VARCHAR(255) DEFAULT NULL,
+        responsavel VARCHAR(120) NOT NULL,
+        criado DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        KEY idx_posto (posto),
+        KEY idx_criado (criado)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    // v9.24.6: Data/hora de conferencia
+    $colsConf = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes LIKE 'conferido_em'")->fetchAll();
+    if (count($colsConf) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes ADD COLUMN conferido_em DATETIME DEFAULT NULL");
+    }
 
     // Handler AJAX salvar
     if (isset($_POST['salvar_lote_ajax'])) {
@@ -147,9 +180,9 @@ try {
             die(json_encode(array('success' => false, 'erro' => 'Usuario obrigatorio')));
         }
         
-        $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario) 
-                VALUES (?, ?, ?, ?, ?, ?, 's', ?)
-                ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar), dataexp=VALUES(dataexp), usuario=VALUES(usuario)";
+        $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario, conferido_em) 
+            VALUES (?, ?, ?, ?, ?, ?, 's', ?, NOW())
+            ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar), dataexp=VALUES(dataexp), usuario=VALUES(usuario), conferido_em=NOW()";
         $stmt = $pdo->prepare($sql);
         $stmt->execute(array($regional, $lote, $posto, $dataexp, $qtd, $codbar, $usuario_conf));
         $stmt = null; // v8.17.4: Libera statement
@@ -299,19 +332,28 @@ try {
     // v9.24.0: Salvar posto bloqueado
     if (isset($_POST['salvar_posto_bloqueado'])) {
         $posto = trim($_POST['posto']);
-        $nome = isset($_POST['nome']) ? trim($_POST['nome']) : '';
+        $motivo = isset($_POST['motivo']) ? trim($_POST['motivo']) : '';
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
         if ($posto === '') {
             die(json_encode(array('success' => false, 'erro' => 'Posto obrigatorio')));
+        }
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
+        }
+        if ($motivo === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Motivo obrigatorio')));
         }
         $stmt = $pdo->prepare("SELECT id FROM ciPostosBloqueados WHERE posto = ?");
         $stmt->execute(array($posto));
         if ($stmt->fetch()) {
-            $stmt = $pdo->prepare("UPDATE ciPostosBloqueados SET nome = ?, ativo = 1, atualizado = NOW() WHERE posto = ?");
-            $stmt->execute(array($nome, $posto));
+            $stmt = $pdo->prepare("UPDATE ciPostosBloqueados SET nome = ?, motivo = ?, ativo = 1, atualizado = NOW() WHERE posto = ?");
+            $stmt->execute(array($motivo, $motivo, $posto));
         } else {
-            $stmt = $pdo->prepare("INSERT INTO ciPostosBloqueados (posto, nome, ativo, criado) VALUES (?, ?, 1, NOW())");
-            $stmt->execute(array($posto, $nome));
+            $stmt = $pdo->prepare("INSERT INTO ciPostosBloqueados (posto, nome, motivo, ativo, criado) VALUES (?, ?, ?, 1, NOW())");
+            $stmt->execute(array($posto, $motivo, $motivo));
         }
+        $stmtHist = $pdo->prepare("INSERT INTO ciPostosBloqueadosHistorico (posto, acao, motivo, responsavel, criado) VALUES (?, 'BLOQUEIO', ?, ?, NOW())");
+        $stmtHist->execute(array($posto, $motivo, $responsavel));
         $stmt = null;
         $pdo = null;
         die(json_encode(array('success' => true)));
@@ -320,11 +362,18 @@ try {
     // v9.24.0: Excluir posto bloqueado
     if (isset($_POST['excluir_posto_bloqueado'])) {
         $posto = trim($_POST['posto']);
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
+        $motivo = isset($_POST['motivo']) ? trim($_POST['motivo']) : '';
         if ($posto === '') {
             die(json_encode(array('success' => false, 'erro' => 'Posto obrigatorio')));
         }
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
+        }
         $stmt = $pdo->prepare("DELETE FROM ciPostosBloqueados WHERE posto = ?");
         $stmt->execute(array($posto));
+        $stmtHist = $pdo->prepare("INSERT INTO ciPostosBloqueadosHistorico (posto, acao, motivo, responsavel, criado) VALUES (?, 'DESBLOQUEIO', ?, ?, NOW())");
+        $stmtHist->execute(array($posto, $motivo, $responsavel));
         $stmt = null;
         $pdo = null;
         die(json_encode(array('success' => true)));
@@ -359,11 +408,12 @@ try {
     }
 
     // Busca conferências já realizadas (sem LIMIT)
-    $stmt = $pdo->query("SELECT nlote, regional, nposto, codbar FROM conferencia_pacotes WHERE conf='s'");
+    $stmt = $pdo->query("SELECT nlote, regional, nposto, codbar, conferido_em FROM conferencia_pacotes WHERE conf='s'");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $nlote_raw = trim((string)$row['nlote']);
         $regional_raw = trim((string)$row['regional']);
         $posto_raw = trim((string)$row['nposto']);
+        $conferido_em = isset($row['conferido_em']) ? trim((string)$row['conferido_em']) : '';
 
         $nlote_pad = str_pad($nlote_raw, 8, '0', STR_PAD_LEFT);
         $regional_pad = str_pad($regional_raw, 3, '0', STR_PAD_LEFT);
@@ -391,6 +441,9 @@ try {
 
         foreach ($keys as $k) {
             $conferencias[$k] = 1;
+            if ($conferido_em !== '') {
+                $conferencias_info[$k] = $conferido_em;
+            }
         }
 
         if ($nlote_raw !== '') {
@@ -497,7 +550,7 @@ try {
 
     if (!empty($condicoes_data)) {
         $whereData = "WHERE (" . implode(' OR ', $condicoes_data) . ")";
-        $sql = "SELECT lote, posto, regional, quantidade, dataCarga 
+        $sql = "SELECT lote, posto, regional, quantidade, dataCarga, usuario 
                 FROM ciPostosCsv 
                 $whereData
                 ORDER BY regional, lote, posto 
@@ -518,6 +571,7 @@ try {
                 $quantidade = str_pad($row['quantidade'], 5, '0', STR_PAD_LEFT);
 
                 $codigo_barras = $lote . $regional_str . $posto . $quantidade;
+                $usuario_prod = isset($row['usuario']) ? trim((string)$row['usuario']) : '';
                 
                 // v9.0: Usa informações CORRETAS de ciRegionais
                 $regional_real = isset($postosInfo[$posto]) ? $postosInfo[$posto]['regional'] : $regional_csv;
@@ -543,8 +597,15 @@ try {
                 );
 
                 $conferido = 0;
+                $conferido_em = '';
                 foreach ($keysToTry as $kTry) {
-                    if (isset($conferencias[$kTry])) { $conferido = 1; break; }
+                    if (isset($conferencias[$kTry])) {
+                        $conferido = 1;
+                        if (isset($conferencias_info[$kTry])) {
+                            $conferido_em = $conferencias_info[$kTry];
+                        }
+                        break;
+                    }
                 }
                 if ($conferido === 0) {
                     if (isset($conferencias_lote[$lote]) || isset($conferencias_lote[$lote_pad])) {
@@ -567,6 +628,8 @@ try {
                     'data_sql' => $data_sql_row,
                     'qtd' => ltrim($quantidade, '0'),
                     'codigo' => $codigo_barras,
+                    'usuario_prod' => $usuario_prod,
+                    'conferido_em' => $conferido_em,
                     'isPT' => $isPT,
                     'conf' => $conferido
                 );
@@ -616,7 +679,7 @@ try {
         ");
         $dias_com_producao = array();
         while ($row = $stmt_conferidos->fetch(PDO::FETCH_ASSOC)) {
-            $data_fmt = date('d/m/Y', strtotime($row['data']));
+            $data_fmt = date('d-m-Y', strtotime($row['data']));
             $dias_com_producao[] = $data_fmt;
 
             $dia_num = (int)$row['dia_semana'];
@@ -647,7 +710,7 @@ try {
                 ORDER BY data DESC
             ");
             while ($row = $stmt_conf->fetch(PDO::FETCH_ASSOC)) {
-                $dias_com_conferencia[] = date('d/m/Y', strtotime($row['data']));
+                $dias_com_conferencia[] = date('d-m-Y', strtotime($row['data']));
             }
         } catch (Exception $e) {
             $dias_com_conferencia = array();
@@ -711,7 +774,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v9.24.5</title>
+    <title>Conferência de Pacotes v0.9.24.6</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -736,6 +799,29 @@ try {
             font-size: 12px;
         }
         .btn-voltar:hover { background: #162057; }
+
+        .grupo-capital-wrapper,
+        .grupo-central-wrapper {
+            background: #ffffff;
+            border: 2px solid #cfd8dc;
+            border-radius: 10px;
+            padding: 12px;
+            margin: 10px 0 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .grupo-capital-titulo,
+        .grupo-central-titulo {
+            font-weight: 700;
+            color: #37474f;
+            margin-bottom: 8px;
+        }
+        .subgrupo-posto {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 8px 0;
+            background: #fafafa;
+        }
 
         th.sortable { cursor: pointer; user-select: none; }
         th.sortable .sort-indicator { margin-left: 6px; font-size: 11px; opacity: 0.7; }
@@ -1101,7 +1187,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v9.24.5</div>
+    <div class="versao">v0.9.24.6</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1146,7 +1232,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v9.24.5</h2>
+<h2>📋 Conferência de Pacotes v0.9.24.6</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1223,15 +1309,21 @@ try {
     <h4>🚫 Postos que nao devem ser enviados</h4>
     <div class="bloqueio-form">
         <input type="text" id="postoBloqueioNumero" placeholder="Posto (numero)">
-        <input type="text" id="postoBloqueioNome" placeholder="Nome/descricao (opcional)">
+        <input type="text" id="postoBloqueioNome" placeholder="Motivo (obrigatorio)">
+        <input type="text" id="postoBloqueioResponsavel" placeholder="Responsavel pelo bloqueio">
         <button type="button" class="btn-acao btn-cancelar" id="btnAdicionarBloqueio">Adicionar</button>
+    </div>
+    <div style="margin-top:6px; font-size:11px; color:#666;">Para remover, informe o responsavel do desbloqueio.</div>
+    <div class="bloqueio-form" style="margin-top:6px;">
+        <input type="text" id="postoDesbloqueioResponsavel" placeholder="Responsavel pelo desbloqueio">
+        <input type="text" id="postoDesbloqueioMotivo" placeholder="Motivo (opcional)">
     </div>
     <div class="bloqueio-lista" id="listaPostosBloqueados">
         <?php foreach ($postos_bloqueados as $pb) { ?>
             <div class="bloqueio-item" data-posto="<?php echo e($pb['posto']); ?>">
                 <div>
                     <span class="posto"><?php echo e($pb['posto']); ?></span>
-                    <span><?php echo e($pb['nome']); ?></span>
+                    <span><?php echo e(!empty($pb['motivo']) ? $pb['motivo'] : $pb['nome']); ?></span>
                 </div>
                 <button type="button" class="btn-acao btn-cancelar" data-remover="<?php echo e($pb['posto']); ?>">Remover</button>
             </div>
@@ -1428,7 +1520,9 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     echo '<th>Posto</th>';
     echo '<th class="sortable" data-sort="data">Data Expedição <span class="sort-indicator">↕</span></th>';
     echo '<th>Quantidade</th>';
+    echo '<th>Responsável Produção</th>';
     echo '<th>Código de Barras</th>';
+    echo '<th>Conferido em</th>';
     echo '</tr></thead>';
     echo '<tbody>';
     
@@ -1443,14 +1537,23 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         $data_sql_attr = isset($posto['data_sql']) ? $posto['data_sql'] : '';
         echo 'data-data-sql="' . htmlspecialchars($data_sql_attr, ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-qtd="' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-usuario-prod="' . htmlspecialchars($posto['usuario_prod'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-conferido-em="' . htmlspecialchars($posto['conferido_em'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-ispt="' . $posto['isPT'] . '" ';
         echo 'data-pt-group="' . htmlspecialchars($ptGroup, ENT_QUOTES, 'UTF-8') . '">';
         echo '<td>' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '</td>';
+        $conferido_em_fmt = '';
+        if (!empty($posto['conferido_em'])) {
+            $ts = strtotime($posto['conferido_em']);
+            if ($ts) { $conferido_em_fmt = date('d-m-Y H:i', $ts); }
+        }
         echo '<td>' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td>' . htmlspecialchars($posto['usuario_prod'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td class="col-conferido-em">' . htmlspecialchars($conferido_em_fmt, ENT_QUOTES, 'UTF-8') . '</td>';
         echo '</tr>';
     }
     
@@ -1482,14 +1585,38 @@ if (!empty($grupo_capital)) {
         renderizarBanner('POSTOS DOS CORREIOS', 'banner-correios');
         $banner_correios_exibido = true;
     }
-    renderizarTabela('Postos da Capital', $grupo_capital);
+    $capital_por_posto = array();
+    foreach ($grupo_capital as $p) {
+        $capital_por_posto[$p['posto']][] = $p;
+    }
+    ksort($capital_por_posto);
+    echo '<div class="grupo-capital-wrapper">';
+    echo '<div class="grupo-capital-titulo">Capital</div>';
+    foreach ($capital_por_posto as $postoKey => $lista) {
+        echo '<div class="subgrupo-posto">';
+        renderizarTabela('Posto ' . $postoKey . ' - Capital', $lista);
+        echo '</div>';
+    }
+    echo '</div>';
 }
 if (!empty($grupo_999)) {
     if (!$banner_correios_exibido) {
         renderizarBanner('POSTOS DOS CORREIOS', 'banner-correios');
         $banner_correios_exibido = true;
     }
-    renderizarTabela('Postos da Central IIPR', $grupo_999);
+    $central_por_posto = array();
+    foreach ($grupo_999 as $p) {
+        $central_por_posto[$p['posto']][] = $p;
+    }
+    ksort($central_por_posto);
+    echo '<div class="grupo-central-wrapper">';
+    echo '<div class="grupo-central-titulo">Central IIPR</div>';
+    foreach ($central_por_posto as $postoKey => $lista) {
+        echo '<div class="subgrupo-posto">';
+        renderizarTabela('Posto ' . $postoKey . ' - Central', $lista);
+        echo '</div>';
+    }
+    echo '</div>';
 }
 // v8.17.5: Demais regionais já ordenadas (ksort aplicado na linha 367)
 if (!empty($grupo_outros)) {
@@ -1583,6 +1710,9 @@ document.addEventListener("DOMContentLoaded", function() {
     var mensagemLeitura = document.getElementById('mensagemLeitura');
     var postoBloqueioNumero = document.getElementById('postoBloqueioNumero');
     var postoBloqueioNome = document.getElementById('postoBloqueioNome');
+    var postoBloqueioResponsavel = document.getElementById('postoBloqueioResponsavel');
+    var postoDesbloqueioResponsavel = document.getElementById('postoDesbloqueioResponsavel');
+    var postoDesbloqueioMotivo = document.getElementById('postoDesbloqueioMotivo');
     var btnAdicionarBloqueio = document.getElementById('btnAdicionarBloqueio');
     var listaPostosBloqueados = document.getElementById('listaPostosBloqueados');
     var postosBloqueados = <?php echo json_encode($postos_bloqueados); ?>;
@@ -1640,6 +1770,16 @@ document.addEventListener("DOMContentLoaded", function() {
             return p[2] + '-' + p[1] + '-' + p[0];
         }
         return valor;
+    }
+
+    function formatarDataHoraAtual() {
+        var d = new Date();
+        var dd = String(d.getDate()).padStart(2, '0');
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        var yy = d.getFullYear();
+        var hh = String(d.getHours()).padStart(2, '0');
+        var mi = String(d.getMinutes()).padStart(2, '0');
+        return dd + '-' + mm + '-' + yy + ' ' + hh + ':' + mi;
     }
 
     function obterValorOrdenacao(linha, chave) {
@@ -2271,6 +2411,10 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Marca como conferido
         linha.classList.add("confirmado");
+        var conferidoAgora = formatarDataHoraAtual();
+        linha.setAttribute('data-conferido-em', conferidoAgora);
+        var tdConf = linha.querySelector('.col-conferido-em');
+        if (tdConf) tdConf.textContent = conferidoAgora;
         atualizarResumoTabela(linha.closest('table'));
         
         // Toca os sons: beep na leitura válida, alerta se necessário
@@ -2325,12 +2469,23 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
         } else {
-            grupoAtual = regionalAtual;
-            // Todas as linhas da regional atual que NÃO sejam PT
-            for (var i = 0; i < todasLinhas.length; i++) {
-                if (todasLinhas[i].getAttribute('data-regional') === regionalAtual && 
-                    todasLinhas[i].getAttribute('data-ispt') !== '1') {
-                    linhasDoGrupo.push(todasLinhas[i]);
+            if (regionalAtual === '000' || regionalAtual === '999') {
+                grupoAtual = linha.getAttribute('data-posto');
+                for (var i = 0; i < todasLinhas.length; i++) {
+                    if (todasLinhas[i].getAttribute('data-regional') === regionalAtual &&
+                        todasLinhas[i].getAttribute('data-ispt') !== '1' &&
+                        todasLinhas[i].getAttribute('data-posto') === grupoAtual) {
+                        linhasDoGrupo.push(todasLinhas[i]);
+                    }
+                }
+            } else {
+                grupoAtual = regionalAtual;
+                // Todas as linhas da regional atual que NÃO sejam PT
+                for (var i = 0; i < todasLinhas.length; i++) {
+                    if (todasLinhas[i].getAttribute('data-regional') === regionalAtual && 
+                        todasLinhas[i].getAttribute('data-ispt') !== '1') {
+                        linhasDoGrupo.push(todasLinhas[i]);
+                    }
                 }
             }
         }
@@ -2439,26 +2594,39 @@ document.addEventListener("DOMContentLoaded", function() {
     if (btnAdicionarBloqueio) {
         btnAdicionarBloqueio.addEventListener('click', function() {
             var posto = postoBloqueioNumero ? postoBloqueioNumero.value.trim() : '';
-            var nome = postoBloqueioNome ? postoBloqueioNome.value.trim() : '';
+            var motivo = postoBloqueioNome ? postoBloqueioNome.value.trim() : '';
+            var responsavel = postoBloqueioResponsavel ? postoBloqueioResponsavel.value.trim() : '';
             if (!posto) {
                 alert('Informe o numero do posto.');
                 if (postoBloqueioNumero) postoBloqueioNumero.focus();
                 return;
             }
+            if (!motivo) {
+                alert('Informe o motivo do bloqueio.');
+                if (postoBloqueioNome) postoBloqueioNome.focus();
+                return;
+            }
+            if (!responsavel) {
+                alert('Informe o responsavel pelo bloqueio.');
+                if (postoBloqueioResponsavel) postoBloqueioResponsavel.focus();
+                return;
+            }
             var formData = new FormData();
             formData.append('salvar_posto_bloqueado', '1');
             formData.append('posto', posto);
-            formData.append('nome', nome);
+            formData.append('motivo', motivo);
+            formData.append('responsavel', responsavel);
             fetch(window.location.href, { method: 'POST', body: formData })
                 .then(function(resp){ return resp.json(); })
                 .then(function(data){
                     if (data && data.success) {
-                        postosBloqueados.push({ posto: posto, nome: nome });
+                        postosBloqueados.push({ posto: posto, nome: motivo, motivo: motivo });
                         renderizarPostosBloqueados();
                         if (postoBloqueioNumero) postoBloqueioNumero.value = '';
                         if (postoBloqueioNome) postoBloqueioNome.value = '';
+                        if (postoBloqueioResponsavel) postoBloqueioResponsavel.value = '';
                     } else {
-                        alert('Erro ao salvar posto bloqueado.');
+                        alert(data && data.erro ? data.erro : 'Erro ao salvar posto bloqueado.');
                     }
                 })
                 .catch(function(){ alert('Erro ao salvar posto bloqueado.'); });
@@ -2471,17 +2639,27 @@ document.addEventListener("DOMContentLoaded", function() {
             if (!target) return;
             var posto = target.getAttribute('data-remover');
             if (!posto) return;
+            var responsavel = postoDesbloqueioResponsavel ? postoDesbloqueioResponsavel.value.trim() : '';
+            var motivo = postoDesbloqueioMotivo ? postoDesbloqueioMotivo.value.trim() : '';
+            if (!responsavel) {
+                alert('Informe o responsavel pelo desbloqueio.');
+                if (postoDesbloqueioResponsavel) postoDesbloqueioResponsavel.focus();
+                return;
+            }
             var formData = new FormData();
             formData.append('excluir_posto_bloqueado', '1');
             formData.append('posto', posto);
+            formData.append('responsavel', responsavel);
+            formData.append('motivo', motivo);
             fetch(window.location.href, { method: 'POST', body: formData })
                 .then(function(resp){ return resp.json(); })
                 .then(function(data){
                     if (data && data.success) {
                         postosBloqueados = postosBloqueados.filter(function(p){ return p.posto !== posto; });
                         renderizarPostosBloqueados();
+                        if (postoDesbloqueioMotivo) postoDesbloqueioMotivo.value = '';
                     } else {
-                        alert('Erro ao remover posto bloqueado.');
+                        alert(data && data.erro ? data.erro : 'Erro ao remover posto bloqueado.');
                     }
                 })
                 .catch(function(){ alert('Erro ao remover posto bloqueado.'); });
