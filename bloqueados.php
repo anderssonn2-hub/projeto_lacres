@@ -469,7 +469,7 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Bloqueios de Postos</h1>
-        <span class="versao">v0.9.24.6</span>
+        <span class="versao">v0.9.24.8</span>
     </div>
 </div>
 

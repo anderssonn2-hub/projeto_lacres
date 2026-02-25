@@ -158,7 +158,7 @@ if ($dbOk) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devolucao de Etiquetas v0.9.24.6 - Projeto Lacres</title>
+    <title>Devolucao de Etiquetas v0.9.24.8 - Projeto Lacres</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -294,7 +294,7 @@ if ($dbOk) {
 </head>
 <body>
     <div class="card">
-        <h1>Devolucao de etiquetas (Correios) v0.9.24.6</h1>
+        <h1>Devolucao de etiquetas (Correios) v0.9.24.8</h1>
         <div class="sub">Leia a etiqueta devolvida para registrar o retorno (tipo = 2).</div>
 
         <div class="painel">

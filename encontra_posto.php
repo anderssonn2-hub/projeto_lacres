@@ -1,12 +1,39 @@
 <?php
-/* encontra_posto.php — v2.1
+/* encontra_posto.php — v2.3
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
- * Sem modal de responsavel, sem salvamento de dados.
+ * Registra leituras para controle da estante.
  */
 
 function e($s) {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+}
+
+function normalizarDataEntrada($s) {
+    $s = trim((string)$s);
+    if ($s === '') return '';
+    if (preg_match('/^(\d{2})\-(\d{2})\-(\d{4})$/', $s, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    if (preg_match('/^(\d{4})\-(\d{2})\-(\d{2})$/', $s, $m)) {
+        return $m[1] . '-' . $m[2] . '-' . $m[3];
+    }
+    return '';
+}
+
+function parseDatasAlvo($raw) {
+    $out = array();
+    $partes = preg_split('/[;,\s]+/', (string)$raw);
+    foreach ($partes as $p) {
+        $p = trim($p);
+        if ($p === '') continue;
+        $n = normalizarDataEntrada($p);
+        if ($n !== '') {
+            $out[] = $n;
+        }
+    }
+    $out = array_values(array_unique($out));
+    return $out;
 }
 
 $dbOk = false;
@@ -21,13 +48,110 @@ try {
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     $dbOk = true;
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS lotes_na_estante (
+        id INT NOT NULL AUTO_INCREMENT,
+        lote INT(8) NOT NULL,
+        regional INT(3) NOT NULL,
+        posto INT(3) NOT NULL,
+        quantidade INT(5) NOT NULL,
+        producao_de DATE NOT NULL,
+        triado_em DATE NOT NULL,
+        PRIMARY KEY (id)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ciPacotesEstanteLimpeza (
+        id INT NOT NULL AUTO_INCREMENT,
+        datas_alvo VARCHAR(255) NOT NULL,
+        responsavel VARCHAR(120) NOT NULL,
+        total_apagado INT NOT NULL,
+        criado DATETIME NOT NULL,
+        PRIMARY KEY (id)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    if (isset($_POST['ajax_estante_status'])) {
+        header('Content-Type: application/json');
+        $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
+        if (empty($datas_alvo)) {
+            die(json_encode(array('success' => true, 'estante' => array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0))));
+        }
+        $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
+        $sem_upload = array('total' => 0, 'lotes' => array());
+        try {
+            $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
+            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante WHERE producao_de IN ($ph)");
+            $stmtTot->execute($datas_alvo);
+            $estante_stats['total'] = (int)$stmtTot->fetchColumn();
+
+            $stmtTipos = $pdo->prepare("SELECT DISTINCT l.lote, l.posto, l.regional, r.entrega
+                FROM lotes_na_estante l
+                LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
+                WHERE l.producao_de IN ($ph)");
+            $stmtTipos->execute($datas_alvo);
+            while ($row = $stmtTipos->fetch(PDO::FETCH_ASSOC)) {
+                $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
+                if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
+                    $estante_stats['poupatempo']++;
+                } elseif ((int)$row['regional'] === 0) {
+                    $estante_stats['capital']++;
+                } elseif ((int)$row['regional'] === 999) {
+                    $estante_stats['central']++;
+                } else {
+                    $estante_stats['regional']++;
+                }
+            }
+
+            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
+                FROM lotes_na_estante l
+                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
+                WHERE l.producao_de IN ($ph) AND c.lote IS NULL
+                ORDER BY l.lote LIMIT 50");
+            $stmtSem->execute($datas_alvo);
+            while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
+                $sem_upload['lotes'][] = $row['lote'];
+            }
+            $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
+                FROM lotes_na_estante l
+                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
+                WHERE l.producao_de IN ($ph) AND c.lote IS NULL");
+            $stmtSemTot->execute($datas_alvo);
+            $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
+        } catch (Exception $e) {
+            // ignore
+        }
+        die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload)));
+    }
+
+    if (isset($_POST['ajax_limpar_estante'])) {
+        header('Content-Type: application/json');
+        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
+        $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
+        if ($responsavel === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
+        }
+        if (empty($datas_alvo)) {
+            die(json_encode(array('success' => false, 'erro' => 'Informe a(s) data(s) da estante')));
+        }
+        $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
+        $stmtDel = $pdo->prepare("DELETE FROM lotes_na_estante WHERE producao_de IN ($ph)");
+        $stmtDel->execute($datas_alvo);
+        $apagados = $stmtDel->rowCount();
+        $stmtLog = $pdo->prepare("INSERT INTO ciPacotesEstanteLimpeza (datas_alvo, responsavel, total_apagado, criado) VALUES (?,?,?,NOW())");
+        $stmtLog->execute(array(implode(',', $datas_alvo), $responsavel, $apagados));
+        die(json_encode(array('success' => true, 'apagados' => $apagados)));
+    }
+
     if (isset($_POST['ajax_buscar_posto'])) {
         header('Content-Type: application/json');
         $codbar = isset($_POST['codbar']) ? trim($_POST['codbar']) : '';
         $codbar_limpo = preg_replace('/\D+/', '', $codbar);
+        $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
 
-        if (strlen($codbar_limpo) < 14) {
-            die(json_encode(array('success' => false, 'erro' => 'Codigo de barras muito curto (minimo 14 digitos)')));
+        if (empty($datas_alvo)) {
+            die(json_encode(array('success' => false, 'erro' => 'Informe a(s) data(s) da estante')));
+        }
+
+        if (!preg_match('/^\d{19}$/', $codbar_limpo)) {
+            die(json_encode(array('success' => false, 'erro' => 'Codigo de barras invalido (19 digitos)')));
         }
 
         $lote = substr($codbar_limpo, 0, 8);
@@ -85,6 +209,103 @@ try {
             $label_tipo = 'Regional ' . $regional_pad;
         }
 
+        $tipo_estante = 'regional';
+        if ($entrega_tipo === 'poupatempo') {
+            $tipo_estante = 'poupatempo';
+        } elseif ($regional_real === 0) {
+            $tipo_estante = 'capital';
+        } elseif ($regional_real === 999) {
+            $tipo_estante = 'central';
+        }
+
+        $data_producao = null;
+        try {
+            $stmtProd = $pdo->prepare("SELECT DATE(dataCarga) AS data_prod FROM ciPostosCsv WHERE lote = ? ORDER BY dataCarga DESC LIMIT 1");
+            $stmtProd->execute(array((int)$lote));
+            $rowProd = $stmtProd->fetch(PDO::FETCH_ASSOC);
+            if ($rowProd && !empty($rowProd['data_prod'])) {
+                $data_producao = $rowProd['data_prod'];
+            }
+        } catch (Exception $e) {
+            $data_producao = null;
+        }
+
+        if ($data_producao && !in_array($data_producao, $datas_alvo)) {
+            $data_br = date('d-m-Y', strtotime($data_producao));
+            die(json_encode(array(
+                'success' => false,
+                'erro' => 'Pacote de outra data: ' . $data_br,
+                'data_producao' => $data_br
+            )));
+        }
+
+        $status_estante = $data_producao ? 'ok' : 'sem_upload';
+        $data_alvo = $data_producao ? $data_producao : $datas_alvo[0];
+
+        $estante_novo = false;
+        try {
+            $stmtCheck = $pdo->prepare("SELECT id FROM lotes_na_estante WHERE lote = ? LIMIT 1");
+            $stmtCheck->execute(array((int)$lote));
+            if (!$stmtCheck->fetch()) {
+                $stmtIns = $pdo->prepare("INSERT INTO lotes_na_estante (lote, regional, posto, quantidade, producao_de, triado_em) VALUES (?,?,?,?,?,CURDATE())");
+                $stmtIns->execute(array(
+                    (int)$lote,
+                    (int)$regional_real,
+                    (int)$posto_num,
+                    (int)$quantidade,
+                    $data_alvo
+                ));
+                $estante_novo = true;
+            }
+        } catch (Exception $e) {
+            $estante_novo = false;
+        }
+
+        $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
+        $sem_upload = array('total' => 0, 'lotes' => array());
+        try {
+            $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
+            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante WHERE producao_de IN ($ph)");
+            $stmtTot->execute($datas_alvo);
+            $estante_stats['total'] = (int)$stmtTot->fetchColumn();
+
+            $stmtTipos = $pdo->prepare("SELECT DISTINCT l.lote, l.posto, l.regional, r.entrega
+                FROM lotes_na_estante l
+                LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
+                WHERE l.producao_de IN ($ph)");
+            $stmtTipos->execute($datas_alvo);
+            while ($row = $stmtTipos->fetch(PDO::FETCH_ASSOC)) {
+                $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
+                if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
+                    $estante_stats['poupatempo']++;
+                } elseif ((int)$row['regional'] === 0) {
+                    $estante_stats['capital']++;
+                } elseif ((int)$row['regional'] === 999) {
+                    $estante_stats['central']++;
+                } else {
+                    $estante_stats['regional']++;
+                }
+            }
+
+            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
+                FROM lotes_na_estante l
+                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
+                WHERE l.producao_de IN ($ph) AND c.lote IS NULL
+                ORDER BY l.lote LIMIT 50");
+            $stmtSem->execute($datas_alvo);
+            while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
+                $sem_upload['lotes'][] = $row['lote'];
+            }
+            $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
+                FROM lotes_na_estante l
+                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
+                WHERE l.producao_de IN ($ph) AND c.lote IS NULL");
+            $stmtSemTot->execute($datas_alvo);
+            $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
+        } catch (Exception $e) {
+            // ignore
+        }
+
         die(json_encode(array(
             'success' => true,
             'posto' => $posto_pad,
@@ -99,7 +320,13 @@ try {
             'lote' => $lote,
             'quantidade' => $quantidade,
             'posto_encontrado' => $posto_encontrado,
-            'codbar' => $codbar_limpo
+            'codbar' => $codbar_limpo,
+            'estante_novo' => $estante_novo,
+            'estante' => $estante_stats,
+            'sem_upload' => $sem_upload,
+            'status_estante' => $status_estante,
+            'data_alvo' => $data_alvo,
+            'data_producao' => $data_producao ? date('d-m-Y', strtotime($data_producao)) : null
         )));
     }
 
@@ -115,7 +342,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.24.8 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -181,6 +408,30 @@ try {
         }
         #input_codbar:focus { outline: none; border-color: #4caf50; background: #e8f5e9; }
 
+        .painel-datas {
+            background: white; border-radius: 10px;
+            padding: 16px 20px; margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .painel-datas label { font-weight: 700; color: #333; display:block; margin-bottom:6px; font-size:13px; }
+        #datas_estante {
+            width: 100%; max-width: 520px;
+            padding: 10px 12px; font-size: 14px;
+            border: 2px solid #3949ab; border-radius: 6px;
+            background: #e8eaf6; font-weight: 700;
+        }
+        .acoes-estante {
+            margin-top: 10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+        }
+        #responsavelLimpeza {
+            padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; min-width: 220px;
+        }
+        #btnLimparEstante {
+            background: #d32f2f; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-weight:700; cursor:pointer;
+        }
+        #btnLimparEstante:hover { background:#b71c1c; }
+        .nota-datas { font-size: 11px; color:#666; margin-top:6px; }
+
         .stats-bar {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -195,6 +446,17 @@ try {
         }
         .stat-card h4 { font-size: 11px; color: #777; text-transform: uppercase; margin-bottom: 4px; }
         .stat-card .valor { font-size: 22px; font-weight: 700; color: #1a237e; }
+
+        .painel-sem-upload {
+            background: #ffffff; border-radius: 10px;
+            padding: 16px 20px; margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .painel-sem-upload h3 { margin: 0 0 8px; font-size: 15px; color:#333; }
+        .lista-lotes { display:flex; flex-wrap:wrap; gap:6px; }
+        .lote-badge {
+            background:#263238; color:#fff; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700;
+        }
 
         .resultado-posto {
             border-radius: 12px; padding: 0; margin-bottom: 20px;
@@ -264,6 +526,65 @@ try {
             background: rgba(255,255,255,0.3);
         }
 
+        .banner-datas {
+            position: sticky;
+            top: 64px;
+            z-index: 900;
+            background: #0d47a1;
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 8px;
+            margin: 10px auto 16px;
+            max-width: 800px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .banner-datas .datas-ativas { font-weight: 700; font-size: 13px; }
+        .banner-datas button {
+            background: #ffeb3b;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .overlay-datas {
+            position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+        .overlay-datas .card {
+            background: #fff;
+            padding: 18px;
+            border-radius: 10px;
+            width: 420px;
+            max-width: 92%;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+        }
+        .overlay-datas h3 { margin: 0 0 8px; color:#1a237e; }
+        .overlay-datas .hint { font-size: 12px; color:#666; margin-bottom: 10px; }
+        .overlay-datas input {
+            width: 100%; padding: 10px 12px;
+            border: 2px solid #3949ab; border-radius: 6px;
+            background: #e8eaf6; font-weight: 700;
+        }
+        .overlay-datas .acoes {
+            margin-top: 12px; display:flex; gap:8px; justify-content:flex-end;
+        }
+        .overlay-datas .btn-primario {
+            background:#1a237e; color:#fff; border:none; border-radius:6px; padding:8px 12px; font-weight:800;
+        }
+        .overlay-datas .btn-sec {
+            background:#cfd8dc; color:#333; border:none; border-radius:6px; padding:8px 12px; font-weight:700;
+        }
+
         @media (max-width: 600px) {
             .topo-fixo { flex-wrap: wrap; gap: 8px; }
             .topo-fixo h1 { font-size: 15px; }
@@ -278,7 +599,9 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.24.6</span>
+        <span class="versao">v0.9.24.8</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.24.8 (em atualizacao)</span>
+        <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">
         <input type="checkbox" id="toggleVoz" checked>
@@ -289,10 +612,25 @@ try {
 
 <div class="area-principal">
 
+    <div class="banner-datas" id="bannerDatas" style="display:none;">
+        <div class="datas-ativas" id="datasAtivasTexto">Datas ativas:</div>
+        <button type="button" id="btnAlterarDatas">Alterar datas</button>
+    </div>
+
     <div class="painel-leitura">
-        <label>Codigo de Barras do Pacote:</label>
+        <label>Codigo de Barras do Pacote (19 digitos):</label>
         <input type="text" id="input_codbar" placeholder="Escaneie ou digite o codigo..." autocomplete="off" autofocus>
         <div id="indicadorFoco" style="margin-top:8px; font-size:13px; font-weight:700; color:#4caf50;">Pronto para leitura</div>
+    </div>
+
+    <div class="painel-datas">
+        <label>Datas da estante (dd-mm-aaaa ou yyyy-mm-dd, separadas por virgula):</label>
+        <input type="text" id="datas_estante" placeholder="Ex: 24-02-2026, 25-02-2026">
+        <div class="acoes-estante">
+            <input type="text" id="responsavelLimpeza" placeholder="Responsavel pela limpeza">
+            <button type="button" id="btnLimparEstante">Limpar estante</button>
+        </div>
+        <div class="nota-datas">As leituras serao contabilizadas apenas para as datas informadas.</div>
     </div>
 
     <div class="stats-bar">
@@ -316,6 +654,15 @@ try {
             <h4>Poupa Tempo</h4>
             <div class="valor" id="statPT" style="color:#e65100;">0</div>
         </div>
+        <div class="stat-card" style="border-left-color:#b71c1c;">
+            <h4>Sem Upload</h4>
+            <div class="valor" id="statSemUpload" style="color:#b71c1c;">0</div>
+        </div>
+    </div>
+
+    <div class="painel-sem-upload" id="painelSemUpload" style="display:none;">
+        <h3>📦 Lotes sem upload (ciPostosCsv)</h3>
+        <div class="lista-lotes" id="listaSemUpload"></div>
     </div>
 
     <div class="resultado-posto" id="resultadoPosto">
@@ -337,6 +684,18 @@ try {
 
 <audio id="audioBeep" src="beep.mp3" preload="auto"></audio>
 
+<div class="overlay-datas" id="overlayDatas" style="display:flex;">
+    <div class="card">
+        <h3>Datas da Estante</h3>
+        <div class="hint">Informe as datas que serao triadas (dd-mm-aaaa ou yyyy-mm-dd). Ex: 24-02-2026, 25-02-2026</div>
+        <input type="text" id="datas_estante_modal" placeholder="Ex: 24-02-2026, 25-02-2026">
+        <div class="acoes">
+            <button type="button" class="btn-sec" id="btnCancelarDatas">Cancelar</button>
+            <button type="button" class="btn-primario" id="btnConfirmarDatas">Aplicar</button>
+        </div>
+    </div>
+</div>
+
 <script>
 var vozAtiva = true;
 var historico = [];
@@ -345,12 +704,63 @@ var contCapital = 0;
 var contCentral = 0;
 var contRegional = 0;
 var contPT = 0;
+var contSemUpload = 0;
+var lotesSemUpload = [];
 var audioFilaAtiva = false;
 var audioFila = [];
 
-var barcodeBuffer = '';
-var barcodeTimer = null;
-var BARCODE_TIMEOUT = 80;
+var leituraFila = [];
+var leituraAtiva = false;
+
+function formatarHoje() {
+    var d = new Date();
+    var dd = (d.getDate() < 10 ? '0' : '') + d.getDate();
+    var mm = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1);
+    var yyyy = d.getFullYear();
+    return dd + '-' + mm + '-' + yyyy;
+}
+
+function obterDatasAlvoStr() {
+    var input = document.getElementById('datas_estante');
+    return input ? input.value.trim() : '';
+}
+
+function salvarDatasAlvo() {
+    var val = obterDatasAlvoStr();
+    if (val !== '') {
+        localStorage.setItem('estante_datas', val);
+    }
+    atualizarBannerDatas();
+    carregarEstanteInicial();
+}
+
+function atualizarBannerDatas() {
+    var banner = document.getElementById('bannerDatas');
+    var texto = document.getElementById('datasAtivasTexto');
+    var datas = obterDatasAlvoStr();
+    if (!banner || !texto) return;
+    if (datas) {
+        texto.textContent = 'Datas ativas: ' + datas;
+        banner.style.display = 'flex';
+    } else {
+        banner.style.display = 'none';
+    }
+}
+
+function abrirModalDatas() {
+    var overlay = document.getElementById('overlayDatas');
+    var inputModal = document.getElementById('datas_estante_modal');
+    if (inputModal) {
+        inputModal.value = obterDatasAlvoStr() || '';
+        inputModal.focus();
+    }
+    if (overlay) overlay.style.display = 'flex';
+}
+
+function fecharModalDatas() {
+    var overlay = document.getElementById('overlayDatas');
+    if (overlay) overlay.style.display = 'none';
+}
 
 document.getElementById('toggleVoz').onchange = function() {
     vozAtiva = this.checked;
@@ -369,34 +779,33 @@ function atualizarIndicadorFoco() {
     }
 }
 
-function processarBuffer() {
-    var val = barcodeBuffer.replace(/^\s+|\s+$/g, '');
-    barcodeBuffer = '';
-    barcodeTimer = null;
-    if (val.length >= 14) {
-        document.getElementById('input_codbar').value = '';
-        buscarPosto(val);
+function processarCodigoBruto(valor) {
+    var val = (valor || '').replace(/\D+/g, '');
+    if (val.length < 19) {
+        return;
     }
+    if (val.length > 19) {
+        val = val.substr(0, 19);
+    }
+    buscarPosto(val);
 }
+
+document.getElementById('input_codbar').addEventListener('input', function() {
+    var val = this.value;
+    if (!val) return;
+    var limpo = val.replace(/\D+/g, '');
+    if (limpo.length >= 19) {
+        this.value = '';
+        processarCodigoBruto(limpo);
+    }
+});
 
 document.getElementById('input_codbar').onkeydown = function(ev) {
     if (ev.keyCode === 13) {
-        if (barcodeTimer) { clearTimeout(barcodeTimer); barcodeTimer = null; }
-        var val = (barcodeBuffer + this.value).replace(/^\s+|\s+$/g, '');
-        barcodeBuffer = '';
-        if (val.length >= 14) {
-            buscarPosto(val);
-            this.value = '';
-        }
-        return;
+        var val = this.value;
+        this.value = '';
+        processarCodigoBruto(val);
     }
-    if (barcodeTimer) { clearTimeout(barcodeTimer); }
-    barcodeTimer = setTimeout(function() {
-        var campo = document.getElementById('input_codbar');
-        barcodeBuffer = campo.value;
-        processarBuffer();
-        campo.value = '';
-    }, BARCODE_TIMEOUT);
 };
 
 document.getElementById('input_codbar').onfocus = function() {
@@ -404,8 +813,6 @@ document.getElementById('input_codbar').onfocus = function() {
 };
 
 document.getElementById('input_codbar').onblur = function() {
-    barcodeBuffer = '';
-    if (barcodeTimer) { clearTimeout(barcodeTimer); barcodeTimer = null; }
     atualizarIndicadorFoco();
 };
 
@@ -448,7 +855,25 @@ function tocarBeep() {
     } catch (e) {}
 }
 
+function finalizarLeitura() {
+    leituraAtiva = false;
+    if (leituraFila.length > 0) {
+        var prox = leituraFila.shift();
+        buscarPosto(prox);
+    }
+}
+
 function buscarPosto(codbar) {
+    var datasAlvo = obterDatasAlvoStr();
+    if (!datasAlvo) {
+        exibirErro('Informe a(s) data(s) da estante');
+        return;
+    }
+    if (leituraAtiva) {
+        leituraFila.push(codbar);
+        return;
+    }
+    leituraAtiva = true;
     tocarBeep();
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
@@ -469,9 +894,10 @@ function buscarPosto(codbar) {
             } else {
                 exibirErro('Erro de conexao');
             }
+            finalizarLeitura();
         }
     };
-    xhr.send('ajax_buscar_posto=1&codbar=' + encodeURIComponent(codbar));
+    xhr.send('ajax_buscar_posto=1&codbar=' + encodeURIComponent(codbar) + '&datas_alvo=' + encodeURIComponent(datasAlvo));
 }
 
 function exibirResultado(dados) {
@@ -517,15 +943,64 @@ function exibirResultado(dados) {
         body.appendChild(linhaVoz);
     }
 
+    if (dados.estante_novo === false) {
+        var linhaLido = document.createElement('div');
+        linhaLido.className = 'info-linha';
+        var labelLido = document.createElement('span');
+        labelLido.className = 'info-label';
+        labelLido.textContent = 'Status';
+        var valorLido = document.createElement('span');
+        valorLido.className = 'info-valor';
+        valorLido.textContent = 'Lote ja contabilizado';
+        linhaLido.appendChild(labelLido);
+        linhaLido.appendChild(valorLido);
+        body.appendChild(linhaLido);
+    }
+
+    if (dados.status_estante === 'sem_upload') {
+        var linhaSem = document.createElement('div');
+        linhaSem.className = 'info-linha';
+        var labelSem = document.createElement('span');
+        labelSem.className = 'info-label';
+        labelSem.textContent = 'Status';
+        var valorSem = document.createElement('span');
+        valorSem.className = 'info-valor';
+        valorSem.textContent = 'Sem upload (verifique data)';
+        linhaSem.appendChild(labelSem);
+        linhaSem.appendChild(valorSem);
+        body.appendChild(linhaSem);
+    }
+
+    if (dados.data_producao) {
+        var linhaData = document.createElement('div');
+        linhaData.className = 'info-linha';
+        var labelData = document.createElement('span');
+        labelData.className = 'info-label';
+        labelData.textContent = 'Data producao';
+        var valorData = document.createElement('span');
+        valorData.className = 'info-valor';
+        valorData.textContent = dados.data_producao;
+        linhaData.appendChild(labelData);
+        linhaData.appendChild(valorData);
+        body.appendChild(linhaData);
+    }
+
     div.style.display = 'block';
 
     falar(dados.voz);
 
-    contTotal++;
-    if (dados.entrega === 'poupatempo') { contPT++; }
-    else if (dados.regional === 0) { contCapital++; }
-    else if (dados.regional === 999) { contCentral++; }
-    else { contRegional++; }
+    if (dados.estante) {
+        contTotal = dados.estante.total || 0;
+        contCapital = dados.estante.capital || 0;
+        contCentral = dados.estante.central || 0;
+        contRegional = dados.estante.regional || 0;
+        contPT = dados.estante.poupatempo || 0;
+    }
+    if (dados.sem_upload) {
+        contSemUpload = dados.sem_upload.total || 0;
+        lotesSemUpload = dados.sem_upload.lotes || [];
+        renderizarSemUpload();
+    }
 
     atualizarStats();
     adicionarHistorico(dados);
@@ -548,6 +1023,95 @@ function atualizarStats() {
     document.getElementById('statCentral').textContent = contCentral;
     document.getElementById('statRegional').textContent = contRegional;
     document.getElementById('statPT').textContent = contPT;
+    var elSem = document.getElementById('statSemUpload');
+    if (elSem) elSem.textContent = contSemUpload;
+}
+
+function renderizarSemUpload() {
+    var painel = document.getElementById('painelSemUpload');
+    var lista = document.getElementById('listaSemUpload');
+    if (!painel || !lista) return;
+    if (!lotesSemUpload || lotesSemUpload.length === 0) {
+        painel.style.display = 'none';
+        lista.innerHTML = '';
+        return;
+    }
+    painel.style.display = 'block';
+    var html = '';
+    for (var i = 0; i < lotesSemUpload.length; i++) {
+        html += '<span class="lote-badge">' + lotesSemUpload[i] + '</span>';
+    }
+    lista.innerHTML = html;
+}
+
+function carregarEstanteInicial() {
+    var datasAlvo = obterDatasAlvoStr();
+    if (!datasAlvo) {
+        contTotal = 0; contCapital = 0; contCentral = 0; contRegional = 0; contPT = 0; contSemUpload = 0; lotesSemUpload = [];
+        renderizarSemUpload();
+        atualizarStats();
+        return;
+    }
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', 'encontra_posto.php', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+                var resp = JSON.parse(xhr.responseText);
+                if (resp.success && resp.estante) {
+                    contTotal = resp.estante.total || 0;
+                    contCapital = resp.estante.capital || 0;
+                    contCentral = resp.estante.central || 0;
+                    contRegional = resp.estante.regional || 0;
+                    contPT = resp.estante.poupatempo || 0;
+                    if (resp.sem_upload) {
+                        contSemUpload = resp.sem_upload.total || 0;
+                        lotesSemUpload = resp.sem_upload.lotes || [];
+                        renderizarSemUpload();
+                    }
+                    atualizarStats();
+                }
+            } catch (e) {}
+        }
+    };
+    xhr.send('ajax_estante_status=1&datas_alvo=' + encodeURIComponent(datasAlvo));
+}
+
+function limparEstante() {
+    var responsavel = document.getElementById('responsavelLimpeza').value.trim();
+    var datasAlvo = obterDatasAlvoStr();
+    if (!datasAlvo) {
+        exibirErro('Informe a(s) data(s) da estante');
+        return;
+    }
+    if (!responsavel) {
+        exibirErro('Responsavel obrigatorio para limpeza');
+        return;
+    }
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', 'encontra_posto.php', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                try {
+                    var resp = JSON.parse(xhr.responseText);
+                    if (resp.success) {
+                        carregarEstanteInicial();
+                        alert('Estante limpa. Registros apagados: ' + resp.apagados);
+                    } else {
+                        exibirErro(resp.erro || 'Erro ao limpar estante');
+                    }
+                } catch (e) {
+                    exibirErro('Erro ao processar resposta');
+                }
+            } else {
+                exibirErro('Erro de conexao');
+            }
+        }
+    };
+    xhr.send('ajax_limpar_estante=1&responsavel=' + encodeURIComponent(responsavel) + '&datas_alvo=' + encodeURIComponent(datasAlvo));
 }
 
 function adicionarHistorico(dados) {
@@ -573,7 +1137,9 @@ function adicionarHistorico(dados) {
         entrega: dados.entrega,
         tipoTag: tipoTag,
         labelTipo: dados.label_tipo,
-        hora: hora
+        hora: hora,
+        jaLido: (dados.estante_novo === false),
+        semUpload: (dados.status_estante === 'sem_upload')
     });
 
     renderizarHistorico();
@@ -590,9 +1156,13 @@ function renderizarHistorico() {
     for (var i = 0; i < max; i++) {
         var h = historico[i];
         var postoLabel = h.entrega === 'poupatempo' ? 'PT ' + h.postoInt : 'Posto ' + h.posto;
+        var badgeLido = h.jaLido ? '<span style="background:#757575;color:white;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700;">JA LIDO</span>' : '';
+        var badgeSem = h.semUpload ? '<span style="background:#b71c1c;color:white;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700;">SEM UPLOAD</span>' : '';
         html += '<div class="historico-item">' +
             '<span class="hi-posto">' + postoLabel + '</span>' +
             '<span class="hi-tipo">' + h.tipoTag + '</span>' +
+            badgeLido +
+            badgeSem +
             '<span class="hi-hora">' + h.hora + '</span>' +
             '</div>';
     }
@@ -622,21 +1192,15 @@ document.addEventListener('visibilitychange', function() {
     var campo = document.getElementById('input_codbar');
     if (document.visibilityState === 'visible') {
         if (!wakeLockSentinel) { solicitarWakeLock(); }
-        barcodeBuffer = '';
-        if (barcodeTimer) { clearTimeout(barcodeTimer); barcodeTimer = null; }
         if (campo) { campo.value = ''; campo.focus(); }
         atualizarIndicadorFoco();
     } else {
-        barcodeBuffer = '';
-        if (barcodeTimer) { clearTimeout(barcodeTimer); barcodeTimer = null; }
         if (campo) { campo.value = ''; }
     }
 });
 
 window.addEventListener('focus', function() {
     if (!wakeLockSentinel) { solicitarWakeLock(); }
-    barcodeBuffer = '';
-    if (barcodeTimer) { clearTimeout(barcodeTimer); barcodeTimer = null; }
     var campo = document.getElementById('input_codbar');
     if (campo) { campo.value = ''; campo.focus(); }
     atualizarIndicadorFoco();
@@ -650,6 +1214,39 @@ setInterval(function() {
 }, 30000);
 
 atualizarIndicadorFoco();
+var inputDatas = document.getElementById('datas_estante');
+if (inputDatas) {
+    var salva = localStorage.getItem('estante_datas') || '';
+    inputDatas.value = salva !== '' ? salva : formatarHoje();
+    inputDatas.addEventListener('change', salvarDatasAlvo);
+    inputDatas.addEventListener('blur', salvarDatasAlvo);
+}
+var btnAlterar = document.getElementById('btnAlterarDatas');
+if (btnAlterar) {
+    btnAlterar.addEventListener('click', abrirModalDatas);
+}
+var btnLimpar = document.getElementById('btnLimparEstante');
+if (btnLimpar) {
+    btnLimpar.addEventListener('click', limparEstante);
+}
+var btnConfirmar = document.getElementById('btnConfirmarDatas');
+if (btnConfirmar) {
+    btnConfirmar.addEventListener('click', function() {
+        var inputModal = document.getElementById('datas_estante_modal');
+        if (inputModal && inputDatas) {
+            inputDatas.value = inputModal.value.trim();
+            salvarDatasAlvo();
+        }
+        fecharModalDatas();
+    });
+}
+var btnCancelar = document.getElementById('btnCancelarDatas');
+if (btnCancelar) {
+    btnCancelar.addEventListener('click', fecharModalDatas);
+}
+atualizarBannerDatas();
+abrirModalDatas();
+carregarEstanteInicial();
 
 </script>
 

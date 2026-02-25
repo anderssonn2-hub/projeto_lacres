@@ -1,5 +1,10 @@
 <?php
-/* conferencia_pacotes.php — v9.24.6
+/* conferencia_pacotes.php — v9.24.8
+ * CHANGELOG v9.24.8:
+ * - [NOVO] Total de pacotes na estante por leitura (encontra_posto)
+ * - [NOVO] Lotes na estante sem upload no filtro atual
+ * - [AJUSTE] Versao atualizada
+ *
  * CHANGELOG v9.24.6:
  * - [NOVO] Coluna com responsavel pela producao do lote
  * - [NOVO] Coluna com data/hora da conferencia
@@ -162,6 +167,18 @@ try {
     if (count($colsConf) === 0) {
         $pdo->exec("ALTER TABLE conferencia_pacotes ADD COLUMN conferido_em DATETIME DEFAULT NULL");
     }
+
+    // v9.24.8: Controle de pacotes lidos na estante
+    $pdo->exec("CREATE TABLE IF NOT EXISTS lotes_na_estante (
+        id INT NOT NULL AUTO_INCREMENT,
+        lote INT(8) NOT NULL,
+        regional INT(3) NOT NULL,
+        posto INT(3) NOT NULL,
+        quantidade INT(5) NOT NULL,
+        producao_de DATE NOT NULL,
+        triado_em DATE NOT NULL,
+        PRIMARY KEY (id)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
 
     // Handler AJAX salvar
     if (isset($_POST['salvar_lote_ajax'])) {
@@ -666,6 +683,15 @@ try {
         'pacotes_conferidos' => 0
     );
 
+    $estante_stats = array(
+        'total' => 0,
+        'capital' => 0,
+        'central' => 0,
+        'regional' => 0,
+        'poupatempo' => 0
+    );
+    $estante_lotes_sem_upload = array();
+
     // v9.23.0: Status de conferências (últimos 30 dias)
     try {
         $stmt_conferidos = $pdo->query("
@@ -748,6 +774,62 @@ try {
         }
     }
 
+    // v9.24.8: Estatisticas da estante (leituras do encontra_posto)
+    try {
+        if (!empty($condicoes_data)) {
+            $condicoes_estante = array();
+            $params_estante = array();
+            if ($data_ini_sql !== '' && $data_fim_sql !== '') {
+                $condicoes_estante[] = "producao_de BETWEEN ? AND ?";
+                $params_estante[] = $data_ini_sql;
+                $params_estante[] = $data_fim_sql;
+            }
+            if (!empty($datas_sql)) {
+                $phEst = implode(',', array_fill(0, count($datas_sql), '?'));
+                $condicoes_estante[] = "producao_de IN ($phEst)";
+                $params_estante = array_merge($params_estante, $datas_sql);
+            }
+
+            if (!empty($condicoes_estante)) {
+                $whereEstante = "WHERE (" . implode(' OR ', $condicoes_estante) . ")";
+
+                $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
+                $stmtTot->execute($params_estante);
+                $estante_stats['total'] = (int)$stmtTot->fetchColumn();
+
+                $stmtTipos = $pdo->prepare("SELECT DISTINCT l.lote, l.posto, l.regional, r.entrega
+                    FROM lotes_na_estante l
+                    LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
+                    $whereEstante");
+                $stmtTipos->execute($params_estante);
+                while ($row = $stmtTipos->fetch(PDO::FETCH_ASSOC)) {
+                    $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
+                    if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
+                        $estante_stats['poupatempo']++;
+                    } elseif ((int)$row['regional'] === 0) {
+                        $estante_stats['capital']++;
+                    } elseif ((int)$row['regional'] === 999) {
+                        $estante_stats['central']++;
+                    } else {
+                        $estante_stats['regional']++;
+                    }
+                }
+
+                $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
+                    FROM lotes_na_estante l
+                    LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
+                    $whereEstante AND c.lote IS NULL
+                    ORDER BY l.lote");
+                $stmtSem->execute($params_estante);
+                while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
+                    $estante_lotes_sem_upload[] = $row['lote'];
+                }
+            }
+        }
+    } catch (Exception $e) {
+        $estante_lotes_sem_upload = array();
+    }
+
     // v9.24.0: Carregar postos bloqueados
     $postos_bloqueados = array();
     try {
@@ -774,7 +856,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.24.6</title>
+    <title>Conferência de Pacotes v0.9.24.8</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -970,6 +1052,26 @@ try {
         }
         .card-resumo h4 { margin: 0; font-size: 12px; color: #555; text-transform: uppercase; }
         .card-resumo .valor { font-size: 20px; font-weight: 700; color: #007bff; margin-top: 6px; }
+
+        .painel-estante {
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 12px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        }
+        .painel-estante h4 { margin: 0 0 8px; color: #333; font-size: 13px; }
+        .painel-estante .breakdown { font-size: 11px; color: #666; margin-bottom: 8px; }
+        .lista-lotes { display: flex; flex-wrap: wrap; gap: 6px; }
+        .lote-badge {
+            background: #263238;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+        }
         .painel-ultimas {
             background: #fff;
             border-radius: 8px;
@@ -1187,7 +1289,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.24.6</div>
+    <div class="versao">v0.9.24.8</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1232,7 +1334,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.24.6</h2>
+<h2>📋 Conferência de Pacotes v0.9.24.8</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1407,6 +1509,38 @@ try {
             <h4>Pacotes conferidos</h4>
             <div class="valor"><?php echo (int)$stats['pacotes_conferidos']; ?></div>
         </div>
+        <div class="card-resumo">
+            <h4>Pacotes na estante</h4>
+            <div class="valor"><?php echo (int)$estante_stats['total']; ?></div>
+        </div>
+        <div class="card-resumo">
+            <h4>Lotes sem upload</h4>
+            <div class="valor"><?php echo (int)count($estante_lotes_sem_upload); ?></div>
+        </div>
+    </div>
+
+    <div class="painel-estante">
+        <h4>🔎 Lotes na estante sem upload</h4>
+        <div class="breakdown">
+            Capital: <?php echo (int)$estante_stats['capital']; ?> | Central: <?php echo (int)$estante_stats['central']; ?> | Regional: <?php echo (int)$estante_stats['regional']; ?> | PT: <?php echo (int)$estante_stats['poupatempo']; ?>
+        </div>
+        <?php if (!empty($estante_lotes_sem_upload)) { ?>
+            <div class="lista-lotes">
+                <?php
+                $limite = 50;
+                $total_lotes = count($estante_lotes_sem_upload);
+                $mostrar = array_slice($estante_lotes_sem_upload, 0, $limite);
+                foreach ($mostrar as $lote) {
+                    echo '<span class="lote-badge">' . e($lote) . '</span>';
+                }
+                if ($total_lotes > $limite) {
+                    echo '<span class="lote-badge">+ ' . e($total_lotes - $limite) . ' outros</span>';
+                }
+                ?>
+            </div>
+        <?php } else { ?>
+            <div style="font-size:12px; color:#666;">Nenhum lote pendente no filtro atual.</div>
+        <?php } ?>
     </div>
 
 </div>
