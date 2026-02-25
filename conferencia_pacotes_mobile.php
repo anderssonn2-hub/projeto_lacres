@@ -32,6 +32,11 @@ try {
         PDO::ATTR_TIMEOUT => 5
     ));
 
+    $colsConf = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes LIKE 'conferido_em'")->fetchAll();
+    if (count($colsConf) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes ADD COLUMN conferido_em DATETIME DEFAULT NULL");
+    }
+
     // Handler AJAX: Salvar conferência
     if (isset($_POST['salvar_conferencia_ajax'])) {
         header('Content-Type: application/json');
@@ -173,9 +178,9 @@ try {
         }
 
         // Inserir/atualizar conferência (dataexp em formato SQL YYYY-mm-dd)
-        $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario) 
-                VALUES (?, ?, ?, ?, ?, ?, 's', ?)
-                ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar), dataexp=VALUES(dataexp), usuario=VALUES(usuario)";
+        $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario, conferido_em) 
+            VALUES (?, ?, ?, ?, ?, ?, 's', ?, NOW())
+            ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar), dataexp=VALUES(dataexp), usuario=VALUES(usuario), conferido_em=NOW()";
         $stmt = $pdo->prepare($sql);
         $stmt->execute(array($regional_salvar, (int)ltrim($lote, '0'), $posto, $dataexp_sql, $qtd > 0 ? $qtd : 1, $codbar_limpo, $usuario));
 

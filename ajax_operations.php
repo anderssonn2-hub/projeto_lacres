@@ -39,6 +39,11 @@ try {
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8 AUTO_INCREMENT=1";
     $pdo->exec($createConferencia);
 
+    $colsConf = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes LIKE 'conferido_em'")->fetchAll();
+    if (count($colsConf) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes ADD COLUMN conferido_em DATETIME DEFAULT NULL");
+    }
+
 } catch (PDOException $e) {
     echo json_encode(array('success' => false, 'message' => 'Erro de conexão: ' . $e->getMessage()));
     exit;
@@ -100,7 +105,7 @@ function salvarConferencia($pdo, $dados) {
         ));
 
         if ($stmt->fetch()) {
-            $stmt = $pdo->prepare("UPDATE conferencia_pacotes SET conf = 's', qtd = ?, codbar = ?, dataexp = ? WHERE nlote = ? AND regional = ? AND nposto = ?");
+            $stmt = $pdo->prepare("UPDATE conferencia_pacotes SET conf = 's', qtd = ?, codbar = ?, dataexp = ?, conferido_em = NOW() WHERE nlote = ? AND regional = ? AND nposto = ?");
             $stmt->execute(array(
                 (int)$dados['qtd'],
                 (int)$dados['codbar'],
@@ -110,7 +115,7 @@ function salvarConferencia($pdo, $dados) {
                 $dados['nposto']
             ));
         } else {
-            $stmt = $pdo->prepare("INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf) VALUES (?, ?, ?, ?, ?, ?, 's')");
+            $stmt = $pdo->prepare("INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, conferido_em) VALUES (?, ?, ?, ?, ?, ?, 's', NOW())");
             $stmt->execute(array(
                 $dados['regional'],
                 (int)$dados['nlote'],

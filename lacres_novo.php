@@ -4219,6 +4219,31 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
             overflow: auto;
         }
 
+        /* Layout consistente das colunas da grade de lacres */
+        table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+        }
+        th, td {
+            vertical-align: middle;
+        }
+        th:nth-child(1), td:nth-child(1) { width: 34%; }
+        th:nth-child(2), td:nth-child(2) { width: 12%; }
+        th:nth-child(3), td:nth-child(3) { width: 12%; }
+        th:nth-child(4), td:nth-child(4) { width: 32%; }
+        th:nth-child(5), td:nth-child(5) { width: 10%; }
+        td:nth-child(1) {
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+        input.lacre,
+        input.etiqueta-barras {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
         @media print {
             .somente-impressao { display: block !important; }
             .btn-limpar { display: none !important; }
@@ -4302,6 +4327,11 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
                 overflow-wrap: break-word !important;
             }
             th:nth-child(5), td:nth-child(5) { width: 11% !important; }
+            td:nth-child(1) {
+                white-space: normal !important;
+                word-break: break-word !important;
+                overflow-wrap: break-word !important;
+            }
             
             /* Esconder coluna de ações */
             .btn-excluir, .btn-excluir-regional, .btn-add-above, .btn-add-below, th:last-child, td:last-child { display: none !important; }
