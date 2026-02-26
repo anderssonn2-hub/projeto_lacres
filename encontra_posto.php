@@ -21,15 +21,6 @@ function normalizarDataEntrada($s) {
     return '';
 }
 
-function normalizarDataIso($s) {
-    $s = trim((string)$s);
-    if ($s === '') return '';
-    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $s, $m)) {
-        return $m[1] . '-' . $m[2] . '-' . $m[3];
-    }
-    return '';
-}
-
 function parseDatasAlvo($raw) {
     $out = array();
     $partes = preg_split('/[;,\s]+/', (string)$raw);
@@ -84,6 +75,7 @@ try {
         }
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
+        $historico = array();
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -117,25 +109,59 @@ try {
                 }
             }
 
+            $params_upload = array();
+            $joinCarga = '';
+            if ($data_ini !== '') {
+                $joinCarga = 'AND DATE(c.dataCarga) BETWEEN ? AND ?';
+                $params_upload[] = $data_ini;
+                $params_upload[] = $data_fim;
+            } else {
+                $joinCarga = "AND DATE(c.dataCarga) IN ($ph)";
+                $params_upload = $datas_alvo;
+            }
             $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
                 FROM lotes_na_estante l
-                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                $whereEstante AND c.lote IS NULL
+                WHERE 1=1
+                $whereEstante
+                AND NOT EXISTS (
+                    SELECT 1 FROM ciPostosCsv c
+                    WHERE c.lote = l.lote $joinCarga
+                )
                 ORDER BY l.lote LIMIT 50");
-            $stmtSem->execute($params_estante);
+            $stmtSem->execute(array_merge($params_estante, $params_upload));
             while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                 $sem_upload['lotes'][] = $row['lote'];
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
-                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                $whereEstante AND c.lote IS NULL");
-            $stmtSemTot->execute($params_estante);
+                WHERE 1=1
+                $whereEstante
+                AND NOT EXISTS (
+                    SELECT 1 FROM ciPostosCsv c
+                    WHERE c.lote = l.lote $joinCarga
+                )");
+            $stmtSemTot->execute(array_merge($params_estante, $params_upload));
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
+
+            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_em
+                FROM lotes_na_estante
+                $whereEstante
+                ORDER BY triado_em DESC, id DESC
+                LIMIT 100");
+            $stmtHist->execute($params_estante);
+            while ($row = $stmtHist->fetch(PDO::FETCH_ASSOC)) {
+                $historico[] = array(
+                    'lote' => $row['lote'],
+                    'posto' => $row['posto'],
+                    'regional' => $row['regional'],
+                    'producao_de' => $row['producao_de'],
+                    'triado_em' => $row['triado_em']
+                );
+            }
         } catch (Exception $e) {
             // ignore
         }
-        die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload)));
+        die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload, 'historico' => $historico)));
     }
 
     if (isset($_POST['ajax_buscar_posto'])) {
@@ -278,6 +304,7 @@ try {
 
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
+        $historico = array();
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -311,21 +338,55 @@ try {
                 }
             }
 
+            $params_upload = array();
+            $joinCarga = '';
+            if ($data_ini !== '') {
+                $joinCarga = 'AND DATE(c.dataCarga) BETWEEN ? AND ?';
+                $params_upload[] = $data_ini;
+                $params_upload[] = $data_fim;
+            } else {
+                $joinCarga = "AND DATE(c.dataCarga) IN ($ph)";
+                $params_upload = $datas_alvo;
+            }
             $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
                 FROM lotes_na_estante l
-                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                $whereEstante AND c.lote IS NULL
+                WHERE 1=1
+                $whereEstante
+                AND NOT EXISTS (
+                    SELECT 1 FROM ciPostosCsv c
+                    WHERE c.lote = l.lote $joinCarga
+                )
                 ORDER BY l.lote LIMIT 50");
-            $stmtSem->execute($params_estante);
+            $stmtSem->execute(array_merge($params_estante, $params_upload));
             while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                 $sem_upload['lotes'][] = $row['lote'];
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
-                LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                $whereEstante AND c.lote IS NULL");
-            $stmtSemTot->execute($params_estante);
+                WHERE 1=1
+                $whereEstante
+                AND NOT EXISTS (
+                    SELECT 1 FROM ciPostosCsv c
+                    WHERE c.lote = l.lote $joinCarga
+                )");
+            $stmtSemTot->execute(array_merge($params_estante, $params_upload));
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
+
+            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_em
+                FROM lotes_na_estante
+                $whereEstante
+                ORDER BY triado_em DESC, id DESC
+                LIMIT 100");
+            $stmtHist->execute($params_estante);
+            while ($row = $stmtHist->fetch(PDO::FETCH_ASSOC)) {
+                $historico[] = array(
+                    'lote' => $row['lote'],
+                    'posto' => $row['posto'],
+                    'regional' => $row['regional'],
+                    'producao_de' => $row['producao_de'],
+                    'triado_em' => $row['triado_em']
+                );
+            }
         } catch (Exception $e) {
             // ignore
         }
@@ -348,6 +409,7 @@ try {
             'estante_novo' => $estante_novo,
             'estante' => $estante_stats,
             'sem_upload' => $sem_upload,
+            'historico' => $historico,
             'status_estante' => $status_estante,
             'data_alvo' => $data_alvo,
             'data_producao' => $data_producao ? date('d-m-Y', strtotime($data_producao)) : null
@@ -514,17 +576,13 @@ try {
             color: #333; margin-bottom: 12px;
             padding-left: 10px; border-left: 4px solid #1a237e; font-size: 16px;
         }
-        .historico-lista { max-height: 300px; overflow-y: auto; }
-        .historico-item {
-            display: flex; align-items: center; gap: 12px;
-            padding: 10px 12px; border-bottom: 1px solid #eee;
-            font-size: 14px; transition: background 0.2s;
+        .historico-tabela { width: 100%; border-collapse: collapse; }
+        .historico-tabela th, .historico-tabela td {
+            border-bottom: 1px solid #eee; padding: 8px 10px; font-size: 12px; text-align: left;
         }
-        .historico-item:hover { background: #f5f5f5; }
-        .historico-item .hi-posto { font-weight: 700; font-size: 16px; min-width: 80px; }
-        .historico-item .hi-tipo { min-width: 140px; }
-        .historico-item .hi-hora { color: #999; font-size: 12px; }
-        .msg-vazia { color: #999; text-align: center; padding: 30px; font-style: italic; }
+        .historico-tabela th { color: #555; font-weight: 700; cursor: pointer; user-select: none; }
+        .historico-tabela tr:hover { background: #f5f5f5; }
+        .historico-vazio { color: #999; text-align: center; padding: 18px; font-style: italic; }
 
         .btn-voltar {
             color: white;
@@ -630,7 +688,7 @@ try {
 <div class="area-principal">
 
     <div class="banner-datas" id="bannerDatas" style="display:none;">
-        <div class="datas-ativas" id="datasAtivasTexto">Datas ativas:</div>
+        <div class="datas-ativas" id="datasAtivasTexto">Periodo ativo:</div>
         <button type="button" id="btnAlterarDatas">Alterar datas</button>
     </div>
 
@@ -691,9 +749,20 @@ try {
 
     <div class="historico-container">
         <h3>Historico de Leituras</h3>
-        <div class="historico-lista" id="historicoLista">
-            <div class="msg-vazia">Nenhuma leitura realizada</div>
-        </div>
+        <table class="historico-tabela">
+            <thead>
+                <tr>
+                    <th data-sort="triado_em">Triado em</th>
+                    <th data-sort="lote">Lote</th>
+                    <th data-sort="posto">Posto</th>
+                    <th data-sort="regional">Regional</th>
+                    <th data-sort="producao_de">Producao</th>
+                </tr>
+            </thead>
+            <tbody id="historicoLista">
+                <tr><td class="historico-vazio" colspan="5">Nenhuma leitura realizada</td></tr>
+            </tbody>
+        </table>
     </div>
 
 </div>
@@ -702,9 +771,9 @@ try {
 
 <div class="overlay-datas" id="overlayDatas" style="display:flex;">
     <div class="card">
-        <h3>Datas da Estante</h3>
-        <div class="hint">Selecione inicio e fim do periodo da estante.</div>
-        <div class="linha-datas" style="margin-top:10px;">
+        <h3>Periodo da Estante</h3>
+        <div class="hint">Informe o periodo que sera triado (formato yyyy-mm-dd).</div>
+        <div class="linha-datas">
             <input type="date" id="data_ini_modal" class="data-estante">
             <input type="date" id="data_fim_modal" class="data-estante">
         </div>
@@ -717,7 +786,8 @@ try {
 
 <script>
 var vozAtiva = true;
-var historico = [];
+var historicoLeituras = [];
+var historicoOrdenacao = { chave: 'triado_em', asc: false };
 var contTotal = 0;
 var contCapital = 0;
 var contCentral = 0;
@@ -733,9 +803,9 @@ var leituraAtiva = false;
 
 function formatarHoje() {
     var d = new Date();
-    var dd = (d.getDate() < 10 ? '0' : '') + d.getDate();
-    var mm = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1);
     var yyyy = d.getFullYear();
+    var mm = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1);
+    var dd = (d.getDate() < 10 ? '0' : '') + d.getDate();
     return yyyy + '-' + mm + '-' + dd;
 }
 
@@ -1049,8 +1119,12 @@ function exibirResultado(dados) {
         renderizarSemUpload();
     }
 
+    if (dados.historico) {
+        historicoLeituras = dados.historico || [];
+        renderizarHistorico();
+    }
+
     atualizarStats();
-    adicionarHistorico(dados);
     document.getElementById('input_codbar').focus();
 }
 
@@ -1126,6 +1200,10 @@ function carregarEstanteInicial() {
                         lotesSemUpload = resp.sem_upload.lotes || [];
                         renderizarSemUpload();
                     }
+                    if (resp.historico) {
+                        historicoLeituras = resp.historico || [];
+                        renderizarHistorico();
+                    }
                     atualizarStats();
                 }
             } catch (e) {}
@@ -1134,57 +1212,64 @@ function carregarEstanteInicial() {
     xhr.send('ajax_estante_status=1&data_ini=' + encodeURIComponent(dataIni) + '&data_fim=' + encodeURIComponent(dataFim));
 }
 
-function adicionarHistorico(dados) {
-    var agora = new Date();
-    var hora = (agora.getHours() < 10 ? '0' : '') + agora.getHours() + ':' +
-               (agora.getMinutes() < 10 ? '0' : '') + agora.getMinutes() + ':' +
-               (agora.getSeconds() < 10 ? '0' : '') + agora.getSeconds();
-
-    var tipoTag = '';
-    if (dados.entrega === 'poupatempo') {
-        tipoTag = '<span style="background:#e65100;color:white;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;">POUPA TEMPO</span>';
-    } else if (dados.regional === 0) {
-        tipoTag = '<span style="background:#1565c0;color:white;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;">CAPITAL</span>';
-    } else if (dados.regional === 999) {
-        tipoTag = '<span style="background:#6a1b9a;color:white;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;">CENTRAL</span>';
-    } else {
-        tipoTag = '<span style="background:#2e7d32;color:white;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;">REG ' + dados.regional_pad + '</span>';
+function formatarDataBr(valor) {
+    if (!valor) return '';
+    if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
+        var parts = valor.substr(0, 10).split('-');
+        return parts[2] + '-' + parts[1] + '-' + parts[0];
     }
+    return valor;
+}
 
-    historico.unshift({
-        posto: dados.posto,
-        postoInt: dados.posto_int,
-        entrega: dados.entrega,
-        tipoTag: tipoTag,
-        labelTipo: dados.label_tipo,
-        hora: hora,
-        jaLido: (dados.estante_novo === false),
-        semUpload: (dados.status_estante === 'sem_upload')
-    });
+function formatarDataHoraBr(valor) {
+    if (!valor) return '';
+    if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
+        var data = valor.substr(0, 10);
+        var hora = valor.substr(11, 5);
+        return formatarDataBr(data) + (hora ? ' ' + hora : '');
+    }
+    return valor;
+}
 
+function ordenarHistorico(chave) {
+    if (!chave) return;
+    if (historicoOrdenacao.chave === chave) {
+        historicoOrdenacao.asc = !historicoOrdenacao.asc;
+    } else {
+        historicoOrdenacao.chave = chave;
+        historicoOrdenacao.asc = true;
+    }
     renderizarHistorico();
 }
 
 function renderizarHistorico() {
     var lista = document.getElementById('historicoLista');
-    if (historico.length === 0) {
-        lista.innerHTML = '<div class="msg-vazia">Nenhuma leitura realizada</div>';
+    if (!lista) return;
+    if (!historicoLeituras || historicoLeituras.length === 0) {
+        lista.innerHTML = '<tr><td class="historico-vazio" colspan="5">Nenhuma leitura realizada</td></tr>';
         return;
     }
+    var chave = historicoOrdenacao.chave;
+    var asc = historicoOrdenacao.asc;
+    var dados = historicoLeituras.slice(0);
+    dados.sort(function(a, b) {
+        var va = a[chave] || '';
+        var vb = b[chave] || '';
+        if (va < vb) return asc ? -1 : 1;
+        if (va > vb) return asc ? 1 : -1;
+        return 0;
+    });
     var html = '';
-    var max = historico.length > 50 ? 50 : historico.length;
+    var max = dados.length > 100 ? 100 : dados.length;
     for (var i = 0; i < max; i++) {
-        var h = historico[i];
-        var postoLabel = h.entrega === 'poupatempo' ? 'PT ' + h.postoInt : 'Posto ' + h.posto;
-        var badgeLido = h.jaLido ? '<span style="background:#757575;color:white;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700;">JA LIDO</span>' : '';
-        var badgeSem = h.semUpload ? '<span style="background:#b71c1c;color:white;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:700;">SEM UPLOAD</span>' : '';
-        html += '<div class="historico-item">' +
-            '<span class="hi-posto">' + postoLabel + '</span>' +
-            '<span class="hi-tipo">' + h.tipoTag + '</span>' +
-            badgeLido +
-            badgeSem +
-            '<span class="hi-hora">' + h.hora + '</span>' +
-            '</div>';
+        var h = dados[i];
+        html += '<tr>' +
+            '<td>' + formatarDataHoraBr(h.triado_em) + '</td>' +
+            '<td>' + (h.lote || '') + '</td>' +
+            '<td>' + (h.posto || '') + '</td>' +
+            '<td>' + (h.regional || '') + '</td>' +
+            '<td>' + formatarDataBr(h.producao_de) + '</td>' +
+            '</tr>';
     }
     lista.innerHTML = html;
 }
@@ -1272,6 +1357,13 @@ if (btnCancelar) {
 }
 atualizarBannerDatas();
 abrirModalDatas();
+var headersHistorico = document.querySelectorAll('.historico-tabela th[data-sort]');
+for (var i = 0; i < headersHistorico.length; i++) {
+    headersHistorico[i].addEventListener('click', function() {
+        var chave = this.getAttribute('data-sort');
+        ordenarHistorico(chave);
+    });
+}
 carregarEstanteInicial();
 
 </script>
