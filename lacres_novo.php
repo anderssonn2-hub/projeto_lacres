@@ -2712,27 +2712,55 @@ $responsavel = isset($_GET['responsavel']) ? $_GET['responsavel'] : 'Responsáve
 // v8.14.9.3: Buscar o maior lacre usado (IIPR e Correios) para exibir na tela
 $ultimo_lacre_iipr = 0;
 $ultimo_lacre_correios = 0;
+$ultimo_despacho_correios = 0;
 try {
+    $stmtUltCorreios = $pdo_controle->query("SELECT id FROM ciDespachos WHERE LOWER(grupo) = 'correios' ORDER BY id DESC LIMIT 1");
+    $ultimo_despacho_correios = (int)$stmtUltCorreios->fetchColumn();
+
     // Buscar maior lacre IIPR
-    $stMaxIIPR = $pdo_controle->query("
-        SELECT MAX(CAST(etiquetaiipr AS UNSIGNED)) as max_iipr 
-        FROM ciDespachoLotes 
-        WHERE etiquetaiipr IS NOT NULL AND etiquetaiipr != ''
-    ");
-    $rowMaxIIPR = $stMaxIIPR->fetch(PDO::FETCH_ASSOC);
-    if ($rowMaxIIPR && $rowMaxIIPR['max_iipr']) {
-        $ultimo_lacre_iipr = (int)$rowMaxIIPR['max_iipr'];
-    }
-    
-    // Buscar maior lacre Correios
-    $stMaxCorreios = $pdo_controle->query("
-        SELECT MAX(CAST(etiquetacorreios AS UNSIGNED)) as max_correios 
-        FROM ciDespachoLotes 
-        WHERE etiquetacorreios IS NOT NULL AND etiquetacorreios != ''
-    ");
-    $rowMaxCorreios = $stMaxCorreios->fetch(PDO::FETCH_ASSOC);
-    if ($rowMaxCorreios && $rowMaxCorreios['max_correios']) {
-        $ultimo_lacre_correios = (int)$rowMaxCorreios['max_correios'];
+    if ($ultimo_despacho_correios > 0) {
+        $stMaxIIPR = $pdo_controle->prepare("
+            SELECT MAX(CAST(etiquetaiipr AS UNSIGNED)) as max_iipr
+            FROM ciDespachoLotes
+            WHERE id_despacho = ? AND etiquetaiipr IS NOT NULL AND etiquetaiipr != ''
+        ");
+        $stMaxIIPR->execute(array($ultimo_despacho_correios));
+        $rowMaxIIPR = $stMaxIIPR->fetch(PDO::FETCH_ASSOC);
+        if ($rowMaxIIPR && $rowMaxIIPR['max_iipr']) {
+            $ultimo_lacre_iipr = (int)$rowMaxIIPR['max_iipr'];
+        }
+
+        // Buscar maior lacre Correios
+        $stMaxCorreios = $pdo_controle->prepare("
+            SELECT MAX(CAST(etiquetacorreios AS UNSIGNED)) as max_correios
+            FROM ciDespachoLotes
+            WHERE id_despacho = ? AND etiquetacorreios IS NOT NULL AND etiquetacorreios != ''
+        ");
+        $stMaxCorreios->execute(array($ultimo_despacho_correios));
+        $rowMaxCorreios = $stMaxCorreios->fetch(PDO::FETCH_ASSOC);
+        if ($rowMaxCorreios && $rowMaxCorreios['max_correios']) {
+            $ultimo_lacre_correios = (int)$rowMaxCorreios['max_correios'];
+        }
+    } else {
+        $stMaxIIPR = $pdo_controle->query("
+            SELECT MAX(CAST(etiquetaiipr AS UNSIGNED)) as max_iipr 
+            FROM ciDespachoLotes 
+            WHERE etiquetaiipr IS NOT NULL AND etiquetaiipr != ''
+        ");
+        $rowMaxIIPR = $stMaxIIPR->fetch(PDO::FETCH_ASSOC);
+        if ($rowMaxIIPR && $rowMaxIIPR['max_iipr']) {
+            $ultimo_lacre_iipr = (int)$rowMaxIIPR['max_iipr'];
+        }
+        
+        $stMaxCorreios = $pdo_controle->query("
+            SELECT MAX(CAST(etiquetacorreios AS UNSIGNED)) as max_correios 
+            FROM ciDespachoLotes 
+            WHERE etiquetacorreios IS NOT NULL AND etiquetacorreios != ''
+        ");
+        $rowMaxCorreios = $stMaxCorreios->fetch(PDO::FETCH_ASSOC);
+        if ($rowMaxCorreios && $rowMaxCorreios['max_correios']) {
+            $ultimo_lacre_correios = (int)$rowMaxCorreios['max_correios'];
+        }
     }
 } catch (Exception $e) {
     // Silenciar erro
@@ -3506,17 +3534,22 @@ $data_atual = date('d-m-Y');
 
 // Tentar obter o grupo do último despacho ativo
 try {
-    $stmt_grupo = $pdo_controle->query("
-        SELECT id, grupo 
-        FROM ciDespachos 
-        WHERE ativo = 1 
-        ORDER BY id DESC 
-        LIMIT 1
-    ");
-    $row_grupo = $stmt_grupo->fetch(PDO::FETCH_ASSOC);
-    if ($row_grupo) {
-        $id_despacho_atual = (int)$row_grupo['id'];
-        $grupo_atual = strtolower(str_replace(' ', '', $row_grupo['grupo'])); // 'correios' ou 'poupatempo'
+    if (isset($ultimo_despacho_correios) && $ultimo_despacho_correios > 0) {
+        $id_despacho_atual = (int)$ultimo_despacho_correios;
+        $grupo_atual = 'correios';
+    } else {
+        $stmt_grupo = $pdo_controle->query("
+            SELECT id, grupo 
+            FROM ciDespachos 
+            WHERE ativo = 1 
+            ORDER BY id DESC 
+            LIMIT 1
+        ");
+        $row_grupo = $stmt_grupo->fetch(PDO::FETCH_ASSOC);
+        if ($row_grupo) {
+            $id_despacho_atual = (int)$row_grupo['id'];
+            $grupo_atual = strtolower(str_replace(' ', '', $row_grupo['grupo'])); // 'correios' ou 'poupatempo'
+        }
     }
 } catch (Exception $e) {
     // Se falhar, usa padrão antigo
@@ -4823,13 +4856,13 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 0.9.24.6</div>
+<div class="version-info">Versão 0.9.25.0</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
-<div id="indicador-dias" class="nao-imprimir">
+<div id="indicador-dias" class="nao-imprimir collapsed">
     <div style="font-weight:bold;color:#333;font-size:13px;">
         📅 Status de Conferências
-        <span class="indicador-toggle" onclick="toggleIndicadorDias()" title="Recolher/Expandir">▼</span>
+        <span class="indicador-toggle" onclick="toggleIndicadorDias()" title="Recolher/Expandir">▶</span>
     </div>
     
     <div class="indicador-conteudo">
@@ -5361,7 +5394,7 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
 <div class="assinaturas somente-impressao">
     <div class="assinatura-esquerda">
         <hr>
-        <p>RESPONSÁVEL CELEPAR<br></p>
+        <p>RESPONSÁVEL CELEPAR - Data: <?php echo $data_geracao; ?><br></p>
     </div>
     <div class="assinatura-direita">
         <hr>

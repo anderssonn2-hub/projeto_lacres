@@ -55,7 +55,7 @@ try {
         posto INT(3) NOT NULL,
         quantidade INT(5) NOT NULL,
         producao_de DATE NOT NULL,
-        triado_em DATE NOT NULL,
+        triado_em DATETIME NOT NULL,
         PRIMARY KEY (id)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
 
@@ -247,7 +247,7 @@ try {
             $stmtCheck = $pdo->prepare("SELECT id FROM lotes_na_estante WHERE lote = ? LIMIT 1");
             $stmtCheck->execute(array((int)$lote));
             if (!$stmtCheck->fetch()) {
-                $stmtIns = $pdo->prepare("INSERT INTO lotes_na_estante (lote, regional, posto, quantidade, producao_de, triado_em) VALUES (?,?,?,?,?,CURDATE())");
+                $stmtIns = $pdo->prepare("INSERT INTO lotes_na_estante (lote, regional, posto, quantidade, producao_de, triado_em) VALUES (?,?,?,?,?,NOW())");
                 $stmtIns->execute(array(
                     (int)$lote,
                     (int)$regional_real,
@@ -342,7 +342,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto v0.9.24.8 - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.25.0 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -599,8 +599,8 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.24.8</span>
-        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.24.8 (em atualizacao)</span>
+        <span class="versao">v0.9.25.0</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.0 (em atualizacao)</span>
         <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">

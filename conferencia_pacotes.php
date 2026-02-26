@@ -176,7 +176,7 @@ try {
         posto INT(3) NOT NULL,
         quantidade INT(5) NOT NULL,
         producao_de DATE NOT NULL,
-        triado_em DATE NOT NULL,
+        triado_em DATETIME NOT NULL,
         PRIMARY KEY (id)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
 
@@ -856,7 +856,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.24.8</title>
+    <title>Conferência de Pacotes v0.9.25.0</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1168,20 +1168,6 @@ try {
         }
         .banner-correios { background: linear-gradient(135deg, #2f80ed 0%, #56ccf2 100%); }
         .banner-pt { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
-        .painel-bloqueio {
-            background: #fff;
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin: 10px 0 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border-left: 4px solid #dc3545;
-        }
-        .painel-bloqueio h4 { margin: 0 0 10px; font-size: 13px; color:#444; text-transform: uppercase; }
-        .bloqueio-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; align-items: center; }
-        .bloqueio-form input { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
-        .bloqueio-lista { margin-top: 10px; display: grid; gap: 6px; }
-        .bloqueio-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; font-size: 12px; }
-        .bloqueio-item .posto { font-weight: 700; color: #dc3545; }
         .mensagem-leitura { margin: 6px 0 0; font-size: 12px; color: #555; }
         .mensagem-leitura strong { color: #dc3545; }
         .page-locked {
@@ -1289,7 +1275,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.24.8</div>
+    <div class="versao">v0.9.25.0</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1334,7 +1320,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.24.8</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.0</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1407,31 +1393,6 @@ try {
     </form>
 </div>
 
-<div class="painel-bloqueio">
-    <h4>🚫 Postos que nao devem ser enviados</h4>
-    <div class="bloqueio-form">
-        <input type="text" id="postoBloqueioNumero" placeholder="Posto (numero)">
-        <input type="text" id="postoBloqueioNome" placeholder="Motivo (obrigatorio)">
-        <input type="text" id="postoBloqueioResponsavel" placeholder="Responsavel pelo bloqueio">
-        <button type="button" class="btn-acao btn-cancelar" id="btnAdicionarBloqueio">Adicionar</button>
-    </div>
-    <div style="margin-top:6px; font-size:11px; color:#666;">Para remover, informe o responsavel do desbloqueio.</div>
-    <div class="bloqueio-form" style="margin-top:6px;">
-        <input type="text" id="postoDesbloqueioResponsavel" placeholder="Responsavel pelo desbloqueio">
-        <input type="text" id="postoDesbloqueioMotivo" placeholder="Motivo (opcional)">
-    </div>
-    <div class="bloqueio-lista" id="listaPostosBloqueados">
-        <?php foreach ($postos_bloqueados as $pb) { ?>
-            <div class="bloqueio-item" data-posto="<?php echo e($pb['posto']); ?>">
-                <div>
-                    <span class="posto"><?php echo e($pb['posto']); ?></span>
-                    <span><?php echo e(!empty($pb['motivo']) ? $pb['motivo'] : $pb['nome']); ?></span>
-                </div>
-                <button type="button" class="btn-acao btn-cancelar" data-remover="<?php echo e($pb['posto']); ?>">Remover</button>
-            </div>
-        <?php } ?>
-    </div>
-</div>
 
 <div class="painel-pacotes-novos" id="painelPacotesNovos" style="display:none;">
     <strong>📥 Pacotes não listados</strong>

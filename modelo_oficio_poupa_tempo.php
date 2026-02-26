@@ -667,7 +667,8 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
             c.lote AS lote,
             COALESCE(c.quantidade,0) AS quantidade,
             r.endereco AS endereco,
-            c.usuario AS usuario
+            c.usuario AS usuario,
+            DATE(c.dataCarga) AS data_carga
         FROM ciPostosCsv c
         INNER JOIN ciRegionais r 
                 ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
@@ -688,6 +689,7 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
             $quant    = (int)$r['quantidade'];          
             $endereco = trim((string)$r['endereco']);
             $usuario  = isset($r['usuario']) ? trim((string)$r['usuario']) : '';
+            $data_carga = isset($r['data_carga']) ? trim((string)$r['data_carga']) : '';
 
             // v9.8.2: Agrupar por posto e acumular lotes
             if (!isset($postosPorCodigo[$codigo])) {
@@ -704,7 +706,8 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
             // Adiciona lote individual
             $postosPorCodigo[$codigo]['lotes'][] = array(
                 'lote' => $lote,
-                'quantidade' => $quant
+                'quantidade' => $quant,
+                'data_carga' => $data_carga
             );
             $postosPorCodigo[$codigo]['qtd_total'] += $quant;
         }
@@ -1970,8 +1973,9 @@ if (document.readyState === 'loading') {
                                 <tr style="background:#e0e0e0;">
                                     <th class="col-checkbox nao-imprimir" style="width:30px; padding:3px; border:1px solid #000; font-size:10px;"></th>
                                     <th class="col-mover nao-imprimir" style="width:44px; padding:3px; border:1px solid #000; font-size:10px;"></th>
-                                    <th style="width:56%; text-align:left; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Lote</th>
-                                    <th style="width:30%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Qtd</th>
+                                    <th style="width:50%; text-align:left; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Lote</th>
+                                    <th style="width:22%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Qtd</th>
+                                    <th style="width:28%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Data Produção</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1990,6 +1994,9 @@ if (document.readyState === 'loading') {
                                     <td style="text-align:left; padding:4px; border:1px solid #000; font-size:10px;"><?php echo e($lote['lote']); ?></td>
                                     <td style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
                                         <span class="valor-tela"><?php echo number_format($lote['quantidade'], 0, ',', '.'); ?></span>
+                                    </td>
+                                    <td style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
+                                        <?php echo !empty($lote['data_carga']) ? date('d-m-Y', strtotime($lote['data_carga'])) : ''; ?>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>

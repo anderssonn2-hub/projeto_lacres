@@ -96,42 +96,43 @@ if ($dbOk && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $mensagem = 'Etiqueta invalida. Informe 35 digitos.';
                 $mensagem_tipo = 'erro';
             } else {
-                $stmtCheck = $pdo->prepare('SELECT id FROM ciMalotes WHERE leitura = ? AND tipo = 2 LIMIT 1');
-                $stmtCheck->execute(array($leitura));
-                $existe = $stmtCheck->fetch();
-
-                if ($existe) {
-                    $mensagem = 'Etiqueta ja registrada como devolvida.';
-                    $mensagem_tipo = 'aviso';
+                $cep = substr($leitura, 0, 8);
+                $sequencial = substr($leitura, -5);
+                $posto = preg_replace('/\D+/', '', $posto_raw);
+                if ($posto !== '') {
+                    $posto = str_pad($posto, 3, '0', STR_PAD_LEFT);
                 } else {
-                    $cep = substr($leitura, 0, 8);
-                    $sequencial = substr($leitura, -5);
-                    $posto = preg_replace('/\D+/', '', $posto_raw);
-                    if ($posto !== '') {
-                        $posto = str_pad($posto, 3, '0', STR_PAD_LEFT);
-                    } else {
+                    $posto = null;
+                    try {
+                        $stmtPosto = $pdo->prepare('SELECT posto FROM cadastroMalotes WHERE leitura = ? ORDER BY id DESC LIMIT 1');
+                        $stmtPosto->execute(array($leitura));
+                        $postoDb = $stmtPosto->fetchColumn();
+                        if ($postoDb !== false && $postoDb !== null && $postoDb !== '') {
+                            $posto = str_pad(preg_replace('/\D+/', '', (string)$postoDb), 3, '0', STR_PAD_LEFT);
+                        }
+                    } catch (Exception $e) {
                         $posto = null;
                     }
-
-                    $stmtIns = $pdo->prepare('INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
-                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-                    $stmtIns->execute(array(
-                        $leitura,
-                        date('Y-m-d'),
-                        null,
-                        $responsavel,
-                        2,
-                        $cep,
-                        $sequencial,
-                        $posto
-                    ));
-
-                    $_SESSION['ultimo_responsavel_devolucao'] = $responsavel;
-                    $responsavel_salvo = $responsavel;
-
-                    $mensagem = 'Devolucao registrada com sucesso.';
-                    $mensagem_tipo = 'ok';
                 }
+
+                $stmtIns = $pdo->prepare('INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
+                                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                $stmtIns->execute(array(
+                    $leitura,
+                    date('Y-m-d'),
+                    null,
+                    $responsavel,
+                    2,
+                    $cep,
+                    $sequencial,
+                    $posto
+                ));
+
+                $_SESSION['ultimo_responsavel_devolucao'] = $responsavel;
+                $responsavel_salvo = $responsavel;
+
+                $mensagem = 'Devolucao registrada com sucesso.';
+                $mensagem_tipo = 'ok';
             }
         }
     }
@@ -158,7 +159,7 @@ if ($dbOk) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devolucao de Etiquetas v0.9.24.8 - Projeto Lacres</title>
+    <title>Devolucao de Etiquetas v0.9.25.0 - Projeto Lacres</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -294,7 +295,7 @@ if ($dbOk) {
 </head>
 <body>
     <div class="card">
-        <h1>Devolucao de etiquetas (Correios) v0.9.24.8</h1>
+        <h1>Devolucao de etiquetas (Correios) v0.9.25.0</h1>
         <div class="sub">Leia a etiqueta devolvida para registrar o retorno (tipo = 2).</div>
 
         <div class="painel">
