@@ -21,6 +21,15 @@ function normalizarDataEntrada($s) {
     return '';
 }
 
+function normalizarDataIso($s) {
+    $s = trim((string)$s);
+    if ($s === '') return '';
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $s, $m)) {
+        return $m[1] . '-' . $m[2] . '-' . $m[3];
+    }
+    return '';
+}
+
 function parseDatasAlvo($raw) {
     $out = array();
     $partes = preg_split('/[;,\s]+/', (string)$raw);
@@ -59,34 +68,42 @@ try {
         PRIMARY KEY (id)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS ciPacotesEstanteLimpeza (
-        id INT NOT NULL AUTO_INCREMENT,
-        datas_alvo VARCHAR(255) NOT NULL,
-        responsavel VARCHAR(120) NOT NULL,
-        total_apagado INT NOT NULL,
-        criado DATETIME NOT NULL,
-        PRIMARY KEY (id)
-    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
-
     if (isset($_POST['ajax_estante_status'])) {
         header('Content-Type: application/json');
         $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
-        if (empty($datas_alvo)) {
+        $data_ini = normalizarDataIso(isset($_POST['data_ini']) ? $_POST['data_ini'] : '');
+        $data_fim = normalizarDataIso(isset($_POST['data_fim']) ? $_POST['data_fim'] : '');
+        if ($data_ini !== '' && $data_fim === '') {
+            $data_fim = $data_ini;
+        }
+        if ($data_fim !== '' && $data_ini === '') {
+            $data_ini = $data_fim;
+        }
+        if (empty($datas_alvo) && $data_ini === '') {
             die(json_encode(array('success' => true, 'estante' => array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0))));
         }
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         try {
-            $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante WHERE producao_de IN ($ph)");
-            $stmtTot->execute($datas_alvo);
+            $params_estante = array();
+            if ($data_ini !== '') {
+                $whereEstante = "WHERE producao_de BETWEEN ? AND ?";
+                $params_estante[] = $data_ini;
+                $params_estante[] = $data_fim;
+            } else {
+                $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
+                $whereEstante = "WHERE producao_de IN ($ph)";
+                $params_estante = $datas_alvo;
+            }
+            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
+            $stmtTot->execute($params_estante);
             $estante_stats['total'] = (int)$stmtTot->fetchColumn();
 
             $stmtTipos = $pdo->prepare("SELECT DISTINCT l.lote, l.posto, l.regional, r.entrega
                 FROM lotes_na_estante l
                 LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
-                WHERE l.producao_de IN ($ph)");
-            $stmtTipos->execute($datas_alvo);
+                $whereEstante");
+            $stmtTipos->execute($params_estante);
             while ($row = $stmtTipos->fetch(PDO::FETCH_ASSOC)) {
                 $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
                 if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
@@ -103,17 +120,17 @@ try {
             $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
                 FROM lotes_na_estante l
                 LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                WHERE l.producao_de IN ($ph) AND c.lote IS NULL
+                $whereEstante AND c.lote IS NULL
                 ORDER BY l.lote LIMIT 50");
-            $stmtSem->execute($datas_alvo);
+            $stmtSem->execute($params_estante);
             while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                 $sem_upload['lotes'][] = $row['lote'];
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
                 LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                WHERE l.producao_de IN ($ph) AND c.lote IS NULL");
-            $stmtSemTot->execute($datas_alvo);
+                $whereEstante AND c.lote IS NULL");
+            $stmtSemTot->execute($params_estante);
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
         } catch (Exception $e) {
             // ignore
@@ -121,33 +138,22 @@ try {
         die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload)));
     }
 
-    if (isset($_POST['ajax_limpar_estante'])) {
-        header('Content-Type: application/json');
-        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
-        $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
-        if ($responsavel === '') {
-            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
-        }
-        if (empty($datas_alvo)) {
-            die(json_encode(array('success' => false, 'erro' => 'Informe a(s) data(s) da estante')));
-        }
-        $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-        $stmtDel = $pdo->prepare("DELETE FROM lotes_na_estante WHERE producao_de IN ($ph)");
-        $stmtDel->execute($datas_alvo);
-        $apagados = $stmtDel->rowCount();
-        $stmtLog = $pdo->prepare("INSERT INTO ciPacotesEstanteLimpeza (datas_alvo, responsavel, total_apagado, criado) VALUES (?,?,?,NOW())");
-        $stmtLog->execute(array(implode(',', $datas_alvo), $responsavel, $apagados));
-        die(json_encode(array('success' => true, 'apagados' => $apagados)));
-    }
-
     if (isset($_POST['ajax_buscar_posto'])) {
         header('Content-Type: application/json');
         $codbar = isset($_POST['codbar']) ? trim($_POST['codbar']) : '';
         $codbar_limpo = preg_replace('/\D+/', '', $codbar);
         $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
+        $data_ini = normalizarDataIso(isset($_POST['data_ini']) ? $_POST['data_ini'] : '');
+        $data_fim = normalizarDataIso(isset($_POST['data_fim']) ? $_POST['data_fim'] : '');
+        if ($data_ini !== '' && $data_fim === '') {
+            $data_fim = $data_ini;
+        }
+        if ($data_fim !== '' && $data_ini === '') {
+            $data_ini = $data_fim;
+        }
 
-        if (empty($datas_alvo)) {
-            die(json_encode(array('success' => false, 'erro' => 'Informe a(s) data(s) da estante')));
+        if (empty($datas_alvo) && $data_ini === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Informe o periodo da estante')));
         }
 
         if (!preg_match('/^\d{19}$/', $codbar_limpo)) {
@@ -230,7 +236,16 @@ try {
             $data_producao = null;
         }
 
-        if ($data_producao && !in_array($data_producao, $datas_alvo)) {
+        if ($data_producao && $data_ini !== '' && ($data_producao < $data_ini || $data_producao > $data_fim)) {
+            $data_br = date('d-m-Y', strtotime($data_producao));
+            die(json_encode(array(
+                'success' => false,
+                'erro' => 'Pacote de outra data: ' . $data_br,
+                'data_producao' => $data_br
+            )));
+        }
+
+        if ($data_producao && $data_ini === '' && !in_array($data_producao, $datas_alvo)) {
             $data_br = date('d-m-Y', strtotime($data_producao));
             die(json_encode(array(
                 'success' => false,
@@ -240,7 +255,7 @@ try {
         }
 
         $status_estante = $data_producao ? 'ok' : 'sem_upload';
-        $data_alvo = $data_producao ? $data_producao : $datas_alvo[0];
+        $data_alvo = $data_producao ? $data_producao : ($data_ini !== '' ? $data_ini : $datas_alvo[0]);
 
         $estante_novo = false;
         try {
@@ -264,16 +279,25 @@ try {
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         try {
-            $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante WHERE producao_de IN ($ph)");
-            $stmtTot->execute($datas_alvo);
+            $params_estante = array();
+            if ($data_ini !== '') {
+                $whereEstante = "WHERE producao_de BETWEEN ? AND ?";
+                $params_estante[] = $data_ini;
+                $params_estante[] = $data_fim;
+            } else {
+                $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
+                $whereEstante = "WHERE producao_de IN ($ph)";
+                $params_estante = $datas_alvo;
+            }
+            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
+            $stmtTot->execute($params_estante);
             $estante_stats['total'] = (int)$stmtTot->fetchColumn();
 
             $stmtTipos = $pdo->prepare("SELECT DISTINCT l.lote, l.posto, l.regional, r.entrega
                 FROM lotes_na_estante l
                 LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
-                WHERE l.producao_de IN ($ph)");
-            $stmtTipos->execute($datas_alvo);
+                $whereEstante");
+            $stmtTipos->execute($params_estante);
             while ($row = $stmtTipos->fetch(PDO::FETCH_ASSOC)) {
                 $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
                 if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
@@ -290,17 +314,17 @@ try {
             $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
                 FROM lotes_na_estante l
                 LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                WHERE l.producao_de IN ($ph) AND c.lote IS NULL
+                $whereEstante AND c.lote IS NULL
                 ORDER BY l.lote LIMIT 50");
-            $stmtSem->execute($datas_alvo);
+            $stmtSem->execute($params_estante);
             while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                 $sem_upload['lotes'][] = $row['lote'];
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
                 LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                WHERE l.producao_de IN ($ph) AND c.lote IS NULL");
-            $stmtSemTot->execute($datas_alvo);
+                $whereEstante AND c.lote IS NULL");
+            $stmtSemTot->execute($params_estante);
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
         } catch (Exception $e) {
             // ignore
@@ -414,22 +438,15 @@ try {
             box-shadow: 0 2px 12px rgba(0,0,0,0.08);
         }
         .painel-datas label { font-weight: 700; color: #333; display:block; margin-bottom:6px; font-size:13px; }
-        #datas_estante {
-            width: 100%; max-width: 520px;
+        .data-estante {
+            width: 100%; max-width: 220px;
             padding: 10px 12px; font-size: 14px;
             border: 2px solid #3949ab; border-radius: 6px;
             background: #e8eaf6; font-weight: 700;
         }
-        .acoes-estante {
-            margin-top: 10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+        .linha-datas {
+            display:flex; flex-wrap:wrap; gap:10px; align-items:center;
         }
-        #responsavelLimpeza {
-            padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; min-width: 220px;
-        }
-        #btnLimparEstante {
-            background: #d32f2f; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-weight:700; cursor:pointer;
-        }
-        #btnLimparEstante:hover { background:#b71c1c; }
         .nota-datas { font-size: 11px; color:#666; margin-top:6px; }
 
         .stats-bar {
@@ -624,18 +641,17 @@ try {
     </div>
 
     <div class="painel-datas">
-        <label>Datas da estante (dd-mm-aaaa ou yyyy-mm-dd, separadas por virgula):</label>
-        <input type="text" id="datas_estante" placeholder="Ex: 24-02-2026, 25-02-2026">
-        <div class="acoes-estante">
-            <input type="text" id="responsavelLimpeza" placeholder="Responsavel pela limpeza">
-            <button type="button" id="btnLimparEstante">Limpar estante</button>
+        <label>Periodo da estante (inicio e fim):</label>
+        <div class="linha-datas">
+            <input type="date" id="data_ini_estante" class="data-estante">
+            <input type="date" id="data_fim_estante" class="data-estante">
         </div>
-        <div class="nota-datas">As leituras serao contabilizadas apenas para as datas informadas.</div>
+        <div class="nota-datas">As leituras serao contabilizadas apenas no periodo informado.</div>
     </div>
 
     <div class="stats-bar">
         <div class="stat-card">
-            <h4>Total Lidos</h4>
+            <h4>Pacotes na estante</h4>
             <div class="valor" id="statTotal">0</div>
         </div>
         <div class="stat-card" style="border-left-color:#1565c0;">
@@ -687,8 +703,11 @@ try {
 <div class="overlay-datas" id="overlayDatas" style="display:flex;">
     <div class="card">
         <h3>Datas da Estante</h3>
-        <div class="hint">Informe as datas que serao triadas (dd-mm-aaaa ou yyyy-mm-dd). Ex: 24-02-2026, 25-02-2026</div>
-        <input type="text" id="datas_estante_modal" placeholder="Ex: 24-02-2026, 25-02-2026">
+        <div class="hint">Selecione inicio e fim do periodo da estante.</div>
+        <div class="linha-datas" style="margin-top:10px;">
+            <input type="date" id="data_ini_modal" class="data-estante">
+            <input type="date" id="data_fim_modal" class="data-estante">
+        </div>
         <div class="acoes">
             <button type="button" class="btn-sec" id="btnCancelarDatas">Cancelar</button>
             <button type="button" class="btn-primario" id="btnConfirmarDatas">Aplicar</button>
@@ -717,18 +736,32 @@ function formatarHoje() {
     var dd = (d.getDate() < 10 ? '0' : '') + d.getDate();
     var mm = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1);
     var yyyy = d.getFullYear();
-    return dd + '-' + mm + '-' + yyyy;
+    return yyyy + '-' + mm + '-' + dd;
 }
 
-function obterDatasAlvoStr() {
-    var input = document.getElementById('datas_estante');
+function obterDataIni() {
+    var input = document.getElementById('data_ini_estante');
+    return input ? input.value.trim() : '';
+}
+
+function obterDataFim() {
+    var input = document.getElementById('data_fim_estante');
     return input ? input.value.trim() : '';
 }
 
 function salvarDatasAlvo() {
-    var val = obterDatasAlvoStr();
-    if (val !== '') {
-        localStorage.setItem('estante_datas', val);
+    var ini = obterDataIni();
+    var fim = obterDataFim();
+    if (ini && !fim) fim = ini;
+    if (fim && !ini) ini = fim;
+    if (ini && fim && ini > fim) {
+        var tmp = ini;
+        ini = fim;
+        fim = tmp;
+    }
+    if (ini) {
+        localStorage.setItem('estante_data_ini', ini);
+        localStorage.setItem('estante_data_fim', fim);
     }
     atualizarBannerDatas();
     carregarEstanteInicial();
@@ -737,10 +770,11 @@ function salvarDatasAlvo() {
 function atualizarBannerDatas() {
     var banner = document.getElementById('bannerDatas');
     var texto = document.getElementById('datasAtivasTexto');
-    var datas = obterDatasAlvoStr();
+    var ini = obterDataIni();
+    var fim = obterDataFim();
     if (!banner || !texto) return;
-    if (datas) {
-        texto.textContent = 'Datas ativas: ' + datas;
+    if (ini) {
+        texto.textContent = 'Periodo ativo: ' + ini + ' a ' + (fim || ini);
         banner.style.display = 'flex';
     } else {
         banner.style.display = 'none';
@@ -749,10 +783,14 @@ function atualizarBannerDatas() {
 
 function abrirModalDatas() {
     var overlay = document.getElementById('overlayDatas');
-    var inputModal = document.getElementById('datas_estante_modal');
-    if (inputModal) {
-        inputModal.value = obterDatasAlvoStr() || '';
-        inputModal.focus();
+    var inputIni = document.getElementById('data_ini_modal');
+    var inputFim = document.getElementById('data_fim_modal');
+    if (inputIni) {
+        inputIni.value = obterDataIni() || '';
+        inputIni.focus();
+    }
+    if (inputFim) {
+        inputFim.value = obterDataFim() || '';
     }
     if (overlay) overlay.style.display = 'flex';
 }
@@ -864,10 +902,19 @@ function finalizarLeitura() {
 }
 
 function buscarPosto(codbar) {
-    var datasAlvo = obterDatasAlvoStr();
-    if (!datasAlvo) {
-        exibirErro('Informe a(s) data(s) da estante');
+    var dataIni = obterDataIni();
+    var dataFim = obterDataFim();
+    if (!dataIni) {
+        exibirErro('Informe o periodo da estante');
         return;
+    }
+    if (!dataFim) {
+        dataFim = dataIni;
+    }
+    if (dataIni > dataFim) {
+        var tmp = dataIni;
+        dataIni = dataFim;
+        dataFim = tmp;
     }
     if (leituraAtiva) {
         leituraFila.push(codbar);
@@ -897,7 +944,7 @@ function buscarPosto(codbar) {
             finalizarLeitura();
         }
     };
-    xhr.send('ajax_buscar_posto=1&codbar=' + encodeURIComponent(codbar) + '&datas_alvo=' + encodeURIComponent(datasAlvo));
+    xhr.send('ajax_buscar_posto=1&codbar=' + encodeURIComponent(codbar) + '&data_ini=' + encodeURIComponent(dataIni) + '&data_fim=' + encodeURIComponent(dataFim));
 }
 
 function exibirResultado(dados) {
@@ -1045,12 +1092,21 @@ function renderizarSemUpload() {
 }
 
 function carregarEstanteInicial() {
-    var datasAlvo = obterDatasAlvoStr();
-    if (!datasAlvo) {
+    var dataIni = obterDataIni();
+    var dataFim = obterDataFim();
+    if (!dataIni) {
         contTotal = 0; contCapital = 0; contCentral = 0; contRegional = 0; contPT = 0; contSemUpload = 0; lotesSemUpload = [];
         renderizarSemUpload();
         atualizarStats();
         return;
+    }
+    if (!dataFim) {
+        dataFim = dataIni;
+    }
+    if (dataIni > dataFim) {
+        var tmp = dataIni;
+        dataIni = dataFim;
+        dataFim = tmp;
     }
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
@@ -1075,43 +1131,7 @@ function carregarEstanteInicial() {
             } catch (e) {}
         }
     };
-    xhr.send('ajax_estante_status=1&datas_alvo=' + encodeURIComponent(datasAlvo));
-}
-
-function limparEstante() {
-    var responsavel = document.getElementById('responsavelLimpeza').value.trim();
-    var datasAlvo = obterDatasAlvoStr();
-    if (!datasAlvo) {
-        exibirErro('Informe a(s) data(s) da estante');
-        return;
-    }
-    if (!responsavel) {
-        exibirErro('Responsavel obrigatorio para limpeza');
-        return;
-    }
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', 'encontra_posto.php', true);
-    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-            if (xhr.status === 200) {
-                try {
-                    var resp = JSON.parse(xhr.responseText);
-                    if (resp.success) {
-                        carregarEstanteInicial();
-                        alert('Estante limpa. Registros apagados: ' + resp.apagados);
-                    } else {
-                        exibirErro(resp.erro || 'Erro ao limpar estante');
-                    }
-                } catch (e) {
-                    exibirErro('Erro ao processar resposta');
-                }
-            } else {
-                exibirErro('Erro de conexao');
-            }
-        }
-    };
-    xhr.send('ajax_limpar_estante=1&responsavel=' + encodeURIComponent(responsavel) + '&datas_alvo=' + encodeURIComponent(datasAlvo));
+    xhr.send('ajax_estante_status=1&data_ini=' + encodeURIComponent(dataIni) + '&data_fim=' + encodeURIComponent(dataFim));
 }
 
 function adicionarHistorico(dados) {
@@ -1214,29 +1234,35 @@ setInterval(function() {
 }, 30000);
 
 atualizarIndicadorFoco();
-var inputDatas = document.getElementById('datas_estante');
-if (inputDatas) {
-    var salva = localStorage.getItem('estante_datas') || '';
-    inputDatas.value = salva !== '' ? salva : formatarHoje();
-    inputDatas.addEventListener('change', salvarDatasAlvo);
-    inputDatas.addEventListener('blur', salvarDatasAlvo);
+var inputIni = document.getElementById('data_ini_estante');
+var inputFim = document.getElementById('data_fim_estante');
+if (inputIni && inputFim) {
+    var salvaIni = localStorage.getItem('estante_data_ini') || '';
+    var salvaFim = localStorage.getItem('estante_data_fim') || '';
+    var hoje = formatarHoje();
+    inputIni.value = salvaIni !== '' ? salvaIni : hoje;
+    inputFim.value = salvaFim !== '' ? salvaFim : inputIni.value;
+    inputIni.addEventListener('change', salvarDatasAlvo);
+    inputFim.addEventListener('change', salvarDatasAlvo);
+    inputIni.addEventListener('blur', salvarDatasAlvo);
+    inputFim.addEventListener('blur', salvarDatasAlvo);
 }
 var btnAlterar = document.getElementById('btnAlterarDatas');
 if (btnAlterar) {
     btnAlterar.addEventListener('click', abrirModalDatas);
 }
-var btnLimpar = document.getElementById('btnLimparEstante');
-if (btnLimpar) {
-    btnLimpar.addEventListener('click', limparEstante);
-}
 var btnConfirmar = document.getElementById('btnConfirmarDatas');
 if (btnConfirmar) {
     btnConfirmar.addEventListener('click', function() {
-        var inputModal = document.getElementById('datas_estante_modal');
-        if (inputModal && inputDatas) {
-            inputDatas.value = inputModal.value.trim();
-            salvarDatasAlvo();
+        var iniModal = document.getElementById('data_ini_modal');
+        var fimModal = document.getElementById('data_fim_modal');
+        if (iniModal && inputIni) {
+            inputIni.value = iniModal.value.trim();
         }
+        if (fimModal && inputFim) {
+            inputFim.value = fimModal.value.trim();
+        }
+        salvarDatasAlvo();
         fecharModalDatas();
     });
 }
