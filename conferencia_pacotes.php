@@ -2765,5 +2765,47 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
+<script>
+(function() {
+    function confirmarResponsavelFallback() {
+        var input = document.getElementById('usuario_conf_modal');
+        var nome = input ? input.value.trim() : '';
+        if (!nome) {
+            alert('Informe o responsável da conferência.');
+            if (input) input.focus();
+            return;
+        }
+        var badge = document.getElementById('usuarioBadge');
+        if (badge) badge.textContent = nome;
+        var overlay = document.getElementById('overlayUsuario');
+        if (overlay) overlay.style.display = 'none';
+        var conteudo = document.getElementById('conteudoPagina');
+        if (conteudo) conteudo.classList.remove('page-locked');
+        try {
+            sessionStorage.setItem('conferencia_responsavel', nome);
+        } catch (e) {}
+        var overlayTipo = document.getElementById('overlayTipo');
+        if (overlayTipo) overlayTipo.style.display = 'flex';
+    }
+
+    var btn = document.getElementById('btnConfirmarUsuario');
+    if (btn && !btn.__fallbackBound) {
+        btn.addEventListener('click', confirmarResponsavelFallback);
+        btn.__fallbackBound = true;
+    }
+
+    var input = document.getElementById('usuario_conf_modal');
+    if (input && !input.__fallbackBound) {
+        input.addEventListener('keydown', function(e) {
+            if (e.keyCode === 13) {
+                e.preventDefault();
+                confirmarResponsavelFallback();
+            }
+        });
+        input.__fallbackBound = true;
+    }
+})();
+</script>
+
 </body>
 </html>
