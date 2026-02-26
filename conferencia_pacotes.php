@@ -2807,5 +2807,43 @@ document.addEventListener("DOMContentLoaded", function() {
 })();
 </script>
 
+<script>
+(function() {
+    function selecionarTipoFallback(tipo) {
+        if (!tipo) return;
+        var radios = document.querySelectorAll('input[name="tipo_inicio"]');
+        for (var i = 0; i < radios.length; i++) {
+            if (radios[i].value === tipo) {
+                radios[i].checked = true;
+                break;
+            }
+        }
+        var overlay = document.getElementById('overlayTipo');
+        if (overlay) overlay.style.display = 'none';
+        try {
+            sessionStorage.setItem('conferencia_tipo_inicio', tipo);
+        } catch (e) {}
+        var input = document.getElementById('codigo_barras');
+        if (input) input.focus();
+    }
+
+    var overlayTipo = document.getElementById('overlayTipo');
+    if (overlayTipo && !overlayTipo.__fallbackBound) {
+        overlayTipo.addEventListener('click', function(e) {
+            var target = e.target;
+            if (!target) return;
+            var tipo = target.getAttribute('data-tipo');
+            if (!tipo && target.parentNode && target.parentNode.getAttribute) {
+                tipo = target.parentNode.getAttribute('data-tipo');
+            }
+            if (tipo) {
+                selecionarTipoFallback(tipo);
+            }
+        });
+        overlayTipo.__fallbackBound = true;
+    }
+})();
+</script>
+
 </body>
 </html>
