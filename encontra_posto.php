@@ -36,6 +36,51 @@ function parseDatasAlvo($raw) {
     return $out;
 }
 
+function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
+    $layout = array(
+        'correios' => array(),
+        'poupatempo' => array(),
+        'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0)
+    );
+    $stmt = $pdo->prepare("SELECT l.posto, l.regional, l.quantidade, r.entrega
+        FROM lotes_na_estante l
+        LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
+        $whereEstante");
+    $stmt->execute($params_estante);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $qtd = (int)$row['quantidade'];
+        if ($qtd <= 0) { $qtd = 1; }
+        $posto = (int)$row['posto'];
+        $regional = (int)$row['regional'];
+        $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
+        $is_pt = (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false);
+        if ($is_pt) {
+            $key = str_pad((string)$posto, 3, '0', STR_PAD_LEFT);
+            if (!isset($layout['poupatempo'][$key])) { $layout['poupatempo'][$key] = 0; }
+            $layout['poupatempo'][$key] += $qtd;
+            $layout['totais']['poupatempo_pacotes'] += $qtd;
+        } else {
+            if ($regional === 0) {
+                if (!isset($layout['correios']['capital'])) { $layout['correios']['capital'] = 0; }
+                $layout['correios']['capital'] += $qtd;
+            } elseif ($regional === 999) {
+                if (!isset($layout['correios']['central'])) { $layout['correios']['central'] = 0; }
+                $layout['correios']['central'] += $qtd;
+            } else {
+                $key = str_pad((string)$regional, 3, '0', STR_PAD_LEFT);
+                if (!isset($layout['correios'][$key])) { $layout['correios'][$key] = 0; }
+                $layout['correios'][$key] += $qtd;
+            }
+            if ($posto === 1) {
+                if (!isset($layout['correios']['posto001'])) { $layout['correios']['posto001'] = 0; }
+                $layout['correios']['posto001'] += $qtd;
+            }
+            $layout['totais']['correios_pacotes'] += $qtd;
+        }
+    }
+    return $layout;
+}
+
 $dbOk = false;
 
 try {
@@ -71,11 +116,16 @@ try {
             $data_ini = $data_fim;
         }
         if (empty($datas_alvo) && $data_ini === '') {
-            die(json_encode(array('success' => true, 'estante' => array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0))));
+            die(json_encode(array(
+                'success' => true,
+                'estante' => array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0),
+                'layout' => array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0))
+            )));
         }
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         $historico = array();
+        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0));
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -158,10 +208,12 @@ try {
                     'triado_em' => $row['triado_em']
                 );
             }
+
+            $layout = montarLayoutEstante($pdo, $whereEstante, $params_estante);
         } catch (Exception $e) {
             // ignore
         }
-        die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload, 'historico' => $historico)));
+        die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload, 'historico' => $historico, 'layout' => $layout)));
     }
 
     if (isset($_POST['ajax_buscar_posto'])) {
@@ -305,6 +357,7 @@ try {
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         $historico = array();
+        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0));
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -387,6 +440,8 @@ try {
                     'triado_em' => $row['triado_em']
                 );
             }
+
+            $layout = montarLayoutEstante($pdo, $whereEstante, $params_estante);
         } catch (Exception $e) {
             // ignore
         }
@@ -410,6 +465,7 @@ try {
             'estante' => $estante_stats,
             'sem_upload' => $sem_upload,
             'historico' => $historico,
+            'layout' => $layout,
             'status_estante' => $status_estante,
             'data_alvo' => $data_alvo,
             'data_producao' => $data_producao ? date('d-m-Y', strtotime($data_producao)) : null
@@ -432,7 +488,7 @@ try {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+            font-family: "Trebuchet MS", "Tahoma", "Verdana", sans-serif;
             background: #f5f5f5;
             padding: 20px;
             padding-top: 80px;
@@ -567,22 +623,74 @@ try {
         .bg-poupatempo { background: linear-gradient(135deg, #e65100 0%, #bf360c 100%); }
         .bg-desconhecido { background: linear-gradient(135deg, #616161 0%, #424242 100%); }
 
-        .historico-container {
-            background: white; border-radius: 10px;
+        .estantes-container {
+            background: #ffffff; border-radius: 12px;
             padding: 20px; margin-bottom: 20px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.1);
         }
-        .historico-container h3 {
-            color: #333; margin-bottom: 12px;
-            padding-left: 10px; border-left: 4px solid #1a237e; font-size: 16px;
+        .estantes-header {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            flex-wrap: wrap; margin-bottom: 8px;
         }
-        .historico-tabela { width: 100%; border-collapse: collapse; }
-        .historico-tabela th, .historico-tabela td {
-            border-bottom: 1px solid #eee; padding: 8px 10px; font-size: 12px; text-align: left;
+        .estantes-header h3 {
+            color: #1b1f3b; font-size: 16px; font-weight: 800;
+            padding-left: 10px; border-left: 4px solid #ff6f00; margin: 0;
         }
-        .historico-tabela th { color: #555; font-weight: 700; cursor: pointer; user-select: none; }
-        .historico-tabela tr:hover { background: #f5f5f5; }
-        .historico-vazio { color: #999; text-align: center; padding: 18px; font-style: italic; }
+        .estantes-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
+        .estantes-toggle button {
+            border: 2px solid #1b1f3b; background: #fff; color: #1b1f3b;
+            padding: 6px 12px; border-radius: 20px; font-weight: 800; cursor: pointer;
+        }
+        .estantes-toggle button.ativo {
+            background: #1b1f3b; color: #fff;
+        }
+        .estantes-resumo {
+            font-size: 12px; color: #4e4e4e; margin-bottom: 12px;
+        }
+        .estantes-grid {
+            display: grid; gap: 16px;
+        }
+        .estante {
+            background: linear-gradient(160deg, #fff8e1 0%, #ffffff 100%);
+            border: 1px solid #f1e4c8; border-radius: 12px; padding: 14px;
+            display: grid; gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        }
+        .estante[data-grupo="poupatempo"] {
+            background: linear-gradient(160deg, #e8f5e9 0%, #ffffff 100%);
+            border-color: #c8e6c9;
+        }
+        .estante-coluna {
+            display: grid; gap: 10px;
+        }
+        .estante-titulo {
+            font-weight: 800; color: #1b1f3b; text-transform: uppercase; font-size: 12px;
+            letter-spacing: 0.6px;
+        }
+        .prateleira {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+            gap: 10px;
+            padding: 10px;
+            background: rgba(27,31,59,0.06);
+            border-radius: 10px;
+            border: 1px dashed rgba(27,31,59,0.15);
+        }
+        .slot {
+            background: #1b1f3b;
+            color: #fff;
+            border-radius: 8px;
+            padding: 8px 6px;
+            text-align: center;
+            box-shadow: inset 0 -2px 0 rgba(255,255,255,0.15);
+        }
+        .slot-label {
+            font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+            text-transform: uppercase; opacity: 0.8;
+        }
+        .slot-valor {
+            font-size: 18px; font-weight: 800; margin-top: 4px;
+        }
 
         .btn-voltar {
             color: white;
@@ -649,6 +757,9 @@ try {
             width: 100%; padding: 10px 12px;
             border: 2px solid #3949ab; border-radius: 6px;
             background: #e8eaf6; font-weight: 700;
+        }
+        .overlay-datas .data-estante {
+            max-width: 180px;
         }
         .overlay-datas .acoes {
             margin-top: 12px; display:flex; gap:8px; justify-content:flex-end;
@@ -747,22 +858,34 @@ try {
         <div class="resultado-body" id="resultadoBody"></div>
     </div>
 
-    <div class="historico-container">
-        <h3>Historico de Leituras</h3>
-        <table class="historico-tabela">
-            <thead>
-                <tr>
-                    <th data-sort="triado_em">Triado em</th>
-                    <th data-sort="lote">Lote</th>
-                    <th data-sort="posto">Posto</th>
-                    <th data-sort="regional">Regional</th>
-                    <th data-sort="producao_de">Producao</th>
-                </tr>
-            </thead>
-            <tbody id="historicoLista">
-                <tr><td class="historico-vazio" colspan="5">Nenhuma leitura realizada</td></tr>
-            </tbody>
-        </table>
+    <div class="estantes-container">
+        <div class="estantes-header">
+            <h3>Mapa de Estantes</h3>
+            <div class="estantes-toggle" id="estantesToggle">
+                <button type="button" data-view="todas" class="ativo">Todas</button>
+                <button type="button" data-view="correios">Correios</button>
+                <button type="button" data-view="poupatempo">Poupa Tempo</button>
+            </div>
+        </div>
+        <div class="estantes-resumo" id="estantesResumo">Correios: 0 pacotes | Poupa Tempo: 0 pacotes</div>
+        <div class="estantes-grid">
+            <div class="estante" data-grupo="correios">
+                <div class="estante-coluna">
+                    <div class="estante-titulo">Correios - Estante 1</div>
+                    <div id="estanteCorreiosA"></div>
+                </div>
+                <div class="estante-coluna">
+                    <div class="estante-titulo">Correios - Estante 2</div>
+                    <div id="estanteCorreiosB"></div>
+                </div>
+            </div>
+            <div class="estante" data-grupo="poupatempo">
+                <div class="estante-coluna">
+                    <div class="estante-titulo">Poupa Tempo</div>
+                    <div id="estantePoupaTempo"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
 </div>
@@ -786,8 +909,8 @@ try {
 
 <script>
 var vozAtiva = true;
-var historicoLeituras = [];
-var historicoOrdenacao = { chave: 'triado_em', asc: false };
+var estanteLayout = { correios: {}, poupatempo: {}, totais: {} };
+var estanteView = 'todas';
 var contTotal = 0;
 var contCapital = 0;
 var contCentral = 0;
@@ -1119,9 +1242,9 @@ function exibirResultado(dados) {
         renderizarSemUpload();
     }
 
-    if (dados.historico) {
-        historicoLeituras = dados.historico || [];
-        renderizarHistorico();
+    if (dados.layout) {
+        estanteLayout = dados.layout || { correios: {}, poupatempo: {}, totais: {} };
+        renderizarEstantes();
     }
 
     atualizarStats();
@@ -1165,6 +1288,165 @@ function renderizarSemUpload() {
     lista.innerHTML = html;
 }
 
+var prateleirasCorreiosA = [
+    [
+        { key: 'capital', label: 'Capital' },
+        { key: 'posto001', label: 'Posto 001' },
+        { key: 'central', label: 'Central IIPR' }
+    ],
+    [
+        { key: '022', label: 'R 022' },
+        { key: '060', label: 'R 060' },
+        { key: '100', label: 'R 100' },
+        { key: '105', label: 'R 105' }
+    ],
+    [
+        { key: '150', label: 'R 150' },
+        { key: '200', label: 'R 200' },
+        { key: '250', label: 'R 250' },
+        { key: '300', label: 'R 300' }
+    ],
+    [
+        { key: '350', label: 'R 350' },
+        { key: '400', label: 'R 400' },
+        { key: '450', label: 'R 450' },
+        { key: '490', label: 'R 490' }
+    ],
+    [
+        { key: '500', label: 'R 500' },
+        { key: '501', label: 'R 501' },
+        { key: '507', label: 'R 507' },
+        { key: '550', label: 'R 550' }
+    ]
+];
+
+var prateleirasCorreiosB = [
+    [
+        { key: '600', label: 'R 600' },
+        { key: '650', label: 'R 650' },
+        { key: '700', label: 'R 700' },
+        { key: '701', label: 'R 701' }
+    ],
+    [
+        { key: '710', label: 'R 710' },
+        { key: '750', label: 'R 750' },
+        { key: '755', label: 'R 755' },
+        { key: '758', label: 'R 758' }
+    ],
+    [
+        { key: '779', label: 'R 779' },
+        { key: '800', label: 'R 800' },
+        { key: '808', label: 'R 808' },
+        { key: '809', label: 'R 809' }
+    ],
+    [
+        { key: '850', label: 'R 850' },
+        { key: '900', label: 'R 900' },
+        { key: '950', label: 'R 950' }
+    ]
+];
+
+var prateleirasPoupaTempo = [
+    [
+        { key: '005', label: '005' },
+        { key: '006', label: '006' },
+        { key: '023', label: '023' },
+        { key: '024', label: '024' }
+    ],
+    [
+        { key: '025', label: '025' },
+        { key: '026', label: '026' },
+        { key: '028', label: '028' },
+        { key: '080', label: '080' }
+    ],
+    [
+        { key: '110', label: '110' },
+        { key: '315', label: '315' },
+        { key: '375', label: '375' },
+        { key: '487', label: '487' }
+    ],
+    [
+        { key: '526', label: '526' },
+        { key: '527', label: '527' },
+        { key: '667', label: '667' },
+        { key: '730', label: '730' }
+    ],
+    [
+        { key: '747', label: '747' },
+        { key: '790', label: '790' },
+        { key: '825', label: '825' },
+        { key: '880', label: '880' }
+    ]
+];
+
+function obterValorLayout(grupo, chave) {
+    if (!estanteLayout || !estanteLayout[grupo]) return 0;
+    var v = estanteLayout[grupo][chave];
+    return v ? v : 0;
+}
+
+function montarPrateleirasHtml(prateleiras, grupo) {
+    var html = '';
+    for (var i = 0; i < prateleiras.length; i++) {
+        html += '<div class="prateleira">';
+        for (var j = 0; j < prateleiras[i].length; j++) {
+            var slot = prateleiras[i][j];
+            var valor = obterValorLayout(grupo, slot.key);
+            html += '<div class="slot">' +
+                '<div class="slot-label">' + slot.label + '</div>' +
+                '<div class="slot-valor">' + valor + '</div>' +
+                '</div>';
+        }
+        html += '</div>';
+    }
+    return html;
+}
+
+function atualizarResumoEstantes() {
+    var resumo = document.getElementById('estantesResumo');
+    if (!resumo) return;
+    var totalCorreios = 0;
+    var totalPT = 0;
+    if (estanteLayout && estanteLayout.totais) {
+        totalCorreios = estanteLayout.totais.correios_pacotes || 0;
+        totalPT = estanteLayout.totais.poupatempo_pacotes || 0;
+    }
+    resumo.textContent = 'Correios: ' + totalCorreios + ' pacotes | Poupa Tempo: ' + totalPT + ' pacotes';
+}
+
+function renderizarEstantes() {
+    var elA = document.getElementById('estanteCorreiosA');
+    var elB = document.getElementById('estanteCorreiosB');
+    var elPT = document.getElementById('estantePoupaTempo');
+    if (elA) { elA.innerHTML = montarPrateleirasHtml(prateleirasCorreiosA, 'correios'); }
+    if (elB) { elB.innerHTML = montarPrateleirasHtml(prateleirasCorreiosB, 'correios'); }
+    if (elPT) { elPT.innerHTML = montarPrateleirasHtml(prateleirasPoupaTempo, 'poupatempo'); }
+    atualizarResumoEstantes();
+    aplicarVisaoEstantes(estanteView);
+}
+
+function aplicarVisaoEstantes(view) {
+    estanteView = view || 'todas';
+    var botoes = document.querySelectorAll('#estantesToggle button[data-view]');
+    for (var i = 0; i < botoes.length; i++) {
+        var alvo = botoes[i].getAttribute('data-view');
+        if (alvo === estanteView) {
+            botoes[i].classList.add('ativo');
+        } else {
+            botoes[i].classList.remove('ativo');
+        }
+    }
+    var estantes = document.querySelectorAll('.estante[data-grupo]');
+    for (var j = 0; j < estantes.length; j++) {
+        var grupo = estantes[j].getAttribute('data-grupo');
+        if (estanteView === 'todas' || estanteView === grupo) {
+            estantes[j].style.display = 'grid';
+        } else {
+            estantes[j].style.display = 'none';
+        }
+    }
+}
+
 function carregarEstanteInicial() {
     var dataIni = obterDataIni();
     var dataFim = obterDataFim();
@@ -1172,6 +1454,8 @@ function carregarEstanteInicial() {
         contTotal = 0; contCapital = 0; contCentral = 0; contRegional = 0; contPT = 0; contSemUpload = 0; lotesSemUpload = [];
         renderizarSemUpload();
         atualizarStats();
+        estanteLayout = { correios: {}, poupatempo: {}, totais: {} };
+        renderizarEstantes();
         return;
     }
     if (!dataFim) {
@@ -1200,9 +1484,9 @@ function carregarEstanteInicial() {
                         lotesSemUpload = resp.sem_upload.lotes || [];
                         renderizarSemUpload();
                     }
-                    if (resp.historico) {
-                        historicoLeituras = resp.historico || [];
-                        renderizarHistorico();
+                    if (resp.layout) {
+                        estanteLayout = resp.layout || { correios: {}, poupatempo: {}, totais: {} };
+                        renderizarEstantes();
                     }
                     atualizarStats();
                 }
@@ -1212,67 +1496,6 @@ function carregarEstanteInicial() {
     xhr.send('ajax_estante_status=1&data_ini=' + encodeURIComponent(dataIni) + '&data_fim=' + encodeURIComponent(dataFim));
 }
 
-function formatarDataBr(valor) {
-    if (!valor) return '';
-    if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
-        var parts = valor.substr(0, 10).split('-');
-        return parts[2] + '-' + parts[1] + '-' + parts[0];
-    }
-    return valor;
-}
-
-function formatarDataHoraBr(valor) {
-    if (!valor) return '';
-    if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}/.test(valor)) {
-        var data = valor.substr(0, 10);
-        var hora = valor.substr(11, 5);
-        return formatarDataBr(data) + (hora ? ' ' + hora : '');
-    }
-    return valor;
-}
-
-function ordenarHistorico(chave) {
-    if (!chave) return;
-    if (historicoOrdenacao.chave === chave) {
-        historicoOrdenacao.asc = !historicoOrdenacao.asc;
-    } else {
-        historicoOrdenacao.chave = chave;
-        historicoOrdenacao.asc = true;
-    }
-    renderizarHistorico();
-}
-
-function renderizarHistorico() {
-    var lista = document.getElementById('historicoLista');
-    if (!lista) return;
-    if (!historicoLeituras || historicoLeituras.length === 0) {
-        lista.innerHTML = '<tr><td class="historico-vazio" colspan="5">Nenhuma leitura realizada</td></tr>';
-        return;
-    }
-    var chave = historicoOrdenacao.chave;
-    var asc = historicoOrdenacao.asc;
-    var dados = historicoLeituras.slice(0);
-    dados.sort(function(a, b) {
-        var va = a[chave] || '';
-        var vb = b[chave] || '';
-        if (va < vb) return asc ? -1 : 1;
-        if (va > vb) return asc ? 1 : -1;
-        return 0;
-    });
-    var html = '';
-    var max = dados.length > 100 ? 100 : dados.length;
-    for (var i = 0; i < max; i++) {
-        var h = dados[i];
-        html += '<tr>' +
-            '<td>' + formatarDataHoraBr(h.triado_em) + '</td>' +
-            '<td>' + (h.lote || '') + '</td>' +
-            '<td>' + (h.posto || '') + '</td>' +
-            '<td>' + (h.regional || '') + '</td>' +
-            '<td>' + formatarDataBr(h.producao_de) + '</td>' +
-            '</tr>';
-    }
-    lista.innerHTML = html;
-}
 // v2.1: Wake Lock API - manter tela ativa durante leituras
 var wakeLockSentinel = null;
 
@@ -1357,11 +1580,11 @@ if (btnCancelar) {
 }
 atualizarBannerDatas();
 abrirModalDatas();
-var headersHistorico = document.querySelectorAll('.historico-tabela th[data-sort]');
-for (var i = 0; i < headersHistorico.length; i++) {
-    headersHistorico[i].addEventListener('click', function() {
-        var chave = this.getAttribute('data-sort');
-        ordenarHistorico(chave);
+var toggleBtns = document.querySelectorAll('#estantesToggle button[data-view]');
+for (var i = 0; i < toggleBtns.length; i++) {
+    toggleBtns[i].addEventListener('click', function() {
+        var view = this.getAttribute('data-view');
+        aplicarVisaoEstantes(view);
     });
 }
 carregarEstanteInicial();

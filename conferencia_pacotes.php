@@ -815,12 +815,26 @@ try {
                     }
                 }
 
+                $params_upload = array();
+                $joinCarga = '';
+                if ($data_ini_sql !== '' && $data_fim_sql !== '') {
+                    $joinCarga = 'AND DATE(c.dataCarga) BETWEEN ? AND ?';
+                    $params_upload[] = $data_ini_sql;
+                    $params_upload[] = $data_fim_sql;
+                } elseif (!empty($datas_sql)) {
+                    $phUpload = implode(',', array_fill(0, count($datas_sql), '?'));
+                    $joinCarga = "AND DATE(c.dataCarga) IN ($phUpload)";
+                    $params_upload = $datas_sql;
+                }
                 $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
                     FROM lotes_na_estante l
-                    LEFT JOIN ciPostosCsv c ON c.lote = l.lote AND DATE(c.dataCarga) = l.producao_de
-                    $whereEstante AND c.lote IS NULL
+                    $whereEstante
+                    AND NOT EXISTS (
+                        SELECT 1 FROM ciPostosCsv c
+                        WHERE c.lote = l.lote $joinCarga
+                    )
                     ORDER BY l.lote");
-                $stmtSem->execute($params_estante);
+                $stmtSem->execute(array_merge($params_estante, $params_upload));
                 while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                     $estante_lotes_sem_upload[] = $row['lote'];
                 }
