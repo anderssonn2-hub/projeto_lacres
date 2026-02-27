@@ -1285,6 +1285,38 @@ try {
         .modal-pacote label { display:block; margin-top:8px; font-size:12px; color:#555; }
         .modal-pacote input { width:100%; padding:8px; border:1px solid #ccc; border-radius:4px; }
         .btn-secundario { background:#6c757d; color:#fff; }
+        .overlay-confirmacao {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2200;
+        }
+        .overlay-confirmacao .card {
+            background:#fff;
+            padding:18px 20px;
+            border-radius:10px;
+            width: 360px;
+            max-width: 92%;
+            text-align: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+        }
+        .overlay-confirmacao h3 { margin:0 0 8px 0; color:#28a745; }
+        .overlay-confirmacao p { margin:0 0 12px 0; font-size:13px; color:#333; }
+        .overlay-confirmacao button {
+            padding: 8px 14px;
+            background:#28a745;
+            color:#fff;
+            border:none;
+            border-radius:4px;
+            cursor:pointer;
+            font-weight:700;
+        }
         @media (max-width: 768px) {
             body { padding: 12px; padding-top: 20px; }
             .topo-status { position: static; flex-direction: column; align-items: stretch; }
@@ -1468,6 +1500,14 @@ try {
             <button type="button" class="btn-acao btn-salvar" id="btnAdicionarPacote">Adicionar</button>
             <button type="button" class="btn-acao btn-cancelar" id="btnCancelarPacote">Cancelar</button>
         </div>
+    </div>
+</div>
+
+<div class="overlay-confirmacao" id="overlayConfirmacao">
+    <div class="card">
+        <h3>Pacote carregado</h3>
+        <p id="confirmacaoTexto">Pacote carregado corretamente em ciPostos e ciPostosCsv.</p>
+        <button type="button" id="btnConfirmacaoOk">OK</button>
     </div>
 </div>
 
@@ -1816,6 +1856,9 @@ document.addEventListener("DOMContentLoaded", function() {
     var usuarioAtual = '';
     var audioDesbloqueado = false;
     var modalPacote = document.getElementById('modalPacote');
+    var overlayConfirmacao = document.getElementById('overlayConfirmacao');
+    var confirmacaoTexto = document.getElementById('confirmacaoTexto');
+    var btnConfirmacaoOk = document.getElementById('btnConfirmacaoOk');
     var pacoteCodbar = document.getElementById('pacote_codbar');
     var pacoteLote = document.getElementById('pacote_lote');
     var pacoteRegional = document.getElementById('pacote_regional');
@@ -1849,6 +1892,26 @@ document.addEventListener("DOMContentLoaded", function() {
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
     var tocando = false;
+
+    function mostrarConfirmacao(texto, autoFechar) {
+        if (confirmacaoTexto) {
+            confirmacaoTexto.textContent = texto || 'Pacote carregado corretamente em ciPostos e ciPostosCsv.';
+        }
+        if (overlayConfirmacao) {
+            overlayConfirmacao.style.display = 'flex';
+        }
+        if (autoFechar) {
+            setTimeout(function() {
+                if (overlayConfirmacao) overlayConfirmacao.style.display = 'none';
+            }, 1200);
+        }
+    }
+
+    if (btnConfirmacaoOk) {
+        btnConfirmacaoOk.addEventListener('click', function() {
+            if (overlayConfirmacao) overlayConfirmacao.style.display = 'none';
+        });
+    }
 
     function obterTituloTabela(tabela) {
         var titulo = tabela ? tabela.previousElementSibling : null;
@@ -2184,6 +2247,7 @@ document.addEventListener("DOMContentLoaded", function() {
             salvarPacoteNaoListado(obj, function(ok) {
                 if (ok) {
                     removerPendentePorCodbar(obj.codbar);
+                    mostrarConfirmacao('Pacote carregado corretamente em ciPostos e ciPostosCsv.');
                 } else {
                     alert('Erro ao salvar pacote nao listado.');
                 }
@@ -2248,10 +2312,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 .then(function(resp){ return resp.json(); })
                 .then(function(data){
                     if (data && data.success) {
-                        alert('Pacotes inseridos: ' + data.inseridos);
+                        mostrarConfirmacao('Pacotes carregados em ciPostos e ciPostosCsv: ' + data.inseridos, true);
                         pacotesPendentes = [];
                         renderizarPacotesPendentes();
-                        window.location.reload();
+                        setTimeout(function() { window.location.reload(); }, 1400);
                     } else {
                         alert('Erro ao inserir pacotes.');
                     }
@@ -2378,9 +2442,9 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
     
-    // Scanner de código de barras
-    input.addEventListener("input", function() {
-        var valor = input.value.trim();
+    function processarLeituraCodigo(valorBruto) {
+        if (!input) return;
+        var valor = (valorBruto || '').trim();
         valor = valor.replace(/\D+/g, '');
         if (valor.length < 19) {
             return;
@@ -2568,7 +2632,7 @@ document.addEventListener("DOMContentLoaded", function() {
         window.scrollTo({ top: alvo, behavior: 'smooth' });
         
         // Salvar no banco se auto-save estiver ativo
-        if (radioAutoSalvar.checked) {
+        if (radioAutoSalvar && radioAutoSalvar.checked) {
             var lote = linha.getAttribute("data-lote");
             var regional = linha.getAttribute("data-regional");
             var posto = linha.getAttribute("data-posto");
@@ -2630,7 +2694,23 @@ document.addEventListener("DOMContentLoaded", function() {
             tipoAtual = null;
             primeiroConferido = false;
         }
-    });
+    }
+
+    // Scanner de código de barras
+    if (input) {
+        input.addEventListener("input", function() {
+            processarLeituraCodigo(input.value);
+        });
+        input.addEventListener("change", function() {
+            processarLeituraCodigo(input.value);
+        });
+        input.addEventListener("keydown", function(e) {
+            if (e.keyCode === 13) {
+                e.preventDefault();
+                processarLeituraCodigo(input.value);
+            }
+        });
+    }
     
     // Resetar conferência
     btnResetar.addEventListener("click", function() {

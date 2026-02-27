@@ -49,40 +49,51 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
     $layout = array(
         'correios' => array(),
         'poupatempo' => array(),
-        'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0)
+        'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0)
     );
     $postos_pt = array('005','006','023','024','025','026','028','080','110','315','375','487','526','527','667','730','747','790','825','880');
     $correios_keys = array('022','060','100','105','150','200','250','300','350','400','450','490','500','501','507','550','600','650','700','701','710','750','755','758','779','800','808','809','850','900','950');
-    $stmt = $pdo->prepare("SELECT l.posto, l.regional, l.quantidade
+    $stmt = $pdo->prepare("SELECT l.posto, l.regional, l.quantidade, c.regional_csv
         FROM lotes_na_estante l
+        LEFT JOIN (
+            SELECT lote, MAX(regional) AS regional_csv
+            FROM ciPostosCsv
+            GROUP BY lote
+        ) c ON c.lote = l.lote
         $whereEstante");
     $stmt->execute($params_estante);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $qtd = 1;
+        $qtd = (int)$row['quantidade'];
+        if ($qtd <= 0) { $qtd = 1; }
         $posto = (int)$row['posto'];
         $regional = (int)$row['regional'];
+        $regional_csv = isset($row['regional_csv']) ? (int)$row['regional_csv'] : 0;
         $posto_pad = str_pad((string)$posto, 3, '0', STR_PAD_LEFT);
         $is_pt = in_array($posto_pad, $postos_pt, true);
         if ($is_pt) {
             $key = $posto_pad;
             if (!isset($layout['poupatempo'][$key])) { $layout['poupatempo'][$key] = 0; }
             $layout['poupatempo'][$key] += $qtd;
-            $layout['totais']['poupatempo_lotes'] += $qtd;
+            $layout['totais']['poupatempo_pacotes'] += $qtd;
         } else {
-            if ($regional === 0) {
+            if ($regional_csv === 0 || $regional === 0) {
                 if (!isset($layout['correios']['capital'])) { $layout['correios']['capital'] = 0; }
                 $layout['correios']['capital'] += $qtd;
-            } elseif ($regional === 999) {
+            } elseif ($regional_csv === 999 || $regional === 999) {
                 if (!isset($layout['correios']['central'])) { $layout['correios']['central'] = 0; }
                 $layout['correios']['central'] += $qtd;
             } else {
+                $key_regional_csv = str_pad((string)$regional_csv, 3, '0', STR_PAD_LEFT);
                 $key_regional = str_pad((string)$regional, 3, '0', STR_PAD_LEFT);
-                $key = in_array($key_regional, $correios_keys, true) ? $key_regional : null;
+                $key = in_array($key_regional_csv, $correios_keys, true) ? $key_regional_csv : null;
+                if ($key === null && in_array($key_regional, $correios_keys, true)) {
+                    $key = $key_regional;
+                }
                 if ($key === null && in_array($posto_pad, $correios_keys, true)) {
                     $key = $posto_pad;
                 }
                 if ($key === null) {
-                    $key = $key_regional;
+                    $key = $key_regional_csv !== '000' ? $key_regional_csv : $key_regional;
                 }
                 if (!isset($layout['correios'][$key])) { $layout['correios'][$key] = 0; }
                 $layout['correios'][$key] += $qtd;
@@ -91,7 +102,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
                 if (!isset($layout['correios']['posto001'])) { $layout['correios']['posto001'] = 0; }
                 $layout['correios']['posto001'] += $qtd;
             }
-            $layout['totais']['correios_lotes'] += $qtd;
+            $layout['totais']['correios_pacotes'] += $qtd;
         }
     }
     return $layout;
@@ -135,13 +146,13 @@ try {
             die(json_encode(array(
                 'success' => true,
                 'estante' => array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0),
-                'layout' => array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0))
+                'layout' => array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0))
             )));
         }
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         $historico = array();
-        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0));
+        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0));
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -373,7 +384,7 @@ try {
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         $historico = array();
-        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0));
+        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0));
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -547,7 +558,7 @@ try {
         .toggle-voz input:checked + .toggle-slider { background: #4caf50; }
         .toggle-voz input:checked + .toggle-slider:after { transform: translateX(16px); }
 
-        .area-principal { max-width: 800px; margin: 0 auto; }
+        .area-principal { max-width: 1200px; margin: 0 auto; }
 
         .painel-leitura {
             background: white; border-radius: 10px;
@@ -641,8 +652,9 @@ try {
 
         .estantes-container {
             background: #ffffff; border-radius: 12px;
-            padding: 20px; margin-bottom: 20px;
+            padding: 20px; margin: 0 auto 20px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            width: 100%;
         }
         .estantes-header {
             display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -670,14 +682,14 @@ try {
             background: linear-gradient(160deg, #fff8e1 0%, #ffffff 100%);
             border: 1px solid #f1e4c8; border-radius: 12px; padding: 14px;
             display: grid; gap: 12px;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(2, minmax(320px, 1fr));
         }
         .estante[data-grupo="poupatempo"] {
             background: linear-gradient(160deg, #e8f5e9 0%, #ffffff 100%);
             border-color: #c8e6c9;
         }
         .estante-coluna {
-            display: grid; gap: 10px;
+            display: grid; gap: 10px; min-width: 320px;
         }
         .estante-titulo {
             font-weight: 800; color: #1b1f3b; text-transform: uppercase; font-size: 12px;
@@ -685,9 +697,9 @@ try {
         }
         .prateleira {
             display: grid;
-            grid-template-columns: repeat(4, minmax(90px, 1fr));
-            gap: 10px;
-            padding: 10px;
+            grid-template-columns: repeat(4, minmax(70px, 1fr));
+            gap: 8px;
+            padding: 8px;
             background: rgba(27,31,59,0.06);
             border-radius: 10px;
             border: 1px dashed rgba(27,31,59,0.15);
@@ -696,16 +708,16 @@ try {
             background: #1b1f3b;
             color: #fff;
             border-radius: 8px;
-            padding: 8px 6px;
+            padding: 6px 4px;
             text-align: center;
             box-shadow: inset 0 -2px 0 rgba(255,255,255,0.15);
         }
         .slot-label {
-            font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+            font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
             text-transform: uppercase; opacity: 0.8;
         }
         .slot-valor {
-            font-size: 18px; font-weight: 800; margin-top: 4px;
+            font-size: 16px; font-weight: 800; margin-top: 4px;
         }
         .slot-vazio {
             background: #90a4ae;
@@ -840,7 +852,7 @@ try {
 
     <div class="stats-bar">
         <div class="stat-card">
-            <h4>Lotes na estante</h4>
+            <h4>Pacotes na estante</h4>
             <div class="valor" id="statTotal">0</div>
         </div>
         <div class="stat-card" style="border-left-color:#1565c0;">
@@ -887,7 +899,7 @@ try {
                 <button type="button" data-view="poupatempo">Poupa Tempo</button>
             </div>
         </div>
-        <div class="estantes-resumo" id="estantesResumo">Correios: 0 lotes | Poupa Tempo: 0 lotes</div>
+        <div class="estantes-resumo" id="estantesResumo">Correios: 0 pacotes | Poupa Tempo: 0 pacotes</div>
         <div class="estantes-grid">
             <div class="estante" data-grupo="correios">
                 <div class="estante-coluna">
@@ -1431,10 +1443,10 @@ function atualizarResumoEstantes() {
     var totalCorreios = 0;
     var totalPT = 0;
     if (estanteLayout && estanteLayout.totais) {
-        totalCorreios = estanteLayout.totais.correios_lotes || 0;
-        totalPT = estanteLayout.totais.poupatempo_lotes || 0;
+        totalCorreios = estanteLayout.totais.correios_pacotes || 0;
+        totalPT = estanteLayout.totais.poupatempo_pacotes || 0;
     }
-    resumo.textContent = 'Correios: ' + totalCorreios + ' lotes | Poupa Tempo: ' + totalPT + ' lotes';
+    resumo.textContent = 'Correios: ' + totalCorreios + ' pacotes | Poupa Tempo: ' + totalPT + ' pacotes';
 }
 
 function renderizarEstantes() {
