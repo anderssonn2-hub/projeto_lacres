@@ -1892,6 +1892,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
     var tocando = false;
+    var ultimoCodLido = '';
 
     function mostrarConfirmacao(texto, autoFechar) {
         if (confirmacaoTexto) {
@@ -2704,13 +2705,54 @@ document.addEventListener("DOMContentLoaded", function() {
         input.addEventListener("change", function() {
             processarLeituraCodigo(input.value);
         });
+        input.addEventListener("paste", function() {
+            setTimeout(function() {
+                processarLeituraCodigo(input.value);
+            }, 0);
+        });
         input.addEventListener("keydown", function(e) {
             if (e.keyCode === 13) {
                 e.preventDefault();
                 processarLeituraCodigo(input.value);
             }
         });
+        setInterval(function() {
+            if (!input) return;
+            var valorAtual = (input.value || '').trim();
+            if (!valorAtual || valorAtual === ultimoCodLido) return;
+            ultimoCodLido = valorAtual;
+            processarLeituraCodigo(valorAtual);
+            if ((input.value || '').trim() === '') {
+                ultimoCodLido = '';
+            }
+        }, 300);
     }
+
+    var scanBuffer = '';
+    var scanTimer = null;
+    document.addEventListener('keydown', function(e) {
+        if (!e) return;
+        var alvo = e.target;
+        if (alvo && (alvo.id === 'usuario_conf_modal' || alvo.id === 'pacote_lote' || alvo.id === 'pacote_regional' || alvo.id === 'pacote_posto' || alvo.id === 'pacote_qtd' || alvo.id === 'pacote_dataexp' || alvo.id === 'pacote_responsavel')) {
+            return;
+        }
+        if (e.keyCode === 13) {
+            if (scanBuffer.length >= 19) {
+                processarLeituraCodigo(scanBuffer);
+                scanBuffer = '';
+            }
+            return;
+        }
+        var k = e.key;
+        if (!k || k.length !== 1 || k < '0' || k > '9') return;
+        scanBuffer += k;
+        if (scanTimer) clearTimeout(scanTimer);
+        scanTimer = setTimeout(function() { scanBuffer = ''; }, 300);
+        if (scanBuffer.length >= 19) {
+            processarLeituraCodigo(scanBuffer);
+            scanBuffer = '';
+        }
+    });
     
     // Resetar conferência
     btnResetar.addEventListener("click", function() {

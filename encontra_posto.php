@@ -71,7 +71,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
         $posto_pad = str_pad((string)$posto, 3, '0', STR_PAD_LEFT);
         $is_pt = in_array($posto_pad, $postos_pt, true);
         if ($is_pt) {
-            $key = $posto_pad;
+            $key = 'p' . $posto_pad;
             if (!isset($layout['poupatempo'][$key])) { $layout['poupatempo'][$key] = 0; }
             $layout['poupatempo'][$key] += $qtd;
             $layout['totais']['poupatempo_pacotes'] += $qtd;
@@ -95,6 +95,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
                 if ($key === null) {
                     $key = $key_regional_csv !== '000' ? $key_regional_csv : $key_regional;
                 }
+                $key = 'r' . $key;
                 if (!isset($layout['correios'][$key])) { $layout['correios'][$key] = 0; }
                 $layout['correios'][$key] += $qtd;
             }
@@ -1328,88 +1329,88 @@ var prateleirasCorreiosA = [
         { key: '__vazio1', label: 'Livre', empty: true }
     ],
     [
-        { key: '022', label: 'R 022' },
-        { key: '060', label: 'R 060' },
-        { key: '100', label: 'R 100' },
-        { key: '105', label: 'R 105' }
+        { key: 'r022', label: 'R 022' },
+        { key: 'r060', label: 'R 060' },
+        { key: 'r100', label: 'R 100' },
+        { key: 'r105', label: 'R 105' }
     ],
     [
-        { key: '150', label: 'R 150' },
-        { key: '200', label: 'R 200' },
-        { key: '250', label: 'R 250' },
-        { key: '300', label: 'R 300' }
+        { key: 'r150', label: 'R 150' },
+        { key: 'r200', label: 'R 200' },
+        { key: 'r250', label: 'R 250' },
+        { key: 'r300', label: 'R 300' }
     ],
     [
-        { key: '350', label: 'R 350' },
-        { key: '400', label: 'R 400' },
-        { key: '450', label: 'R 450' },
-        { key: '490', label: 'R 490' }
+        { key: 'r350', label: 'R 350' },
+        { key: 'r400', label: 'R 400' },
+        { key: 'r450', label: 'R 450' },
+        { key: 'r490', label: 'R 490' }
     ],
     [
-        { key: '500', label: 'R 500' },
-        { key: '501', label: 'R 501' },
-        { key: '507', label: 'R 507' },
-        { key: '550', label: 'R 550' }
+        { key: 'r500', label: 'R 500' },
+        { key: 'r501', label: 'R 501' },
+        { key: 'r507', label: 'R 507' },
+        { key: 'r550', label: 'R 550' }
     ]
 ];
 
 var prateleirasCorreiosB = [
     [
-        { key: '600', label: 'R 600' },
-        { key: '650', label: 'R 650' },
-        { key: '700', label: 'R 700' },
-        { key: '701', label: 'R 701' }
+        { key: 'r600', label: 'R 600' },
+        { key: 'r650', label: 'R 650' },
+        { key: 'r700', label: 'R 700' },
+        { key: 'r701', label: 'R 701' }
     ],
     [
-        { key: '710', label: 'R 710' },
-        { key: '750', label: 'R 750' },
-        { key: '755', label: 'R 755' },
-        { key: '758', label: 'R 758' }
+        { key: 'r710', label: 'R 710' },
+        { key: 'r750', label: 'R 750' },
+        { key: 'r755', label: 'R 755' },
+        { key: 'r758', label: 'R 758' }
     ],
     [
-        { key: '779', label: 'R 779' },
-        { key: '800', label: 'R 800' },
-        { key: '808', label: 'R 808' },
-        { key: '809', label: 'R 809' }
+        { key: 'r779', label: 'R 779' },
+        { key: 'r800', label: 'R 800' },
+        { key: 'r808', label: 'R 808' },
+        { key: 'r809', label: 'R 809' }
     ],
     [
-        { key: '850', label: 'R 850' },
-        { key: '900', label: 'R 900' },
-        { key: '950', label: 'R 950' },
+        { key: 'r850', label: 'R 850' },
+        { key: 'r900', label: 'R 900' },
+        { key: 'r950', label: 'R 950' },
         { key: '__vazio2', label: 'Livre', empty: true }
     ]
 ];
 
 var prateleirasPoupaTempo = [
     [
-        { key: '005', label: '005' },
-        { key: '006', label: '006' },
-        { key: '023', label: '023' },
-        { key: '024', label: '024' }
+        { key: 'p005', label: '005' },
+        { key: 'p006', label: '006' },
+        { key: 'p023', label: '023' },
+        { key: 'p024', label: '024' }
     ],
     [
-        { key: '025', label: '025' },
-        { key: '026', label: '026' },
-        { key: '028', label: '028' },
-        { key: '080', label: '080' }
+        { key: 'p025', label: '025' },
+        { key: 'p026', label: '026' },
+        { key: 'p028', label: '028' },
+        { key: 'p080', label: '080' }
     ],
     [
-        { key: '110', label: '110' },
-        { key: '315', label: '315' },
-        { key: '375', label: '375' },
-        { key: '487', label: '487' }
+        { key: 'p110', label: '110' },
+        { key: 'p315', label: '315' },
+        { key: 'p375', label: '375' },
+        { key: 'p487', label: '487' }
     ],
     [
-        { key: '526', label: '526' },
-        { key: '527', label: '527' },
-        { key: '667', label: '667' },
-        { key: '730', label: '730' }
+        { key: 'p526', label: '526' },
+        { key: 'p527', label: '527' },
+        { key: 'p667', label: '667' },
+        { key: 'p730', label: '730' }
     ],
     [
-        { key: '747', label: '747' },
-        { key: '790', label: '790' },
-        { key: '825', label: '825' },
-        { key: '880', label: '880' }
+        { key: 'p747', label: '747' },
+        { key: 'p790', label: '790' },
+        { key: 'p825', label: '825' },
+        { key: 'p880', label: '880' }
     ]
 ];
 
