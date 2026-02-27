@@ -1574,7 +1574,10 @@ try {
 </div>
 
 <div>
-    <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus>
+        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus
+            oninput="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
+            onchange="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
+            onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);} }">
     <button id="resetar">🔄 Resetar Conferência</button>
     <div class="mensagem-leitura" id="mensagemLeitura"></div>
 </div>
@@ -2696,6 +2699,8 @@ document.addEventListener("DOMContentLoaded", function() {
             primeiroConferido = false;
         }
     }
+
+    window.processarLeituraCodigo = processarLeituraCodigo;
 
     // Scanner de código de barras
     if (input) {

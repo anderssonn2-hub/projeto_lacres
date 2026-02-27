@@ -597,6 +597,10 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
    ============================================================ */
 $datasStr  = '';
 $datasNorm = array();
+// v9.25.x: filtros opcionais do oficio PT
+$postosSelecionados = array();
+$filtrarNaoConferidos = false;
+$filtrarSemOficio = false;
 
 if (isset($_POST['pt_datas'])) {
     $datasStr = $_POST['pt_datas'];
@@ -628,6 +632,24 @@ if (!empty($datasStr)) {
     }
 }
 
+if (isset($_POST['pt_postos_sel'])) {
+    $rawSel = $_POST['pt_postos_sel'];
+    if (is_array($rawSel)) {
+        $tmpSel = $rawSel;
+    } else {
+        $tmpSel = explode(',', (string)$rawSel);
+    }
+    foreach ($tmpSel as $ps) {
+        $ps = preg_replace('/\D+/', '', (string)$ps);
+        if ($ps === '') continue;
+        $postosSelecionados[] = str_pad($ps, 3, '0', STR_PAD_LEFT);
+    }
+    $postosSelecionados = array_values(array_unique($postosSelecionados));
+}
+
+$filtrarNaoConferidos = isset($_POST['pt_filtro_nao_conferidos']) && $_POST['pt_filtro_nao_conferidos'] === '1';
+$filtrarSemOficio = isset($_POST['pt_filtro_sem_oficio']) && $_POST['pt_filtro_sem_oficio'] === '1';
+
 /* ============================================================
    DEBUG opcional – acessar com ?debug_pt=1
    ============================================================ */
@@ -658,6 +680,10 @@ $modo_branco = (isset($_POST['pt_blank']) && $_POST['pt_blank'] === '1') || (iss
 if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
 
     $in = "'" . implode("','", array_map('strval', $datasNorm)) . "'";
+    $filtroPostosSql = '';
+    if (!empty($postosSelecionados)) {
+        $filtroPostosSql = " AND LPAD(c.posto,3,'0') IN ('" . implode("','", $postosSelecionados) . "') ";
+    }
 
     // v9.8.2: Busca lotes individuais (não agrupa quantidade)
     $sql = "
@@ -674,6 +700,7 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
                 ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0')
         WHERE DATE(c.dataCarga) IN ($in)
           AND REPLACE(LOWER(r.entrega),' ','') LIKE 'poupa%tempo'
+                    $filtroPostosSql
         ORDER BY 
             LPAD(c.posto,3,'0'), c.lote
     ";
@@ -712,6 +739,87 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
             $postosPorCodigo[$codigo]['qtd_total'] += $quant;
         }
         
+        // v9.25.x: filtros opcionais por conferencia/oficio
+        if ($filtrarNaoConferidos || $filtrarSemOficio) {
+            $postosList = array_keys($postosPorCodigo);
+            $lotesList = array();
+            foreach ($postosPorCodigo as $pp) {
+                if (!empty($pp['lotes'])) {
+                    foreach ($pp['lotes'] as $lt) {
+                        if (!empty($lt['lote'])) { $lotesList[] = (string)$lt['lote']; }
+                    }
+                }
+            }
+            $lotesList = array_values(array_unique($lotesList));
+
+            $mapaConferidos = array();
+            if ($filtrarNaoConferidos && !empty($postosList)) {
+                $inPostos = "'" . implode("','", array_map('strval', $postosList)) . "'";
+                $sqlConf = "SELECT DISTINCT nlote, nposto
+                            FROM conferencia_pacotes
+                            WHERE conf = 's'
+                              AND nposto IN ($inPostos)";
+                if (!empty($datasNorm)) {
+                    $sqlConf .= " AND dataexp IN ($in) ";
+                }
+                try {
+                    $stmtConf = $pdo_controle->query($sqlConf);
+                    while ($rc = $stmtConf->fetch(PDO::FETCH_ASSOC)) {
+                        $p = str_pad(preg_replace('/\D+/', '', (string)$rc['nposto']), 3, '0', STR_PAD_LEFT);
+                        $l = preg_replace('/\D+/', '', (string)$rc['nlote']);
+                        if ($p !== '' && $l !== '') {
+                            if (!isset($mapaConferidos[$p])) { $mapaConferidos[$p] = array(); }
+                            $mapaConferidos[$p][$l] = true;
+                        }
+                    }
+                } catch (Exception $e) {}
+            }
+
+            $mapaOficio = array();
+            if ($filtrarSemOficio && !empty($postosList)) {
+                $inPostos = "'" . implode("','", array_map('strval', $postosList)) . "'";
+                $sqlOf = "SELECT DISTINCT posto, lote
+                          FROM ciDespachoLotes
+                          WHERE posto IN ($inPostos)";
+                if (!empty($datasNorm)) {
+                    $sqlOf .= " AND DATE(data_carga) IN ($in) ";
+                }
+                try {
+                    $stmtOf = $pdo_controle->query($sqlOf);
+                    while ($ro = $stmtOf->fetch(PDO::FETCH_ASSOC)) {
+                        $p = str_pad(preg_replace('/\D+/', '', (string)$ro['posto']), 3, '0', STR_PAD_LEFT);
+                        $l = preg_replace('/\D+/', '', (string)$ro['lote']);
+                        if ($p !== '' && $l !== '') {
+                            if (!isset($mapaOficio[$p])) { $mapaOficio[$p] = array(); }
+                            $mapaOficio[$p][$l] = true;
+                        }
+                    }
+                } catch (Exception $e) {}
+            }
+
+            foreach ($postosPorCodigo as $pc => $pp) {
+                $novosLotes = array();
+                $qtdTotal = 0;
+                foreach ($pp['lotes'] as $lt) {
+                    $loteNum = preg_replace('/\D+/', '', (string)$lt['lote']);
+                    if ($filtrarNaoConferidos && isset($mapaConferidos[$pc]) && isset($mapaConferidos[$pc][$loteNum])) {
+                        continue;
+                    }
+                    if ($filtrarSemOficio && isset($mapaOficio[$pc]) && isset($mapaOficio[$pc][$loteNum])) {
+                        continue;
+                    }
+                    $novosLotes[] = $lt;
+                    $qtdTotal += isset($lt['quantidade']) ? (int)$lt['quantidade'] : 0;
+                }
+                if (!empty($novosLotes)) {
+                    $postosPorCodigo[$pc]['lotes'] = $novosLotes;
+                    $postosPorCodigo[$pc]['qtd_total'] = $qtdTotal;
+                } else {
+                    unset($postosPorCodigo[$pc]);
+                }
+            }
+        }
+
         // Converte para array sequencial
         $paginas = array_values($postosPorCodigo);
         
@@ -916,7 +1024,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .oficio *{box-sizing:border-box}
 
 /* Classes de layout */
-.cols100{width:100%;margin-bottom:6px;clear:both;position:relative}
+    overflow:visible;
 .cols65{width:65%}
 .cols50{width:50%}
 .cols25{width:25%}

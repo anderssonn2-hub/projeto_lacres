@@ -335,7 +335,10 @@ try {
 
         <div class="input-barcode">
             <label>📍 Código de barras:</label>
-            <input type="text" id="barcode" maxlength="19" autofocus placeholder="Escaneie aqui...">
+                 <input type="text" id="barcode" maxlength="19" autofocus placeholder="Escaneie aqui..."
+                     oninput="if(window.processarLeituraCodigoNovo){window.processarLeituraCodigoNovo(this.value, this);}"
+                     onchange="if(window.processarLeituraCodigoNovo){window.processarLeituraCodigoNovo(this.value, this);}"
+                     onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.processarLeituraCodigoNovo){window.processarLeituraCodigoNovo(this.value, this);} }">
         </div>
 
         <div id="tabelas">
@@ -451,13 +454,13 @@ foreach (array_keys($regionais_data) as $reg) {
         const jaconf = document.getElementById('jaconf');
         const ptsom = document.getElementById('ptsom');
 
-        input.addEventListener('input', function() {
-            const val = this.value.trim();
+        function processarLeituraCodigoNovo(valor, el) {
+            const val = String(valor || '').trim();
             if (val.length !== 19) return;
 
             const tr = document.querySelector(`tr[data-codigo="${val}"]`);
             if (!tr) {
-                this.value = '';
+                if (el) el.value = '';
                 return;
             }
 
@@ -470,7 +473,7 @@ foreach (array_keys($regionais_data) as $reg) {
                 jaconf.play();
             } else if (auto.checked) {
                 tr.classList.add('confirmado');
-                
+
                 if (isPT) {
                     ptsom.currentTime = 0;
                     ptsom.play();
@@ -498,8 +501,16 @@ foreach (array_keys($regionais_data) as $reg) {
                 }, 100);
             }
 
-            this.value = '';
-            this.focus();
+            if (el) {
+                el.value = '';
+                el.focus();
+            }
+        }
+
+        window.processarLeituraCodigoNovo = processarLeituraCodigoNovo;
+
+        input.addEventListener('input', function() {
+            processarLeituraCodigoNovo(this.value, this);
         });
 
         document.querySelectorAll('tbody tr').forEach(tr => {

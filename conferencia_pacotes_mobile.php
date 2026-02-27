@@ -845,7 +845,10 @@ if ($pacoteInfo) {
 <div class="manual-input">
     <label>Ou digite o código manualmente:</label>
     <div class="input-group">
-        <input type="text" id="codigoManual" placeholder="Ex: 00001234001012" inputmode="numeric" pattern="[0-9]*">
+         <input type="text" id="codigoManual" placeholder="Ex: 00001234001012" inputmode="numeric" pattern="[0-9]*"
+             oninput="if(window.processarCodigo){var v=String(this.value||'').replace(/\D+/g,''); if(v.length>=14){window.processarCodigo(this.value);} }"
+             onchange="if(window.processarCodigo){var v=String(this.value||'').replace(/\D+/g,''); if(v.length>=14){window.processarCodigo(this.value);} }"
+             onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.processarCodigo){var v=String(this.value||'').replace(/\D+/g,''); if(v.length>=14){window.processarCodigo(this.value);} } }">
         <button class="btn-conferir" onclick="conferirManual()">✓</button>
     </div>
 </div>

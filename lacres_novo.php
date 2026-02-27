@@ -5227,6 +5227,16 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
         ?>
         <!-- Botão Ofício Poupatempo (form gerado fora do form principal para evitar forms aninhados) -->
         <button type="button" class="btn btn-warning" onclick="abrirOficioPoupaTempo();">Ofício Poupatempo</button>
+        <div style="display:flex; gap:14px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="ptFiltroNaoConferidos">
+                Somente lotes nao conferidos
+            </label>
+            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="ptFiltroSemOficio">
+                Somente lotes sem oficio
+            </label>
+        </div>
         <script type="text/javascript">
         function abrirOficioPoupaTempo() {
                 var payload = <?php echo json_encode($poupaTempoPayload, JSON_UNESCAPED_UNICODE); ?>;
@@ -5239,6 +5249,26 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
                 input.name = 'poupatempo_payload';
                 input.value = JSON.stringify(payload);
                 form.appendChild(input);
+                var inputDatas = document.createElement('input');
+                inputDatas.type = 'hidden';
+                inputDatas.name = 'pt_datas';
+                inputDatas.value = <?php echo json_encode(implode(',', $datas_filtro), JSON_UNESCAPED_UNICODE); ?>;
+                form.appendChild(inputDatas);
+                var inputPostos = document.createElement('input');
+                inputPostos.type = 'hidden';
+                inputPostos.name = 'pt_postos_sel';
+                inputPostos.value = coletarPostosSelecionadosPT();
+                form.appendChild(inputPostos);
+                var inputNaoConf = document.createElement('input');
+                inputNaoConf.type = 'hidden';
+                inputNaoConf.name = 'pt_filtrar_nao_conferidos';
+                inputNaoConf.value = (document.getElementById('ptFiltroNaoConferidos') && document.getElementById('ptFiltroNaoConferidos').checked) ? '1' : '0';
+                form.appendChild(inputNaoConf);
+                var inputSemOficio = document.createElement('input');
+                inputSemOficio.type = 'hidden';
+                inputSemOficio.name = 'pt_filtrar_sem_oficio';
+                inputSemOficio.value = (document.getElementById('ptFiltroSemOficio') && document.getElementById('ptFiltroSemOficio').checked) ? '1' : '0';
+                form.appendChild(inputSemOficio);
                 document.body.appendChild(form);
                 form.submit();
                 document.body.removeChild(form);
@@ -5322,6 +5352,12 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
             <?php foreach ($itens as $key => $dado): ?>
             <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td class="acoes-cell">
+                    <?php if ($grupo === 'POUPA TEMPO'): ?>
+                    <label style="margin-right:6px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
+                        <input type="checkbox" class="pt-selecionar" data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" checked>
+                        Selecionar
+                    </label>
+                    <?php endif; ?>
                     <!-- v8.6: Input oculto com código do posto para manter alinhamento de arrays -->
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
                     <input type="hidden" name="posto_codigo_correios[]" value="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>">
@@ -7599,6 +7635,9 @@ $__pt_datas_join = htmlspecialchars(
 <form id="oficioPTForm" method="post" action="modelo_oficio_poupa_tempo.php" target="_blank" style="display:none;">
   <input type="hidden" name="acao" value="oficio_poupatempo" />
   <input type="hidden" name="pt_datas" value="<?php echo $__pt_datas_join; ?>" />
+    <input type="hidden" name="pt_postos_sel" id="ptPostosSel" value="" />
+    <input type="hidden" name="pt_filtrar_nao_conferidos" id="ptFiltroNaoConferidosInput" value="0" />
+    <input type="hidden" name="pt_filtrar_sem_oficio" id="ptFiltroSemOficioInput" value="0" />
   <input type="hidden" name="<?php echo htmlspecialchars(session_name(),ENT_QUOTES,'UTF-8'); ?>"
          value="<?php echo htmlspecialchars(session_id(),ENT_QUOTES,'UTF-8'); ?>" />
   <textarea name="poupatempo_payload" style="display:none;"><?php
@@ -7608,6 +7647,29 @@ $__pt_datas_join = htmlspecialchars(
 
 
 <script>
+(function(){
+    window.coletarPostosSelecionadosPT = function(){
+        var nodes = document.querySelectorAll('.pt-selecionar');
+        if (!nodes || !nodes.length) return '';
+        var selecionados = [];
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].checked) selecionados.push(nodes[i].getAttribute('data-posto') || '');
+        }
+        return selecionados.filter(function(v){ return v; }).join(',');
+    };
+    window.prepararFiltrosOficioPT = function(){
+        var postosSel = window.coletarPostosSelecionadosPT ? window.coletarPostosSelecionadosPT() : '';
+        var inputPostos = document.getElementById('ptPostosSel');
+        if (inputPostos) inputPostos.value = postosSel;
+        var naoConf = document.getElementById('ptFiltroNaoConferidos');
+        var semOficio = document.getElementById('ptFiltroSemOficio');
+        var inputNaoConf = document.getElementById('ptFiltroNaoConferidosInput');
+        var inputSemOficio = document.getElementById('ptFiltroSemOficioInput');
+        if (inputNaoConf) inputNaoConf.value = (naoConf && naoConf.checked) ? '1' : '0';
+        if (inputSemOficio) inputSemOficio.value = (semOficio && semOficio.checked) ? '1' : '0';
+    };
+})();
+
 (function(){
   function norm(t){ return (t||'').toLowerCase().replace(/\s+/g,' ').trim(); }
   function allBtns(){ return document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'); }
@@ -7630,7 +7692,7 @@ $__pt_datas_join = htmlspecialchars(
     btn.className=(ref?(ref.className+' btn-oficio-pt'):'btn-oficio-pt');
     btn.innerHTML='<i class="icon-doc"></i> Gerar Ofício Poupa Tempo';
     cont.appendChild(btn);
-    btn.addEventListener('click', function(){ var f=document.getElementById('oficioPTForm'); if(f) f.submit(); });
+        btn.addEventListener('click', function(){ var f=document.getElementById('oficioPTForm'); if(f){ if(window.prepararFiltrosOficioPT) window.prepararFiltrosOficioPT(); f.submit(); } });
   }
   if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', addBtn); else addBtn();
   new MutationObserver(function(){ if(!document.getElementById('btnOficioPT')) addBtn(); }).observe(document.documentElement,{childList:true,subtree:true});
