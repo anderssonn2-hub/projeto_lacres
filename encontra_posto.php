@@ -70,7 +70,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
         $posto_pad = str_pad((string)$posto, 3, '0', STR_PAD_LEFT);
         $is_pt = in_array($posto_pad, $postos_pt, true);
         if ($is_pt) {
-            $key = 'p' . $posto_pad;
+            $key = $posto_pad;
             if (!isset($layout['poupatempo'][$key])) { $layout['poupatempo'][$key] = 0; }
             $layout['poupatempo'][$key] += $qtd;
             $layout['totais']['poupatempo_lotes'] += $qtd;
@@ -94,7 +94,6 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
                 if ($key === null) {
                     $key = $key_regional_csv !== '000' ? $key_regional_csv : $key_regional;
                 }
-                $key = 'r' . $key;
                 if (!isset($layout['correios'][$key])) { $layout['correios'][$key] = 0; }
                 $layout['correios'][$key] += $qtd;
             }
