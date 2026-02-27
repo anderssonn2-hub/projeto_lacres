@@ -51,9 +51,9 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
         'poupatempo' => array(),
         'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0)
     );
-    $stmt = $pdo->prepare("SELECT l.posto, l.regional, l.quantidade, r.entrega
+    $postos_pt = array('005','006','023','024','025','026','028','080','110','315','375','487','526','527','667','730','747','790','825','880');
+    $stmt = $pdo->prepare("SELECT l.posto, l.regional, l.quantidade
         FROM lotes_na_estante l
-        LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
         $whereEstante");
     $stmt->execute($params_estante);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -61,10 +61,10 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
         if ($qtd <= 0) { $qtd = 1; }
         $posto = (int)$row['posto'];
         $regional = (int)$row['regional'];
-        $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
-        $is_pt = (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false);
+        $posto_pad = str_pad((string)$posto, 3, '0', STR_PAD_LEFT);
+        $is_pt = in_array($posto_pad, $postos_pt, true);
         if ($is_pt) {
-            $key = str_pad((string)$posto, 3, '0', STR_PAD_LEFT);
+            $key = $posto_pad;
             if (!isset($layout['poupatempo'][$key])) { $layout['poupatempo'][$key] = 0; }
             $layout['poupatempo'][$key] += $qtd;
             $layout['totais']['poupatempo_pacotes'] += $qtd;
