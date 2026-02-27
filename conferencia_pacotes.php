@@ -603,6 +603,17 @@ try {
                 // v9.3: Poupa Tempo usa próprio posto como regional na exibição
                 $regional_exibida = ($isPT == 1) ? $posto : $regional_str;
                 $regional_pad_exib = str_pad($regional_exibida, 3, '0', STR_PAD_LEFT);
+                $regional_grupo = str_pad((string)$regional_real, 3, '0', STR_PAD_LEFT);
+                $regional_label = $regional_exibida;
+                if ($isPT != 1) {
+                    if ((int)$regional_real === 0) {
+                        $regional_label = 'Postos Capital';
+                    } elseif ((int)$regional_real === 999) {
+                        $regional_label = 'Postos Central';
+                    } elseif ((int)$regional_real === 1) {
+                        $regional_label = 'Posto 01';
+                    }
+                }
 
                 $keysToTry = array(
                     $lote_pad . '|' . $regional_pad_exib . '|' . $posto_pad,
@@ -640,6 +651,8 @@ try {
                     'lote' => $lote,
                     'posto' => $posto,
                     'regional' => $regional_exibida,
+                    'regional_grupo' => $regional_grupo,
+                    'regional_label' => $regional_label,
                     'tipoEntrega' => $tipoEntrega,
                     'data' => $data_formatada,
                     'data_sql' => $data_sql_row,
@@ -1639,7 +1652,8 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         $classeConf = ($posto['conf'] == 1) ? ' confirmado' : '';
         echo '<tr class="linha-conferencia' . $classeConf . '" ';
         echo 'data-codigo="' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '" ';
-        echo 'data-regional="' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '" ';
+        $regional_grupo_attr = isset($posto['regional_grupo']) ? $posto['regional_grupo'] : $posto['regional'];
+        echo 'data-regional="' . htmlspecialchars($regional_grupo_attr, ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-lote="' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-posto="' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-data="' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '" ';
@@ -1650,7 +1664,8 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         echo 'data-conferido-em="' . htmlspecialchars($posto['conferido_em'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-ispt="' . $posto['isPT'] . '" ';
         echo 'data-pt-group="' . htmlspecialchars($ptGroup, ENT_QUOTES, 'UTF-8') . '">';
-        echo '<td>' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '</td>';
+        $regional_label = isset($posto['regional_label']) ? $posto['regional_label'] : $posto['regional'];
+        echo '<td>' . htmlspecialchars($regional_label, ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '</td>';
@@ -2366,12 +2381,13 @@ document.addEventListener("DOMContentLoaded", function() {
     // Scanner de código de barras
     input.addEventListener("input", function() {
         var valor = input.value.trim();
-        
-        if (valor.length !== 19) {
+        valor = valor.replace(/\D+/g, '');
+        if (valor.length < 19) {
             return;
         }
-
-        valor = valor.replace(/\D+/g, '');
+        if (valor.length > 19) {
+            valor = valor.substr(0, 19);
+        }
         if (valor.length !== 19) {
             input.value = "";
             return;
