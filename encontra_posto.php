@@ -52,6 +52,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
         'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0)
     );
     $postos_pt = array('005','006','023','024','025','026','028','080','110','315','375','487','526','527','667','730','747','790','825','880');
+    $correios_keys = array('022','060','100','105','150','200','250','300','350','400','450','490','500','501','507','550','600','650','700','701','710','750','755','758','779','800','808','809','850','900','950');
     $stmt = $pdo->prepare("SELECT l.posto, l.regional, l.quantidade
         FROM lotes_na_estante l
         $whereEstante");
@@ -76,7 +77,14 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
                 if (!isset($layout['correios']['central'])) { $layout['correios']['central'] = 0; }
                 $layout['correios']['central'] += $qtd;
             } else {
-                $key = str_pad((string)$regional, 3, '0', STR_PAD_LEFT);
+                $key_regional = str_pad((string)$regional, 3, '0', STR_PAD_LEFT);
+                $key = in_array($key_regional, $correios_keys, true) ? $key_regional : null;
+                if ($key === null && in_array($posto_pad, $correios_keys, true)) {
+                    $key = $posto_pad;
+                }
+                if ($key === null) {
+                    $key = $key_regional;
+                }
                 if (!isset($layout['correios'][$key])) { $layout['correios'][$key] = 0; }
                 $layout['correios'][$key] += $qtd;
             }
