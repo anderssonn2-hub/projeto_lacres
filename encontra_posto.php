@@ -49,7 +49,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
     $layout = array(
         'correios' => array(),
         'poupatempo' => array(),
-        'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0)
+        'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0)
     );
     $postos_pt = array('005','006','023','024','025','026','028','080','110','315','375','487','526','527','667','730','747','790','825','880');
     $correios_keys = array('022','060','100','105','150','200','250','300','350','400','450','490','500','501','507','550','600','650','700','701','710','750','755','758','779','800','808','809','850','900','950');
@@ -63,8 +63,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
         $whereEstante");
     $stmt->execute($params_estante);
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $qtd = (int)$row['quantidade'];
-        if ($qtd <= 0) { $qtd = 1; }
+        $qtd = 1;
         $posto = (int)$row['posto'];
         $regional = (int)$row['regional'];
         $regional_csv = isset($row['regional_csv']) ? (int)$row['regional_csv'] : 0;
@@ -74,7 +73,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
             $key = 'p' . $posto_pad;
             if (!isset($layout['poupatempo'][$key])) { $layout['poupatempo'][$key] = 0; }
             $layout['poupatempo'][$key] += $qtd;
-            $layout['totais']['poupatempo_pacotes'] += $qtd;
+            $layout['totais']['poupatempo_lotes'] += $qtd;
         } else {
             if ($regional_csv === 0 || $regional === 0) {
                 if (!isset($layout['correios']['capital'])) { $layout['correios']['capital'] = 0; }
@@ -103,7 +102,7 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
                 if (!isset($layout['correios']['posto001'])) { $layout['correios']['posto001'] = 0; }
                 $layout['correios']['posto001'] += $qtd;
             }
-            $layout['totais']['correios_pacotes'] += $qtd;
+            $layout['totais']['correios_lotes'] += $qtd;
         }
     }
     return $layout;
@@ -147,13 +146,13 @@ try {
             die(json_encode(array(
                 'success' => true,
                 'estante' => array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0),
-                'layout' => array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0))
+                'layout' => array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0))
             )));
         }
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         $historico = array();
-        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0));
+        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0));
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -385,7 +384,7 @@ try {
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
         $historico = array();
-        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_pacotes' => 0, 'poupatempo_pacotes' => 0));
+        $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0));
         try {
             $params_estante = array();
             if ($data_ini !== '') {
@@ -853,7 +852,7 @@ try {
 
     <div class="stats-bar">
         <div class="stat-card">
-            <h4>Pacotes na estante</h4>
+            <h4>Lotes na estante</h4>
             <div class="valor" id="statTotal">0</div>
         </div>
         <div class="stat-card" style="border-left-color:#1565c0;">
@@ -900,7 +899,7 @@ try {
                 <button type="button" data-view="poupatempo">Poupa Tempo</button>
             </div>
         </div>
-        <div class="estantes-resumo" id="estantesResumo">Correios: 0 pacotes | Poupa Tempo: 0 pacotes</div>
+        <div class="estantes-resumo" id="estantesResumo">Correios: 0 lotes | Poupa Tempo: 0 lotes</div>
         <div class="estantes-grid">
             <div class="estante" data-grupo="correios">
                 <div class="estante-coluna">
@@ -1444,10 +1443,10 @@ function atualizarResumoEstantes() {
     var totalCorreios = 0;
     var totalPT = 0;
     if (estanteLayout && estanteLayout.totais) {
-        totalCorreios = estanteLayout.totais.correios_pacotes || 0;
-        totalPT = estanteLayout.totais.poupatempo_pacotes || 0;
+        totalCorreios = estanteLayout.totais.correios_lotes || 0;
+        totalPT = estanteLayout.totais.poupatempo_lotes || 0;
     }
-    resumo.textContent = 'Correios: ' + totalCorreios + ' pacotes | Poupa Tempo: ' + totalPT + ' pacotes';
+    resumo.textContent = 'Correios: ' + totalCorreios + ' lotes | Poupa Tempo: ' + totalPT + ' lotes';
 }
 
 function renderizarEstantes() {
