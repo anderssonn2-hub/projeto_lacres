@@ -1582,6 +1582,80 @@ try {
     <div class="mensagem-leitura" id="mensagemLeitura"></div>
 </div>
 
+    <script>
+    (function() {
+        function formatarAgora() {
+            var d = new Date();
+            var dd = String(d.getDate()).padStart(2, '0');
+            var mm = String(d.getMonth() + 1).padStart(2, '0');
+            var yy = d.getFullYear();
+            var hh = String(d.getHours()).padStart(2, '0');
+            var mi = String(d.getMinutes()).padStart(2, '0');
+            return dd + '-' + mm + '-' + yy + ' ' + hh + ':' + mi;
+        }
+
+        function bindFallback() {
+            var input = document.getElementById('codigo_barras');
+            if (!input || input.__fallbackBound) return;
+            input.__fallbackBound = true;
+
+            function normalize(val) {
+                return String(val || '').replace(/\D+/g, '');
+            }
+
+            function handle() {
+                var digits = normalize(input.value);
+                if (digits.length < 19) return;
+                if (digits.length > 19) digits = digits.substr(0, 19);
+
+                if (window.processarLeituraCodigo) {
+                    window.processarLeituraCodigo(digits);
+                    return;
+                }
+
+                var linha = document.querySelector('tr[data-codigo="' + digits + '"]');
+                var msg = document.getElementById('mensagemLeitura');
+                if (!linha) {
+                    if (msg) {
+                        msg.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
+                    }
+                    input.value = '';
+                    return;
+                }
+
+                linha.classList.add('confirmado');
+                var tdConf = linha.querySelector('.col-conferido-em');
+                if (tdConf) tdConf.textContent = formatarAgora();
+
+                var ultimas = document.querySelectorAll('tr.ultimo-lido');
+                for (var u = 0; u < ultimas.length; u++) {
+                    ultimas[u].classList.remove('ultimo-lido');
+                }
+                linha.classList.add('ultimo-lido');
+                linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                if (msg) msg.textContent = '';
+                input.value = '';
+            }
+
+            input.addEventListener('input', handle);
+            input.addEventListener('change', handle);
+            input.addEventListener('keydown', function(e) {
+                if (e.keyCode === 13) {
+                    e.preventDefault();
+                    handle();
+                }
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindFallback);
+        } else {
+            bindFallback();
+        }
+    })();
+    </script>
+
 <!-- Tabelas Agrupadas -->
 <div id="tabelas">
 <?php
@@ -2509,6 +2583,14 @@ function iniciarConferenciaPacotes() {
                     responsavel: ''
                 };
                 adicionarPacotePendente(obj);
+                if (usuarioAtual) {
+                    salvarPacoteNaoListado(obj, function(ok) {
+                        if (ok) {
+                            removerPendentePorCodbar(obj.codbar);
+                            mostrarConfirmacao('Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.');
+                        }
+                    });
+                }
                 falarTexto('pacote nao encontrado');
                 if (mensagemLeitura) {
                     mensagemLeitura.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
