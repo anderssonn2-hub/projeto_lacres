@@ -1506,7 +1506,7 @@ try {
 <div class="overlay-confirmacao" id="overlayConfirmacao">
     <div class="card">
         <h3>Pacote carregado</h3>
-        <p id="confirmacaoTexto">Pacote carregado corretamente em ciPostos e ciPostosCsv.</p>
+        <p id="confirmacaoTexto">Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.</p>
         <button type="button" id="btnConfirmacaoOk">OK</button>
     </div>
 </div>
@@ -1839,7 +1839,9 @@ function substituirMultiplosPadroes(inputString) {
     return stringProcessada;
 }
 
-document.addEventListener("DOMContentLoaded", function() {
+function iniciarConferenciaPacotes() {
+    if (window.__conferenciaInit) return;
+    window.__conferenciaInit = true;
     var input = document.getElementById("codigo_barras");
     var radioAutoSalvar = document.getElementById("autoSalvar");
     var beep = document.getElementById("beep");
@@ -1899,7 +1901,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function mostrarConfirmacao(texto, autoFechar) {
         if (confirmacaoTexto) {
-            confirmacaoTexto.textContent = texto || 'Pacote carregado corretamente em ciPostos e ciPostosCsv.';
+            confirmacaoTexto.textContent = texto || 'Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.';
         }
         if (overlayConfirmacao) {
             overlayConfirmacao.style.display = 'flex';
@@ -2084,8 +2086,10 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    input.addEventListener('focus', desbloquearAudio);
-    input.addEventListener('click', desbloquearAudio);
+    if (input) {
+        input.addEventListener('focus', desbloquearAudio);
+        input.addEventListener('click', desbloquearAudio);
+    }
     document.addEventListener('keydown', desbloquearAudio, { once: true });
     
     // v9.23.2: Variáveis de contexto para sons inteligentes
@@ -2251,7 +2255,7 @@ document.addEventListener("DOMContentLoaded", function() {
             salvarPacoteNaoListado(obj, function(ok) {
                 if (ok) {
                     removerPendentePorCodbar(obj.codbar);
-                    mostrarConfirmacao('Pacote carregado corretamente em ciPostos e ciPostosCsv.');
+                    mostrarConfirmacao('Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.');
                 } else {
                     alert('Erro ao salvar pacote nao listado.');
                 }
@@ -2316,7 +2320,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 .then(function(resp){ return resp.json(); })
                 .then(function(data){
                     if (data && data.success) {
-                        mostrarConfirmacao('Pacotes carregados em ciPostos e ciPostosCsv: ' + data.inseridos, true);
+                        mostrarConfirmacao('Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv (' + data.inseridos + ').', true);
                         pacotesPendentes = [];
                         renderizarPacotesPendentes();
                         setTimeout(function() { window.location.reload(); }, 1400);
@@ -2748,9 +2752,17 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             return;
         }
+        var digit = null;
         var k = e.key;
-        if (!k || k.length !== 1 || k < '0' || k > '9') return;
-        scanBuffer += k;
+        if (k && k.length === 1 && k >= '0' && k <= '9') {
+            digit = k;
+        } else if (e.keyCode >= 48 && e.keyCode <= 57) {
+            digit = String.fromCharCode(e.keyCode);
+        } else if (e.keyCode >= 96 && e.keyCode <= 105) {
+            digit = String(e.keyCode - 96);
+        }
+        if (!digit) return;
+        scanBuffer += digit;
         if (scanTimer) clearTimeout(scanTimer);
         scanTimer = setTimeout(function() { scanBuffer = ''; }, 300);
         if (scanBuffer.length >= 19) {
@@ -2919,7 +2931,13 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     renderizarPostosBloqueados();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', iniciarConferenciaPacotes);
+} else {
+    iniciarConferenciaPacotes();
+}
 </script>
 
 <script>
