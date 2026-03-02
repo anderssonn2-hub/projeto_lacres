@@ -1646,6 +1646,9 @@ try {
 
                 var linha = document.querySelector('tr[data-codigo="' + digits + '"]');
                 var msg = document.getElementById('mensagemLeitura');
+                var pacoteJaConferido = document.getElementById('pacotejaconferido');
+                var muteBeep = document.getElementById('muteBeep');
+                var beep = document.getElementById('beep');
                 if (!linha) {
                     if (msg) {
                         msg.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
@@ -1681,6 +1684,14 @@ try {
                     return;
                 }
 
+                if (linha.classList.contains('confirmado')) {
+                    if (pacoteJaConferido) {
+                        try { pacoteJaConferido.currentTime = 0; pacoteJaConferido.play(); } catch (e) {}
+                    }
+                    input.value = '';
+                    return;
+                }
+
                 linha.classList.add('confirmado');
                 var tdConf = linha.querySelector('.col-conferido-em');
                 if (tdConf) tdConf.textContent = formatarAgora();
@@ -1694,8 +1705,6 @@ try {
 
                 if (msg) msg.textContent = '';
 
-                var muteBeep = document.getElementById('muteBeep');
-                var beep = document.getElementById('beep');
                 if (beep && (!muteBeep || !muteBeep.checked)) {
                     try { beep.currentTime = 0; beep.play(); } catch (e) {}
                 }
@@ -2254,6 +2263,8 @@ function iniciarConferenciaPacotes() {
     var regionalAtual = null;
     var tipoAtual = null; // 'poupatempo' ou 'correios'
     var primeiroConferido = false;
+    var ultimaRegionalLida = null;
+    var ultimoTipoLido = null;
 
     function obterTipoInicioSelecionado() {
         var radios = document.querySelectorAll('input[name="tipo_inicio"]');
@@ -2685,6 +2696,9 @@ function iniciarConferenciaPacotes() {
                         }
                     });
                 }
+                if (painelPacotesNovos) {
+                    painelPacotesNovos.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
                 falarTexto('pacote nao encontrado');
                 if (mensagemLeitura) {
                     mensagemLeitura.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
@@ -2716,9 +2730,6 @@ function iniciarConferenciaPacotes() {
         
         // Verifica se já foi conferido
         if (linha.classList.contains("confirmado")) {
-            if (!muteBeep || !muteBeep.checked) {
-                enfileirarSom(beep);
-            }
             enfileirarSom(pacoteJaConferido);
             input.value = "";
             return;
@@ -2727,9 +2738,15 @@ function iniciarConferenciaPacotes() {
         // v9.23.4: Lógica inteligente de sons
         var somAlerta = null;
         var podeConferir = true;
+
+        // Alerta de outra regional baseado na ultima leitura valida
+        if (ultimaRegionalLida && ultimoTipoLido === tipoPacote && regionalDoPacote !== ultimaRegionalLida) {
+            somAlerta = pacoteOutraRegional;
+            podeConferir = false;
+        }
         
         // Caso 1: Primeiro pacote da conferência - sempre beep
-        if (!primeiroConferido) {
+        if (podeConferir && !primeiroConferido) {
             tipoAtual = obterTipoInicioSelecionado();
             if (tipoAtual === tipoPacote) {
                 regionalAtual = regionalDoPacote;
@@ -2747,19 +2764,19 @@ function iniciarConferenciaPacotes() {
             }
         }
         // Caso 2: Pacote Poupa Tempo aparecendo em meio aos Correios
-        else if (tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
+        else if (podeConferir && tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
             somAlerta = postoPoupaTempo; // Alerta: PT misturado com correios!
             podeConferir = false;
             // NÃO altera regionalAtual nem tipoAtual - continua conferindo correios
         }
         // Caso 3: Pacote Correios aparecendo em meio ao Poupa Tempo
-        else if (tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
+        else if (podeConferir && tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
             somAlerta = pertenceCorreios; // Alerta: pertence aos correios!
             podeConferir = false;
             // NÃO altera regionalAtual nem tipoAtual
         }
         // Caso 4: Regional diferente (mesmo tipo)
-        else if (regionalDoPacote !== regionalAtual && tipoPacote === tipoAtual) {
+        else if (podeConferir && regionalDoPacote !== regionalAtual && tipoPacote === tipoAtual) {
             somAlerta = pacoteOutraRegional; // Alerta: regional diferente!
             podeConferir = false;
             // NÃO altera regionalAtual nem tipoAtual
@@ -2815,6 +2832,10 @@ function iniciarConferenciaPacotes() {
         var alvo = rect.top + window.pageYOffset - (window.innerHeight / 2) + (rect.height / 2);
         window.scrollTo({ top: alvo, behavior: 'smooth' });
         
+        // Atualiza contexto da ultima leitura valida
+        ultimaRegionalLida = regionalDoPacote;
+        ultimoTipoLido = tipoPacote;
+
         // Salvar no banco (sempre que houver usuario)
         if (usuarioAtual) {
             var lote = linha.getAttribute("data-lote");
