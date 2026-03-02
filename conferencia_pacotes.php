@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v9.24.8
+/* conferencia_pacotes.php — v0.9.25.1
  * CHANGELOG v9.24.8:
  * - [NOVO] Total de pacotes na estante por leitura (encontra_posto)
  * - [NOVO] Lotes na estante sem upload no filtro atual
@@ -881,7 +881,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.0</title>
+    <title>Conferência de Pacotes v0.9.25.1</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1332,7 +1332,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.0</div>
+    <div class="versao">v0.9.25.1</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1377,7 +1377,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.0</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.1</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1864,7 +1864,8 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         echo '<tr class="linha-conferencia' . $classeConf . '" ';
         echo 'data-codigo="' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '" ';
         $regional_grupo_attr = isset($posto['regional_grupo']) ? $posto['regional_grupo'] : $posto['regional'];
-        echo 'data-regional="' . htmlspecialchars($regional_grupo_attr, ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-regional="' . htmlspecialchars($posto['regional'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-regional-real="' . htmlspecialchars($regional_grupo_attr, ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-lote="' . htmlspecialchars($posto['lote'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-posto="' . htmlspecialchars($posto['posto'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-data="' . htmlspecialchars($posto['data'], ENT_QUOTES, 'UTF-8') . '" ';
@@ -2880,7 +2881,7 @@ function iniciarConferenciaPacotes() {
             }
         } else {
             var regionalAtualNorm = normalizarRegionalValor(regionalAtual);
-            if (regionalAtualNorm === '000' || regionalAtualNorm === '999') {
+            if (regionalAtualNorm === '000' || regionalAtualNorm === '999' || regionalAtualNorm === '001') {
                 grupoAtual = linha.getAttribute('data-posto');
                 for (var i = 0; i < todasLinhas.length; i++) {
                     if (obterRegionalLinha(todasLinhas[i]) === regionalAtualNorm &&
