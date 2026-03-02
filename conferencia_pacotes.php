@@ -1668,9 +1668,6 @@ try {
                             responsavel: ''
                         };
                         window.adicionarPacotePendente(obj);
-                        if (window.salvarPacoteNaoListado) {
-                            window.salvarPacoteNaoListado(obj, function(){});
-                        }
                     }
                     if (window.speechSynthesis) {
                         try {
@@ -2627,6 +2624,26 @@ function iniciarConferenciaPacotes() {
         });
     }
     
+    function normalizarRegionalValor(valor) {
+        var d = String(valor || '').replace(/\D+/g, '');
+        if (!d) return '';
+        if (d.length > 3) d = d.substr(0, 3);
+        return d.padStart(3, '0');
+    }
+
+    function obterRegionalLinha(linha) {
+        if (!linha) return '';
+        var v = linha.getAttribute('data-regional') || '';
+        var n = normalizarRegionalValor(v);
+        if (!n) {
+            n = normalizarRegionalValor(linha.getAttribute('data-pt-group') || '');
+        }
+        if (!n) {
+            n = normalizarRegionalValor(linha.getAttribute('data-posto') || '');
+        }
+        return n;
+    }
+
     function processarLeituraCodigo(valorBruto) {
         if (!input) return;
         var valor = (valorBruto || '').trim();
@@ -2688,14 +2705,6 @@ function iniciarConferenciaPacotes() {
                     responsavel: ''
                 };
                 adicionarPacotePendente(obj);
-                if (usuarioAtual) {
-                    salvarPacoteNaoListado(obj, function(ok) {
-                        if (ok) {
-                            removerPendentePorCodbar(obj.codbar);
-                            mostrarConfirmacao('Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.');
-                        }
-                    });
-                }
                 if (painelPacotesNovos) {
                     painelPacotesNovos.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
@@ -2724,7 +2733,7 @@ function iniciarConferenciaPacotes() {
             return;
         }
         
-        var regionalDoPacote = linha.getAttribute("data-regional");
+        var regionalDoPacote = obterRegionalLinha(linha);
         var isPoupaTempo = linha.getAttribute("data-ispt") === "1";
         var tipoPacote = isPoupaTempo ? 'poupatempo' : 'correios';
         
@@ -2739,8 +2748,8 @@ function iniciarConferenciaPacotes() {
         var somAlerta = null;
         var podeConferir = true;
 
-        // Alerta de outra regional baseado na ultima leitura valida
-        if (ultimaRegionalLida && ultimoTipoLido === tipoPacote && regionalDoPacote !== ultimaRegionalLida) {
+        // Alerta de outra regional baseado na ultima leitura valida (somente Correios)
+        if (ultimaRegionalLida && ultimoTipoLido === tipoPacote && tipoPacote === 'correios' && regionalDoPacote !== ultimaRegionalLida) {
             somAlerta = pacoteOutraRegional;
             podeConferir = false;
         }
@@ -2863,20 +2872,21 @@ function iniciarConferenciaPacotes() {
                 }
             }
         } else {
-            if (regionalAtual === '000' || regionalAtual === '999') {
+            var regionalAtualNorm = normalizarRegionalValor(regionalAtual);
+            if (regionalAtualNorm === '000' || regionalAtualNorm === '999') {
                 grupoAtual = linha.getAttribute('data-posto');
                 for (var i = 0; i < todasLinhas.length; i++) {
-                    if (todasLinhas[i].getAttribute('data-regional') === regionalAtual &&
+                    if (obterRegionalLinha(todasLinhas[i]) === regionalAtualNorm &&
                         todasLinhas[i].getAttribute('data-ispt') !== '1' &&
                         todasLinhas[i].getAttribute('data-posto') === grupoAtual) {
                         linhasDoGrupo.push(todasLinhas[i]);
                     }
                 }
             } else {
-                grupoAtual = regionalAtual;
+                grupoAtual = regionalAtualNorm;
                 // Todas as linhas da regional atual que NÃO sejam PT
                 for (var i = 0; i < todasLinhas.length; i++) {
-                    if (todasLinhas[i].getAttribute('data-regional') === regionalAtual && 
+                    if (obterRegionalLinha(todasLinhas[i]) === regionalAtualNorm && 
                         todasLinhas[i].getAttribute('data-ispt') !== '1') {
                         linhasDoGrupo.push(todasLinhas[i]);
                     }
