@@ -2151,7 +2151,7 @@ if (document.readyState === 'loading') {
                         </div>
                         <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
                             <div style="margin-bottom:3px;">______________________________</div>
-                            <div style="font-size:12px;"><strong>CELEPAR - Data:</strong> ___-___-______</div>
+                            <div style="font-size:12px;"><strong>CELEPAR - Data:</strong> <?php echo date('d-m-Y'); ?></div>
                         </div>
                     </div>
           
@@ -2162,7 +2162,7 @@ if (document.readyState === 'loading') {
             </div>
                         <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
                             <div style="margin-bottom:3px;">______________________________</div>
-                            <div style="font-size:12px;"><strong>IIPR-POUPA-TEMPO - Data:</strong> ___-___-______</div>
+                            <div style="font-size:12px;"><strong>IIPR-POUPA-TEMPO - Data:</strong> <?php echo date('d-m-Y'); ?></div>
                         </div>
           </div>
         </div>

@@ -155,12 +155,12 @@ try {
         try {
             $params_estante = array();
             if ($data_ini !== '') {
-                $whereEstante = "WHERE DATE(triado_em) BETWEEN ? AND ?";
+                $whereEstante = "WHERE producao_de BETWEEN ? AND ?";
                 $params_estante[] = $data_ini;
                 $params_estante[] = $data_fim;
             } else {
                 $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-                $whereEstante = "WHERE DATE(triado_em) IN ($ph)";
+                $whereEstante = "WHERE producao_de IN ($ph)";
                 $params_estante = $datas_alvo;
             }
             $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
@@ -340,26 +340,16 @@ try {
             $data_producao = null;
         }
 
+        $fora_periodo = false;
         if ($data_producao && $data_ini !== '' && ($data_producao < $data_ini || $data_producao > $data_fim)) {
-            $data_br = date('d-m-Y', strtotime($data_producao));
-            die(json_encode(array(
-                'success' => false,
-                'erro' => 'Pacote de outra data: ' . $data_br,
-                'data_producao' => $data_br
-            )));
+            $fora_periodo = true;
         }
-
         if ($data_producao && $data_ini === '' && !in_array($data_producao, $datas_alvo)) {
-            $data_br = date('d-m-Y', strtotime($data_producao));
-            die(json_encode(array(
-                'success' => false,
-                'erro' => 'Pacote de outra data: ' . $data_br,
-                'data_producao' => $data_br
-            )));
+            $fora_periodo = true;
         }
 
-        $status_estante = $data_producao ? 'ok' : 'sem_upload';
-        $data_alvo = $data_producao ? $data_producao : ($data_ini !== '' ? $data_ini : $datas_alvo[0]);
+        $status_estante = $data_producao ? ($fora_periodo ? 'fora_periodo' : 'ok') : 'sem_upload';
+        $data_alvo = ($data_ini !== '' ? $data_ini : $datas_alvo[0]);
 
         $estante_novo = false;
         try {
@@ -387,12 +377,12 @@ try {
         try {
             $params_estante = array();
             if ($data_ini !== '') {
-                $whereEstante = "WHERE DATE(triado_em) BETWEEN ? AND ?";
+                $whereEstante = "WHERE producao_de BETWEEN ? AND ?";
                 $params_estante[] = $data_ini;
                 $params_estante[] = $data_fim;
             } else {
                 $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-                $whereEstante = "WHERE DATE(triado_em) IN ($ph)";
+                $whereEstante = "WHERE producao_de IN ($ph)";
                 $params_estante = $datas_alvo;
             }
             $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
@@ -510,7 +500,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto v0.9.25.0 - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.25.2 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -816,8 +806,8 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.25.0</span>
-        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.0 (em atualizacao)</span>
+        <span class="versao">v0.9.25.2</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.2</span>
         <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">
@@ -986,9 +976,39 @@ function salvarDatasAlvo() {
     if (ini) {
         localStorage.setItem('estante_data_ini', ini);
         localStorage.setItem('estante_data_fim', fim);
+        var chave = ini + '|' + fim;
+        if (localStorage.getItem('estante_periodo_confirmado') !== chave) {
+            localStorage.removeItem('estante_periodo_confirmado');
+        }
     }
     atualizarBannerDatas();
     carregarEstanteInicial();
+}
+
+function periodoAtualKey() {
+    var ini = obterDataIni();
+    var fim = obterDataFim();
+    if (ini && !fim) fim = ini;
+    if (fim && !ini) ini = fim;
+    if (!ini) return '';
+    if (ini > fim) {
+        var tmp = ini;
+        ini = fim;
+        fim = tmp;
+    }
+    return ini + '|' + fim;
+}
+
+function periodoConfirmado() {
+    var chave = periodoAtualKey();
+    if (!chave) return false;
+    return localStorage.getItem('estante_periodo_confirmado') === chave;
+}
+
+function confirmarPeriodoAtual() {
+    var chave = periodoAtualKey();
+    if (!chave) return;
+    localStorage.setItem('estante_periodo_confirmado', chave);
 }
 
 function atualizarBannerDatas() {
@@ -998,7 +1018,8 @@ function atualizarBannerDatas() {
     var fim = obterDataFim();
     if (!banner || !texto) return;
     if (ini) {
-        texto.textContent = 'Periodo ativo: ' + ini + ' a ' + (fim || ini);
+        var confirmado = periodoConfirmado();
+        texto.textContent = 'Periodo ativo: ' + ini + ' a ' + (fim || ini) + (confirmado ? '' : ' (nao confirmado)');
         banner.style.display = 'flex';
     } else {
         banner.style.display = 'none';
@@ -1132,6 +1153,11 @@ function buscarPosto(codbar) {
         exibirErro('Informe o periodo da estante');
         return;
     }
+    if (!periodoConfirmado()) {
+        exibirErro('Confirme o periodo da estante');
+        abrirModalDatas();
+        return;
+    }
     if (!dataFim) {
         dataFim = dataIni;
     }
@@ -1240,6 +1266,20 @@ function exibirResultado(dados) {
         linhaSem.appendChild(labelSem);
         linhaSem.appendChild(valorSem);
         body.appendChild(linhaSem);
+    }
+
+    if (dados.status_estante === 'fora_periodo') {
+        var linhaFora = document.createElement('div');
+        linhaFora.className = 'info-linha';
+        var labelFora = document.createElement('span');
+        labelFora.className = 'info-label';
+        labelFora.textContent = 'Status';
+        var valorFora = document.createElement('span');
+        valorFora.className = 'info-valor';
+        valorFora.textContent = 'Fora do periodo (contabilizado no periodo ativo)';
+        linhaFora.appendChild(labelFora);
+        linhaFora.appendChild(valorFora);
+        body.appendChild(linhaFora);
     }
 
     if (dados.data_producao) {
@@ -1605,6 +1645,7 @@ if (btnConfirmar) {
             inputFim.value = fimModal.value.trim();
         }
         salvarDatasAlvo();
+        confirmarPeriodoAtual();
         fecharModalDatas();
     });
 }
@@ -1613,7 +1654,11 @@ if (btnCancelar) {
     btnCancelar.addEventListener('click', fecharModalDatas);
 }
 atualizarBannerDatas();
-abrirModalDatas();
+if (!periodoConfirmado()) {
+    abrirModalDatas();
+} else {
+    fecharModalDatas();
+}
 var toggleBtns = document.querySelectorAll('#estantesToggle button[data-view]');
 for (var i = 0; i < toggleBtns.length; i++) {
     toggleBtns[i].addEventListener('click', function() {

@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.1
+/* conferencia_pacotes.php — v0.9.25.2
  * CHANGELOG v9.24.8:
  * - [NOVO] Total de pacotes na estante por leitura (encontra_posto)
  * - [NOVO] Lotes na estante sem upload no filtro atual
@@ -881,7 +881,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.1</title>
+    <title>Conferência de Pacotes v0.9.25.2</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1332,7 +1332,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.1</div>
+    <div class="versao">v0.9.25.2</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1377,7 +1377,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.1</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.2</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -2756,6 +2756,15 @@ function iniciarConferenciaPacotes() {
         var somAlerta = null;
         var podeConferir = true;
 
+        // Bloqueia outra regional enquanto a atual não foi concluída (Correios)
+        if (podeConferir && tipoPacote === 'correios' && tipoAtual === 'correios') {
+            var regionalAtualNormCheck = normalizarRegionalValor(regionalAtual);
+            if (regionalAtualNormCheck && regionalDoPacoteNorm && regionalDoPacoteNorm !== regionalAtualNormCheck) {
+                somAlerta = pacoteOutraRegional;
+                podeConferir = false;
+            }
+        }
+
         // Alerta de outra regional baseado na ultima leitura valida (somente Correios)
         if (ultimaRegionalLida && ultimoTipoLido === tipoPacote && tipoPacote === 'correios' && regionalDoPacoteNorm && regionalDoPacoteNorm !== ultimaRegionalLida) {
             somAlerta = pacoteOutraRegional;
@@ -2880,7 +2889,7 @@ function iniciarConferenciaPacotes() {
                 }
             }
         } else {
-            var regionalAtualNorm = normalizarRegionalValor(regionalAtual);
+            var regionalAtualNorm = normalizarRegionalValor(regionalAtual || regionalDoPacoteNorm);
             if (regionalAtualNorm === '000' || regionalAtualNorm === '999' || regionalAtualNorm === '001') {
                 grupoAtual = linha.getAttribute('data-posto');
                 for (var i = 0; i < todasLinhas.length; i++) {

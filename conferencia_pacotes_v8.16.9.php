@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.1
+/* conferencia_pacotes.php — v0.9.25.2
  * VERSÃO LIMPA baseada na v8.16.6 funcional
  * Melhorias APENAS:
  * 1) Filtro por múltiplas datas (checkboxes)
@@ -140,7 +140,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v0.9.25.1</title>
+    <title>Conferência de Pacotes v0.9.25.2</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -301,7 +301,7 @@ try {
 </head>
 <body>
     <div class="container">
-        <h1>📋 Conferência de Pacotes v0.9.25.1</h1>
+        <h1>📋 Conferência de Pacotes v0.9.25.2</h1>
 
         <div class="radio-box">
             <label>
