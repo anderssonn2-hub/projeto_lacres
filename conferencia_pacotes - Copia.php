@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.2
+/* conferencia_pacotes.php — v0.9.25.3
  * CHANGELOG v9.24.2:
  * - [CORRIGIDO] Pacotes nao listados salvam no ciPostosCsv ao adicionar
  * - [NOVO] Aviso "Pacote de outra data" quando filtro nao inclui o pacote
@@ -704,7 +704,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.2</title>
+    <title>Conferência de Pacotes v0.9.25.3</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1077,7 +1077,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.2</div>
+    <div class="versao">v0.9.25.3</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1122,7 +1122,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.2</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.3</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">

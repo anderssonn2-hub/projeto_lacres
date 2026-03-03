@@ -276,7 +276,7 @@ try {
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Conferência de Pacotes v0.9.25.2</title>
+    <title>Conferência de Pacotes v0.9.25.3</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -517,7 +517,7 @@ try {
 </head>
 <body>
     <div class="container">
-        <h1>📋 Conferência de Pacotes v0.9.25.2</h1>
+        <h1>📋 Conferência de Pacotes v0.9.25.3</h1>
 
         <div class="radio-box">
             <label>

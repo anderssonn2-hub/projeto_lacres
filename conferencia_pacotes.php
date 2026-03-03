@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.2
+/* conferencia_pacotes.php — v0.9.25.3
  * CHANGELOG v9.24.8:
  * - [NOVO] Total de pacotes na estante por leitura (encontra_posto)
  * - [NOVO] Lotes na estante sem upload no filtro atual
@@ -430,12 +430,16 @@ try {
     }
 
     // Busca conferências já realizadas (sem LIMIT)
-    $stmt = $pdo->query("SELECT nlote, regional, nposto, codbar, conferido_em FROM conferencia_pacotes WHERE conf='s'");
+    $stmt = $pdo->query("SELECT nlote, regional, nposto, codbar, conferido_em, dataexp FROM conferencia_pacotes WHERE conf='s'");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $nlote_raw = trim((string)$row['nlote']);
         $regional_raw = trim((string)$row['regional']);
         $posto_raw = trim((string)$row['nposto']);
         $conferido_em = isset($row['conferido_em']) ? trim((string)$row['conferido_em']) : '';
+        $dataexp_row = isset($row['dataexp']) ? trim((string)$row['dataexp']) : '';
+        if ($conferido_em === '' && $dataexp_row !== '') {
+            $conferido_em = $dataexp_row . ' 00:00:00';
+        }
 
         $nlote_pad = str_pad($nlote_raw, 8, '0', STR_PAD_LEFT);
         $regional_pad = str_pad($regional_raw, 3, '0', STR_PAD_LEFT);
@@ -881,7 +885,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.2</title>
+    <title>Conferência de Pacotes v0.9.25.3</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -962,6 +966,35 @@ try {
             background: #fff;
             color: #333;
         }
+        .modo-consulta .linha-conferencia:not(.confirmado) { display: none; }
+        .modo-consulta #codigo_barras,
+        .modo-consulta #resetar {
+            display: none;
+        }
+        #modoConsultaBadge {
+            display: none;
+            margin-top: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: #ffd54f;
+            color: #4a3b00;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .modo-consulta #modoConsultaBadge { display: inline-flex; }
+        #btnAtivarConferencia {
+            display: none;
+            margin-top: 6px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: none;
+            background: #1f2b6d;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .modo-consulta #btnAtivarConferencia { display: inline-flex; }
         
         .filtro-datas { 
             background: white;
@@ -1242,6 +1275,11 @@ try {
             width:100%;
             font-weight:700;
         }
+        .overlay-usuario .btn-opcao-sec {
+            background:#f3f3f3;
+            color:#333;
+            border:1px solid #bbb;
+        }
         .overlay-tipo .btn-opcao { background:#28a745; }
         .overlay-tipo .btn-opcao.pt { background:#17a2b8; }
         .painel-pacotes-novos {
@@ -1332,7 +1370,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.2</div>
+    <div class="versao">v0.9.25.3</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1377,7 +1415,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.2</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.3</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1385,6 +1423,7 @@ try {
         <div style="font-size:12px; color:#666;">Obrigatório para iniciar a conferência.</div>
         <input type="text" id="usuario_conf_modal" placeholder="Digite o responsável" autocomplete="off">
         <button type="button" id="btnConfirmarUsuario">Confirmar</button>
+        <button type="button" id="btnSomenteVisualizar" class="btn-opcao-sec">Somente visualizar</button>
     </div>
 </div>
 
@@ -1407,6 +1446,8 @@ try {
     <div class="radio-box">
         <div style="color:#fff; font-weight:600; margin-bottom:8px;">👤 Responsável da conferência</div>
         <span class="usuario-badge" id="usuarioBadge">Não informado</span>
+        <div id="modoConsultaBadge">Modo consulta: somente conferidos</div>
+        <button type="button" id="btnAtivarConferencia">Iniciar conferência</button>
     </div>
 
     <div class="radio-box">
@@ -2027,9 +2068,12 @@ function iniciarConferenciaPacotes() {
     var conteudoPagina = document.getElementById("conteudoPagina");
     var usuarioInputModal = document.getElementById("usuario_conf_modal");
     var btnConfirmarUsuario = document.getElementById("btnConfirmarUsuario");
+    var btnSomenteVisualizar = document.getElementById("btnSomenteVisualizar");
+    var btnAtivarConferencia = document.getElementById("btnAtivarConferencia");
     var overlayTipo = document.getElementById("overlayTipo");
     var usuarioAtual = '';
     var audioDesbloqueado = false;
+    var modoConsulta = false;
     var modalPacote = document.getElementById('modalPacote');
     var overlayConfirmacao = document.getElementById('overlayConfirmacao');
     var confirmacaoTexto = document.getElementById('confirmacaoTexto');
@@ -2063,6 +2107,34 @@ function iniciarConferenciaPacotes() {
     var datasFiltroSql = <?php echo json_encode($datas_sql); ?>;
     var storageUsuarioKey = 'conferencia_responsavel';
     var storageTipoKey = 'conferencia_tipo_inicio';
+    var storageModoKey = 'conferencia_modo';
+
+    function aplicarModoConsulta(ativo) {
+        modoConsulta = !!ativo;
+        if (modoConsulta) {
+            document.body.classList.add('modo-consulta');
+            if (overlayUsuario) overlayUsuario.style.display = 'none';
+            if (conteudoPagina) conteudoPagina.classList.remove('page-locked');
+            tipoEscolhido = false;
+            usuarioAtual = '';
+        } else {
+            document.body.classList.remove('modo-consulta');
+        }
+    }
+
+    function ativarConsulta() {
+        try { localStorage.setItem(storageModoKey, 'consulta'); } catch (e) {}
+        aplicarModoConsulta(true);
+        atualizarResumoTodasTabelas();
+    }
+
+    function ativarConferencia() {
+        try { localStorage.removeItem(storageModoKey); } catch (e) {}
+        aplicarModoConsulta(false);
+        if (overlayUsuario) overlayUsuario.style.display = 'flex';
+        if (conteudoPagina) conteudoPagina.classList.add('page-locked');
+        if (usuarioInputModal) usuarioInputModal.focus();
+    }
 
     // v9.22.7: Fila de áudio para evitar sobreposição
     var filaSons = [];
@@ -2517,6 +2589,8 @@ function iniciarConferenciaPacotes() {
     }
 
     function liberarPaginaComUsuario(nome, restaurar) {
+        aplicarModoConsulta(false);
+        try { localStorage.removeItem(storageModoKey); } catch (e) {}
         usuarioAtual = nome;
         if (usuarioBadge) {
             usuarioBadge.textContent = nome;
@@ -2558,6 +2632,18 @@ function iniciarConferenciaPacotes() {
         });
     }
 
+    if (btnSomenteVisualizar) {
+        btnSomenteVisualizar.addEventListener('click', function() {
+            ativarConsulta();
+        });
+    }
+
+    if (btnAtivarConferencia) {
+        btnAtivarConferencia.addEventListener('click', function() {
+            ativarConferencia();
+        });
+    }
+
     if (overlayTipo) {
         overlayTipo.addEventListener('click', function(e) {
             var target = e.target;
@@ -2592,10 +2678,15 @@ function iniciarConferenciaPacotes() {
     }
 
     try {
-        var nomeSalvo = sessionStorage.getItem(storageUsuarioKey) || '';
-        if (nomeSalvo) {
-            if (usuarioInputModal) usuarioInputModal.value = nomeSalvo;
-            liberarPaginaComUsuario(nomeSalvo, true);
+        var modoSalvo = localStorage.getItem(storageModoKey) || '';
+        if (modoSalvo === 'consulta') {
+            ativarConsulta();
+        } else {
+            var nomeSalvo = sessionStorage.getItem(storageUsuarioKey) || '';
+            if (nomeSalvo) {
+                if (usuarioInputModal) usuarioInputModal.value = nomeSalvo;
+                liberarPaginaComUsuario(nomeSalvo, true);
+            }
         }
     } catch (e3) {}
 
@@ -2652,6 +2743,13 @@ function iniciarConferenciaPacotes() {
 
     function processarLeituraCodigo(valorBruto) {
         if (!input) return;
+        if (modoConsulta) {
+            if (mensagemLeitura) {
+                mensagemLeitura.textContent = 'Modo consulta ativo.';
+            }
+            input.value = '';
+            return;
+        }
         var valor = (valorBruto || '').trim();
         valor = valor.replace(/\D+/g, '');
         if (valor.length < 19) {
