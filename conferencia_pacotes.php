@@ -1,5 +1,12 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.3
+/* conferencia_pacotes.php — v0.9.25.4
+ * CHANGELOG v9.25.4:
+ * - [NOVO] Aviso visual e fala para "pacote não encontrado"
+ * - [NOVO] Salvamento em fila com autor, turno e data de criação
+ * - [NOVO] Consolidação opcional de lançamentos em ciPostos no momento do salvamento
+ * - [NOVO] Inserção dos novos lotes em ciPostosCsv ao finalizar a fila
+ * - [AJUSTE] Pacotes não encontrados não são mais salvos imediatamente ao adicionar
+ *
  * CHANGELOG v9.24.8:
  * - [NOVO] Total de pacotes na estante por leitura (encontra_posto)
  * - [NOVO] Lotes na estante sem upload no filtro atual
@@ -126,6 +133,84 @@ function e($s) {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
+function obterColunasTabela($pdo, $tabela) {
+    static $cache = array();
+    if (!isset($cache[$tabela])) {
+        $stmtCols = $pdo->query("SHOW COLUMNS FROM `" . $tabela . "`");
+        $cols = $stmtCols->fetchAll(PDO::FETCH_COLUMN, 0);
+        $cache[$tabela] = is_array($cols) ? $cols : array();
+    }
+    return $cache[$tabela];
+}
+
+function tabelaTemColuna($pdo, $tabela, $coluna) {
+    return in_array($coluna, obterColunasTabela($pdo, $tabela), true);
+}
+
+function mapearTurnoCiPostos($turno) {
+    $turno = trim((string)$turno);
+    if ($turno === 'Madrugada') {
+        return 0;
+    }
+    if ($turno === 'Tarde') {
+        return 2;
+    }
+    if ($turno === 'Noite') {
+        return 3;
+    }
+    return 1;
+}
+
+function normalizarDataSqlPacote($valor) {
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    if (preg_match('/^(\d{2})\-(\d{2})\-(\d{4})$/', $valor, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
+        return $valor;
+    }
+    return '';
+}
+
+function normalizarDataHoraSql($valor) {
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    $valor = str_replace('T', ' ', $valor);
+    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $valor)) {
+        return $valor . ':00';
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $valor)) {
+        return $valor;
+    }
+    return '';
+}
+
+function resolverNomePostoCiPostos($pdo, $posto) {
+    $posto = trim((string)$posto);
+    if ($posto === '') {
+        return '';
+    }
+    if (!preg_match('/^\d+$/', $posto)) {
+        return $posto;
+    }
+    $postoPad = str_pad((string)((int)$posto), 3, '0', STR_PAD_LEFT);
+    try {
+        $stmt = $pdo->prepare("SELECT posto FROM ciPostos WHERE posto LIKE ? ORDER BY id DESC LIMIT 1");
+        $stmt->execute(array($postoPad . ' -%'));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row && !empty($row['posto'])) {
+            return $row['posto'];
+        }
+    } catch (Exception $e) {
+    }
+    return $postoPad . ' - POSTO';
+}
+
 // Conexão
 $host = '10.15.61.169';
 $dbname = 'controle';
@@ -216,21 +301,32 @@ try {
     if (isset($_POST['inserir_pacotes_nao_listados'])) {
         $payload = isset($_POST['pacotes']) ? $_POST['pacotes'] : '';
         $usuario_conf = isset($_POST['usuario']) ? trim($_POST['usuario']) : '';
+        $autor_salvamento = isset($_POST['autor_salvamento']) ? trim($_POST['autor_salvamento']) : '';
+        $criado_salvamento = isset($_POST['criado_salvamento']) ? trim($_POST['criado_salvamento']) : '';
+        $turno_salvamento = isset($_POST['turno_salvamento']) ? trim($_POST['turno_salvamento']) : 'Manhã';
+        $consolidar_salvamento = !empty($_POST['consolidar_salvamento']);
         if ($usuario_conf === '') {
             die(json_encode(array('success' => false, 'erro' => 'Usuario obrigatorio')));
+        }
+        if ($autor_salvamento === '') {
+            $autor_salvamento = $usuario_conf;
         }
         $pacotes = json_decode($payload, true);
         if (!is_array($pacotes)) {
             die(json_encode(array('success' => false, 'erro' => 'Payload invalido')));
         }
 
+        $criado_sql = normalizarDataHoraSql($criado_salvamento);
+        if ($criado_sql === '') {
+            $criado_sql = date('Y-m-d H:i:s');
+        }
+        $turno_codigo = mapearTurnoCiPostos($turno_salvamento);
+
         $ok = 0;
+        $ok_postos = 0;
         $erros = array();
         $stmtCsv = $pdo->prepare("INSERT INTO ciPostosCsv (lote, posto, regional, quantidade, dataCarga, data, usuario) VALUES (?,?,?,?,?,NOW(),?)");
-        $stmtPostos = $pdo->prepare("
-            INSERT INTO ciPostos (posto, dia, quantidade, turno, regional, lote, autor, criado, situacao)
-            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 0)
-        ");
+        $gruposCiPostos = array();
 
         foreach ($pacotes as $p) {
             try {
@@ -248,37 +344,106 @@ try {
                     throw new Exception('Campos obrigatorios ausentes');
                 }
 
-                if (preg_match('/^(\d{2})\-(\d{2})\-(\d{4})$/', $dataexp, $m)) {
-                    $data_sql = $m[3] . '-' . $m[2] . '-' . $m[1];
-                } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataexp)) {
-                    $data_sql = $dataexp;
-                } else {
+                $data_sql = normalizarDataSqlPacote($dataexp);
+                if ($data_sql === '') {
                     throw new Exception('Data invalida');
                 }
 
                 $stmtCsv->execute(array($lote, $posto, $regional, $quantidade, $data_sql, $usuario_pacote));
-
-                $nome_posto = sprintf('%03d - POSTO', (int)$posto);
-                $criado = $data_sql . ' 10:10:10';
-                $stmtPostos->execute(array(
-                    $nome_posto,
-                    $data_sql,
-                    $quantidade,
-                    'M',
-                    (int)$lote,
-                    $usuario_pacote,
-                    $criado
-                ));
                 $ok++;
+
+                $chaveGrupo = $posto . '|' . $data_sql . '|' . ($consolidar_salvamento ? $usuario_pacote : $lote . '|' . $regional);
+                if (!isset($gruposCiPostos[$chaveGrupo])) {
+                    $gruposCiPostos[$chaveGrupo] = array(
+                        'posto' => $posto,
+                        'dia' => $data_sql,
+                        'quantidade' => 0,
+                        'turno' => $turno_codigo,
+                        'autor' => $autor_salvamento,
+                        'criado' => $criado_sql,
+                        'regional' => $regional,
+                        'lote' => $lote,
+                        'responsavel' => $usuario_pacote
+                    );
+                }
+                $gruposCiPostos[$chaveGrupo]['quantidade'] += $quantidade;
+            } catch (Exception $ex) {
+                $erros[] = $ex->getMessage();
+            }
+        }
+
+        foreach ($gruposCiPostos as $grupo) {
+            try {
+                $campos = array();
+                $vals = array();
+                $pars = array();
+
+                if (tabelaTemColuna($pdo, 'ciPostos', 'posto')) {
+                    $campos[] = 'posto';
+                    $vals[] = '?';
+                    $pars[] = resolverNomePostoCiPostos($pdo, $grupo['posto']);
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'dia')) {
+                    $campos[] = 'dia';
+                    $vals[] = '?';
+                    $pars[] = $grupo['dia'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'quantidade')) {
+                    $campos[] = 'quantidade';
+                    $vals[] = '?';
+                    $pars[] = (int)$grupo['quantidade'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'turno')) {
+                    $campos[] = 'turno';
+                    $vals[] = '?';
+                    $pars[] = (int)$grupo['turno'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'autor')) {
+                    $campos[] = 'autor';
+                    $vals[] = '?';
+                    $pars[] = $grupo['autor'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'criado')) {
+                    $campos[] = 'criado';
+                    $vals[] = '?';
+                    $pars[] = $grupo['criado'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'regional')) {
+                    $campos[] = 'regional';
+                    $vals[] = '?';
+                    $pars[] = is_numeric($grupo['regional']) ? (int)$grupo['regional'] : null;
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'lote') && !$consolidar_salvamento) {
+                    $campos[] = 'lote';
+                    $vals[] = '?';
+                    $pars[] = is_numeric($grupo['lote']) ? (int)$grupo['lote'] : 0;
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'situacao')) {
+                    $campos[] = 'situacao';
+                    $vals[] = '?';
+                    $pars[] = 0;
+                }
+
+                if (!empty($campos)) {
+                    $sqlPostos = "INSERT INTO ciPostos (" . implode(',', $campos) . ") VALUES (" . implode(',', $vals) . ")";
+                    $stmtPostos = $pdo->prepare($sqlPostos);
+                    $stmtPostos->execute($pars);
+                    $ok_postos++;
+                }
             } catch (Exception $ex) {
                 $erros[] = $ex->getMessage();
             }
         }
 
         $stmtCsv = null;
-        $stmtPostos = null;
         $pdo = null;
-        die(json_encode(array('success' => true, 'inseridos' => $ok, 'erros' => $erros)));
+        die(json_encode(array(
+            'success' => $ok > 0,
+            'inseridos' => $ok,
+            'inseridos_postos' => $ok_postos,
+            'consolidado' => $consolidar_salvamento,
+            'erros' => $erros
+        )));
     }
 
     // v9.24.2: Verificar se pacote existe em outra data
@@ -885,7 +1050,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.3</title>
+    <title>Conferência de Pacotes v0.9.25.4</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1370,7 +1535,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.3</div>
+    <div class="versao">v0.9.25.4</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1415,7 +1580,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.3</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.4</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1494,6 +1659,7 @@ try {
 
 <div class="painel-pacotes-novos" id="painelPacotesNovos" style="display:none;">
     <strong>📥 Pacotes não listados</strong>
+    <div style="margin-top:6px; font-size:12px; color:#666;" id="resumoPacotesPendentes">Pacotes aguardando carga em ciPostos e ciPostosCsv.</div>
     <div style="margin-top:8px;">
         <table>
             <thead>
@@ -1509,6 +1675,29 @@ try {
             </thead>
             <tbody id="listaPacotesNovos"></tbody>
         </table>
+    </div>
+    <div style="margin-top:10px; padding:10px; border:1px solid #d7e2f2; border-radius:8px; background:#f7fbff; display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; align-items:end;">
+        <div>
+            <label for="autor_salvamento_pacotes" style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Autor</label>
+            <input type="text" id="autor_salvamento_pacotes" placeholder="Responsável pela carga">
+        </div>
+        <div>
+            <label for="turno_salvamento_pacotes" style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Turno</label>
+            <select id="turno_salvamento_pacotes" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+                <option value="Madrugada">Madrugada</option>
+                <option value="Manhã" selected>Manhã</option>
+                <option value="Tarde">Tarde</option>
+                <option value="Noite">Noite</option>
+            </select>
+        </div>
+        <div>
+            <label for="criado_salvamento_pacotes" style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Criado em</label>
+            <input type="datetime-local" id="criado_salvamento_pacotes">
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; min-height:40px;">
+            <input type="checkbox" id="consolidar_salvamento_pacotes">
+            <label for="consolidar_salvamento_pacotes" style="margin:0; font-size:12px; color:#333;">Consolidar lançamentos por responsável</label>
+        </div>
     </div>
     <div style="margin-top:10px; display:flex; gap:8px;">
         <button type="button" class="btn-acao btn-salvar" id="btnSalvarPacotes">Salvar pacotes</button>
@@ -1536,7 +1725,7 @@ try {
         <input type="text" id="pacote_responsavel" placeholder="Opcional">
         <input type="hidden" id="pacote_idx" value="">
         <div style="margin-top:10px; display:flex; gap:8px;">
-            <button type="button" class="btn-acao btn-salvar" id="btnAdicionarPacote">Adicionar</button>
+            <button type="button" class="btn-acao btn-salvar" id="btnAdicionarPacote">Adicionar à fila</button>
             <button type="button" class="btn-acao btn-cancelar" id="btnCancelarPacote">Cancelar</button>
         </div>
     </div>
@@ -1544,8 +1733,8 @@ try {
 
 <div class="overlay-confirmacao" id="overlayConfirmacao">
     <div class="card">
-        <h3>Pacote carregado</h3>
-        <p id="confirmacaoTexto">Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.</p>
+        <h3>Pacotes salvos</h3>
+        <p id="confirmacaoTexto">Dados salvos com sucesso!</p>
         <button type="button" id="btnConfirmacaoOk">OK</button>
     </div>
 </div>
@@ -1692,7 +1881,7 @@ try {
                 var beep = document.getElementById('beep');
                 if (!linha) {
                     if (msg) {
-                        msg.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
+                        msg.innerHTML = '<strong>Pacote não encontrado:</strong> adicionado à lista pendente.';
                     }
                     if (window.adicionarPacotePendente) {
                         var now = new Date();
@@ -1717,7 +1906,7 @@ try {
                     }
                     if (window.speechSynthesis) {
                         try {
-                            var ut = new SpeechSynthesisUtterance('pacote nao encontrado');
+                            var ut = new SpeechSynthesisUtterance('pacote não encontrado');
                             ut.lang = 'pt-BR';
                             window.speechSynthesis.cancel();
                             window.speechSynthesis.speak(ut);
@@ -2092,6 +2281,11 @@ function iniciarConferenciaPacotes() {
     var listaPacotesNovos = document.getElementById('listaPacotesNovos');
     var btnSalvarPacotes = document.getElementById('btnSalvarPacotes');
     var btnCancelarPacotes = document.getElementById('btnCancelarPacotes');
+    var resumoPacotesPendentes = document.getElementById('resumoPacotesPendentes');
+    var autorSalvamentoPacotes = document.getElementById('autor_salvamento_pacotes');
+    var turnoSalvamentoPacotes = document.getElementById('turno_salvamento_pacotes');
+    var criadoSalvamentoPacotes = document.getElementById('criado_salvamento_pacotes');
+    var consolidarSalvamentoPacotes = document.getElementById('consolidar_salvamento_pacotes');
     var pacotesPendentes = [];
     var mensagemLeitura = document.getElementById('mensagemLeitura');
     var postoBloqueioNumero = document.getElementById('postoBloqueioNumero');
@@ -2143,7 +2337,7 @@ function iniciarConferenciaPacotes() {
 
     function mostrarConfirmacao(texto, autoFechar) {
         if (confirmacaoTexto) {
-            confirmacaoTexto.textContent = texto || 'Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.';
+            confirmacaoTexto.textContent = texto || 'Dados salvos com sucesso!';
         }
         if (overlayConfirmacao) {
             overlayConfirmacao.style.display = 'flex';
@@ -2396,6 +2590,24 @@ function iniciarConferenciaPacotes() {
         if (pacoteResponsavel) pacoteResponsavel.value = '';
     }
 
+    function formatarDateTimeLocal(data) {
+        var ano = data.getFullYear();
+        var mes = String(data.getMonth() + 1).padStart(2, '0');
+        var dia = String(data.getDate()).padStart(2, '0');
+        var hora = String(data.getHours()).padStart(2, '0');
+        var minuto = String(data.getMinutes()).padStart(2, '0');
+        return ano + '-' + mes + '-' + dia + 'T' + hora + ':' + minuto;
+    }
+
+    function atualizarOpcoesSalvamentoPendentes() {
+        if (autorSalvamentoPacotes && !autorSalvamentoPacotes.value && usuarioAtual) {
+            autorSalvamentoPacotes.value = usuarioAtual;
+        }
+        if (criadoSalvamentoPacotes && !criadoSalvamentoPacotes.value) {
+            criadoSalvamentoPacotes.value = formatarDateTimeLocal(new Date());
+        }
+    }
+
     function renderizarPacotesPendentes() {
         if (!listaPacotesNovos) return;
         listaPacotesNovos.innerHTML = '';
@@ -2417,6 +2629,14 @@ function iniciarConferenciaPacotes() {
         if (painelPacotesNovos) {
             painelPacotesNovos.style.display = pacotesPendentes.length ? 'block' : 'none';
         }
+        if (resumoPacotesPendentes) {
+            resumoPacotesPendentes.textContent = pacotesPendentes.length
+                ? (pacotesPendentes.length + ' pacote(s) aguardando carga em ciPostos e ciPostosCsv.')
+                : 'Pacotes aguardando carga em ciPostos e ciPostosCsv.';
+        }
+        if (pacotesPendentes.length) {
+            atualizarOpcoesSalvamentoPendentes();
+        }
     }
 
     function adicionarPacotePendente(obj) {
@@ -2430,6 +2650,9 @@ function iniciarConferenciaPacotes() {
         }
         pacotesPendentes.push(obj);
         renderizarPacotesPendentes();
+        if (mensagemLeitura) {
+            mensagemLeitura.innerHTML = '<strong>Pacote não encontrado:</strong> adicionado à lista pendente.';
+        }
         return true;
     }
 
@@ -2465,23 +2688,6 @@ function iniciarConferenciaPacotes() {
             .catch(function(){ if (callback) callback({ success:false, status:'erro' }); });
     }
 
-    function salvarPacoteNaoListado(obj, callback) {
-        if (!usuarioAtual) {
-            if (callback) callback(false);
-            return;
-        }
-        var formData = new FormData();
-        formData.append('inserir_pacotes_nao_listados', '1');
-        formData.append('usuario', usuarioAtual);
-        formData.append('pacotes', JSON.stringify([obj]));
-        fetch(window.location.href, { method: 'POST', body: formData })
-            .then(function(resp){ return resp.json(); })
-            .then(function(data){ if (callback) callback(!!(data && data.success)); })
-            .catch(function(){ if (callback) callback(false); });
-    }
-
-    window.salvarPacoteNaoListado = salvarPacoteNaoListado;
-
     if (btnAdicionarPacote) {
         btnAdicionarPacote.addEventListener('click', function() {
             var obj = {
@@ -2504,15 +2710,7 @@ function iniciarConferenciaPacotes() {
             } else {
                 adicionarPacotePendente(obj);
             }
-            salvarPacoteNaoListado(obj, function(ok) {
-                if (ok) {
-                    removerPendentePorCodbar(obj.codbar);
-                    mostrarConfirmacao('Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv.');
-                } else {
-                    alert('Erro ao salvar pacote nao listado.');
-                }
-                fecharModalPacote();
-            });
+            fecharModalPacote();
         });
     }
 
@@ -2553,6 +2751,9 @@ function iniciarConferenciaPacotes() {
     if (btnCancelarPacotes) {
         btnCancelarPacotes.addEventListener('click', function() {
             pacotesPendentes = [];
+            if (autorSalvamentoPacotes && usuarioAtual) {
+                autorSalvamentoPacotes.value = usuarioAtual;
+            }
             renderizarPacotesPendentes();
         });
     }
@@ -2564,20 +2765,42 @@ function iniciarConferenciaPacotes() {
                 return;
             }
             if (!pacotesPendentes.length) return;
+            atualizarOpcoesSalvamentoPendentes();
+            var autorSalvar = autorSalvamentoPacotes ? autorSalvamentoPacotes.value.trim() : '';
+            var criadoSalvar = criadoSalvamentoPacotes ? criadoSalvamentoPacotes.value.trim() : '';
+            var turnoSalvar = turnoSalvamentoPacotes ? turnoSalvamentoPacotes.value : 'Manhã';
+            var consolidarSalvar = consolidarSalvamentoPacotes ? !!consolidarSalvamentoPacotes.checked : false;
+            if (!autorSalvar) {
+                alert('Informe o autor do salvamento.');
+                if (autorSalvamentoPacotes) autorSalvamentoPacotes.focus();
+                return;
+            }
+            if (!criadoSalvar) {
+                alert('Informe a data de criação.');
+                if (criadoSalvamentoPacotes) criadoSalvamentoPacotes.focus();
+                return;
+            }
             var formData = new FormData();
             formData.append('inserir_pacotes_nao_listados', '1');
             formData.append('usuario', usuarioAtual);
+            formData.append('autor_salvamento', autorSalvar);
+            formData.append('turno_salvamento', turnoSalvar);
+            formData.append('criado_salvamento', criadoSalvar);
+            if (consolidarSalvar) {
+                formData.append('consolidar_salvamento', '1');
+            }
             formData.append('pacotes', JSON.stringify(pacotesPendentes));
             fetch(window.location.href, { method: 'POST', body: formData })
                 .then(function(resp){ return resp.json(); })
                 .then(function(data){
                     if (data && data.success) {
-                        mostrarConfirmacao('Tabelas preenchidas com sucesso: ciPostos e ciPostosCsv (' + data.inseridos + ').', true);
+                        alert('Dados salvos com sucesso!');
+                        mostrarConfirmacao('Dados salvos com sucesso! ' + data.inseridos + ' lote(s) enviados para ciPostosCsv e ' + (data.inseridos_postos || 0) + ' lançamento(s) em ciPostos.', true);
                         pacotesPendentes = [];
                         renderizarPacotesPendentes();
                         setTimeout(function() { window.location.reload(); }, 1400);
                     } else {
-                        alert('Erro ao inserir pacotes.');
+                        alert((data && data.erro) ? data.erro : 'Erro ao inserir pacotes.');
                     }
                 })
                 .catch(function(){ alert('Erro ao inserir pacotes.'); });
@@ -2813,9 +3036,9 @@ function iniciarConferenciaPacotes() {
                     painelPacotesNovos.style.display = 'block';
                     painelPacotesNovos.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
-                falarTexto('pacote nao encontrado');
+                falarTexto('pacote não encontrado');
                 if (mensagemLeitura) {
-                    mensagemLeitura.innerHTML = '<strong>Pacote nao encontrado:</strong> adicionado a lista pendente.';
+                    mensagemLeitura.innerHTML = '<strong>Pacote não encontrado:</strong> adicionado à lista pendente.';
                 }
                 input.value = "";
             });
