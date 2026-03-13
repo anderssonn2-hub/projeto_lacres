@@ -1,5 +1,10 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.5
+/* conferencia_pacotes.php — v0.9.25.6
+ * CHANGELOG v9.25.6:
+ * - [NOVO] Card Operação com conferência por chips e detalhamento por lote
+ * - [NOVO] Rolagem automática para o chip correspondente ao código lido
+ * - [NOVO] Indicador por posto com pacotes, conferidos e sem upload
+ *
  * CHANGELOG v9.25.5:
  * - [NOVO] Opção "Todos" no início da conferência
  * - [CORRIGIDO] Aviso explícito para código dos Correios durante modo Poupa Tempo
@@ -876,6 +881,18 @@ try {
         'poupatempo' => 0
     );
     $estante_lotes_sem_upload = array();
+    $estante_sem_upload_por_posto = array();
+
+    $periodo_operacao_label = 'Periodo nao informado';
+    if ($data_ini !== '' && $data_fim !== '') {
+        $periodo_operacao_label = $data_ini . ' a ' . $data_fim;
+    } elseif (!empty($datas_exib)) {
+        if (count($datas_exib) === 1) {
+            $periodo_operacao_label = $datas_exib[0];
+        } else {
+            $periodo_operacao_label = $datas_exib[0] . ' a ' . $datas_exib[count($datas_exib) - 1];
+        }
+    }
 
     // v9.23.0: Status de conferências (últimos 30 dias)
     try {
@@ -1011,7 +1028,7 @@ try {
                     $joinCarga = "AND DATE(c.dataCarga) IN ($phUpload)";
                     $params_upload = $datas_sql;
                 }
-                $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
+                $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
                     FROM lotes_na_estante l
                     $whereEstante
                     AND NOT EXISTS (
@@ -1022,11 +1039,19 @@ try {
                 $stmtSem->execute(array_merge($params_estante, $params_upload));
                 while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                     $estante_lotes_sem_upload[] = $row['lote'];
+                    $posto_sem_upload = isset($row['posto']) ? $row['posto'] : '';
+                    if ($posto_sem_upload !== '') {
+                        if (!isset($estante_sem_upload_por_posto[$posto_sem_upload])) {
+                            $estante_sem_upload_por_posto[$posto_sem_upload] = 0;
+                        }
+                        $estante_sem_upload_por_posto[$posto_sem_upload]++;
+                    }
                 }
             }
         }
     } catch (Exception $e) {
         $estante_lotes_sem_upload = array();
+        $estante_sem_upload_por_posto = array();
     }
 
     // v9.24.0: Carregar postos bloqueados
@@ -1044,6 +1069,42 @@ try {
         $postos_bloqueados = array();
     }
 
+    $grupo_pt = array();
+    $grupo_r01 = array();
+    $grupo_capital = array();
+    $grupo_999 = array();
+    $grupo_outros = array();
+
+    foreach ($regionais_data as $regional => $postos) {
+        foreach ($postos as $posto) {
+            if ($posto['tipoEntrega'] == 'poupatempo') {
+                $postoKey = $posto['posto'];
+                if (!isset($grupo_pt[$postoKey])) {
+                    $grupo_pt[$postoKey] = array();
+                }
+                $grupo_pt[$postoKey][] = $posto;
+                continue;
+            }
+            if ($regional == 1) {
+                $grupo_r01[] = $posto;
+                continue;
+            }
+            if ($regional == 0) {
+                $grupo_capital[] = $posto;
+                continue;
+            }
+            if ($regional == 999) {
+                $grupo_999[] = $posto;
+                continue;
+            }
+            if (!isset($grupo_outros[$regional])) {
+                $grupo_outros[$regional] = array();
+            }
+            $grupo_outros[$regional][] = $posto;
+        }
+    }
+    ksort($grupo_outros);
+
 } catch (PDOException $e) {
     echo "Erro ao conectar ao banco de dados: " . $e->getMessage();
     die();
@@ -1055,7 +1116,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.5</title>
+    <title>Conferência de Pacotes v0.9.25.6</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1300,6 +1361,188 @@ try {
             font-size: 11px;
             font-weight: 700;
         }
+        .painel-operacao {
+            background: linear-gradient(180deg, #0b2d4d 0%, #071a2d 100%);
+            border-radius: 14px;
+            padding: 14px;
+            margin: 14px 0 12px;
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+            overflow: hidden;
+        }
+        .painel-operacao-topo {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .painel-operacao .operacao-tag {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #86d8ff;
+            margin-bottom: 4px;
+        }
+        .painel-operacao .operacao-titulo {
+            font-size: 26px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            color: #f9fbff;
+        }
+        .painel-operacao .operacao-periodo {
+            font-size: 12px;
+            color: #c9def4;
+            font-weight: 600;
+        }
+        .operacao-grade {
+            display: grid;
+            gap: 10px;
+        }
+        .operacao-grupo {
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            padding: 10px;
+        }
+        .operacao-grupo-titulo,
+        .operacao-grade-header,
+        .operacao-posto-row {
+            display: grid;
+            grid-template-columns: 72px minmax(220px, 1.1fr) minmax(240px, 2fr) 72px 72px 112px;
+            gap: 10px;
+            align-items: center;
+        }
+        .operacao-grupo-titulo {
+            font-size: 13px;
+            font-weight: 800;
+            color: #9dd3ff;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            padding: 4px 0 10px;
+        }
+        .operacao-grade-header {
+            font-size: 11px;
+            font-weight: 800;
+            color: #b7d8f8;
+            text-transform: uppercase;
+            padding: 0 0 6px;
+        }
+        .operacao-posto-row {
+            background: linear-gradient(90deg, rgba(0,198,255,0.18) 0%, rgba(6,16,28,0.3) 52%, rgba(0,198,255,0.12) 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 8px 10px;
+            margin-top: 8px;
+            scroll-margin-top: 110px;
+        }
+        .operacao-posto-row.subnivel { margin-left: 18px; }
+        .operacao-posto-row.ativo {
+            border-color: #ffe66d;
+            box-shadow: 0 0 0 2px rgba(255,230,109,0.18);
+        }
+        .operacao-posicao {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            min-width: 54px;
+            height: 38px;
+            border-radius: 10px;
+            background: linear-gradient(180deg, #21ff8b 0%, #11c55d 100%);
+            color: #03220f;
+            font-size: 20px;
+            font-weight: 900;
+            box-shadow: inset 0 -2px 0 rgba(0,0,0,0.18);
+        }
+        .operacao-posto-meta { min-width: 0; }
+        .operacao-posto-nome { font-size: 16px; font-weight: 800; color: #ffffff; }
+        .operacao-posto-sub { font-size: 11px; color: #b9cde0; margin-top: 2px; }
+        .operacao-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-height: 34px;
+        }
+        .operacao-chip {
+            border: 1px solid rgba(255,255,255,0.12);
+            background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+            color: #f4f7fb;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+            white-space: nowrap;
+        }
+        .operacao-chip:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.16);
+        }
+        .operacao-chip.confirmado {
+            background: linear-gradient(180deg, #2aff75 0%, #18b958 100%);
+            color: #03220f;
+            border-color: rgba(255,255,255,0.22);
+        }
+        .operacao-chip.ativo {
+            outline: 2px solid #ffe66d;
+            outline-offset: 1px;
+        }
+        .operacao-chip.sem-upload {
+            border-style: dashed;
+        }
+        .operacao-numero {
+            text-align: center;
+            font-size: 22px;
+            font-weight: 900;
+            color: #ffffff;
+        }
+        .operacao-numero-label {
+            display: block;
+            font-size: 9px;
+            color: #b9cde0;
+            margin-top: 1px;
+            letter-spacing: 0.7px;
+        }
+        .operacao-sg {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 800;
+            color: #dce9f7;
+        }
+        .operacao-sg.tem-upload-pendente { color: #ffe66d; }
+        .modal-chip {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2300;
+        }
+        .modal-chip .card {
+            background: #fff;
+            width: 560px;
+            max-width: 94%;
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 12px 24px rgba(0,0,0,0.28);
+        }
+        .modal-chip h3 { margin: 0 0 10px; color: #16324f; }
+        .modal-chip table { margin-top: 8px; }
+        .modal-chip .acoes { margin-top: 12px; text-align: right; }
+        .modal-chip .acoes button {
+            padding: 8px 14px;
+            border: none;
+            border-radius: 6px;
+            background: #0d6efd;
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+        }
         .painel-ultimas {
             background: #fff;
             border-radius: 8px;
@@ -1534,13 +1777,27 @@ try {
             th, td { font-size: 12px; padding: 8px; }
             h2 { font-size: 18px; }
             .cards-resumo { grid-template-columns: 1fr 1fr; }
+            .operacao-grupo-titulo,
+            .operacao-grade-header,
+            .operacao-posto-row {
+                grid-template-columns: 58px minmax(140px, 1fr);
+            }
+            .operacao-grade-header .hide-mobile,
+            .operacao-posto-row .operacao-chips,
+            .operacao-posto-row .operacao-numero,
+            .operacao-posto-row .operacao-sg {
+                grid-column: 1 / -1;
+            }
+            .operacao-numero,
+            .operacao-sg { text-align: left; }
+            .operacao-posto-row.subnivel { margin-left: 0; }
             #resetar { margin-left: 0; margin-top: 8px; width: 100%; }
         }
     </style>
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.5</div>
+    <div class="versao">v0.9.25.6</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1585,7 +1842,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.5</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.6</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1749,11 +2006,58 @@ try {
     </div>
 </div>
 
+<div class="modal-chip" id="modalChipDetalhe">
+    <div class="card">
+        <h3>Detalhes do lote</h3>
+        <table>
+            <tbody id="tabelaDetalheChip"></tbody>
+        </table>
+        <div class="acoes">
+            <button type="button" id="btnFecharModalChip">Fechar</button>
+        </div>
+    </div>
+</div>
+
 <button class="btn-toggle" type="button" onclick="var el=document.getElementById('painel-estatisticas'); el.style.display = (el.style.display==='none'?'block':'none');">
     📊 Mostrar/Ocultar Estatísticas
 </button>
 
 <div id="painel-estatisticas" style="display:block;">
+    <div class="painel-operacao" id="painelOperacao">
+        <div class="painel-operacao-topo">
+            <div>
+                <span class="operacao-tag">Operação</span>
+                <div class="operacao-titulo">Conferência Produção Período</div>
+                <div class="operacao-periodo"><?php echo e($periodo_operacao_label); ?></div>
+            </div>
+        </div>
+        <div class="operacao-grade" id="operacaoGrade">
+            <?php
+            if (!empty($grupo_pt)) {
+                renderizarLinhasOperacao('Poupa Tempo', $grupo_pt, $estante_sem_upload_por_posto);
+            }
+            if (!empty($grupo_r01)) {
+                renderizarLinhasOperacao('Posto 001', $grupo_r01, $estante_sem_upload_por_posto);
+            }
+            if (!empty($grupo_capital)) {
+                renderizarLinhasOperacao('Capital', $grupo_capital, $estante_sem_upload_por_posto);
+            }
+            if (!empty($grupo_999)) {
+                renderizarLinhasOperacao('Central IIPR', $grupo_999, $estante_sem_upload_por_posto);
+            }
+            if (!empty($grupo_outros)) {
+                foreach ($grupo_outros as $regional => $postosGrupo) {
+                    $regionalStrCard = str_pad($regional, 3, '0', STR_PAD_LEFT);
+                    renderizarLinhasOperacao('Regional ' . $regionalStrCard, $postosGrupo, $estante_sem_upload_por_posto);
+                }
+            }
+            if (empty($regionais_data)) {
+                echo '<div style="font-size:12px; color:#d7e6f5;">Nenhum pacote encontrado para o período selecionado.</div>';
+            }
+            ?>
+        </div>
+    </div>
+
     <div class="cards-resumo">
         <div class="card-resumo">
             <h4>Pacotes na tela</h4>
@@ -1936,6 +2240,7 @@ try {
                     if (pacoteJaConferido) {
                         try { pacoteJaConferido.currentTime = 0; pacoteJaConferido.play(); } catch (e) {}
                     }
+                    destacarChipOperacao(linha.getAttribute('data-codigo') || digits);
                     input.value = '';
                     return;
                 }
@@ -1943,6 +2248,10 @@ try {
                 linha.classList.add('confirmado');
                 var tdConf = linha.querySelector('.col-conferido-em');
                 if (tdConf) tdConf.textContent = formatarAgora();
+                var chipFallback = atualizarChipOperacaoPorCodigo(linha.getAttribute('data-codigo') || digits, true);
+                if (chipFallback) {
+                    chipFallback.setAttribute('data-conferido-em', formatarAgora());
+                }
 
                 var ultimas = document.querySelectorAll('tr.ultimo-lido');
                 for (var u = 0; u < ultimas.length; u++) {
@@ -1950,6 +2259,7 @@ try {
                 }
                 linha.classList.add('ultimo-lido');
                 linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                destacarChipOperacao(linha.getAttribute('data-codigo') || digits);
 
                 if (msg) msg.textContent = '';
 
@@ -2004,53 +2314,102 @@ try {
 // Classificação baseada em regional e entrega REAIS
 // ========================================
 
-
-$grupo_pt = array();           // Poupa Tempo agrupado por posto
-$grupo_r01 = array();          // Todos postos Regional 01 em UMA lista (excluindo PT)
-$grupo_capital = array();      // Todos postos Capital em UMA lista
-$grupo_999 = array();          // Todos postos Central IIPR em UMA lista
-$grupo_outros = array();       // Regionais: array($regional => array de postos)
-
-foreach ($regionais_data as $regional => $postos) {
-    foreach ($postos as $posto) {
-        // 1. Poupa Tempo (PRIORIDADE MÁXIMA - ex: posto 28, 80)
-        if ($posto['tipoEntrega'] == 'poupatempo') {
-            $postoKey = $posto['posto'];
-            if (!isset($grupo_pt[$postoKey])) {
-                $grupo_pt[$postoKey] = array();
-            }
-            $grupo_pt[$postoKey][] = $posto; // Agrupa por posto
-            continue; // v8.17.5: NÃO classifica em outros grupos
-        }
-        // 2. Regional 01 (postos 01, 02, 27 - excluindo os que já foram para PT)
-        if ($regional == 1) {
-            $grupo_r01[] = $posto; // Adiciona direto na lista
-            continue;
-        }
-        // 3. Capital (regional = 0)
-        if ($regional == 0) {
-            $grupo_capital[] = $posto; // Adiciona direto na lista
-            continue;
-        }
-        // 4. Central IIPR (regional = 999)
-        if ($regional == 999) {
-            $grupo_999[] = $posto; // Adiciona direto na lista
-            continue;
-        }
-        // 5. Demais regionais (serão ordenadas crescentemente)
-        if (!isset($grupo_outros[$regional])) {
-            $grupo_outros[$regional] = array();
-        }
-        $grupo_outros[$regional][] = $posto;
-    }
-}
-
-// v8.17.5: Ordena demais regionais em ordem crescente
-ksort($grupo_outros);
-
 // v9.24.0: Banner por grupo
 function renderizarBanner($texto, $classe) {
     echo '<div class="banner-grupo ' . $classe . '">' . htmlspecialchars($texto, ENT_QUOTES, 'UTF-8') . '</div>';
+}
+
+function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPosto) {
+    if (empty($dados)) {
+        return;
+    }
+
+    $primeiro = reset($dados);
+    $eh_array_plano = isset($primeiro['lote']);
+    $postos = array();
+    if ($eh_array_plano) {
+        foreach ($dados as $item) {
+            $postos[] = $item;
+        }
+    } else {
+        foreach ($dados as $lista) {
+            foreach ($lista as $item) {
+                $postos[] = $item;
+            }
+        }
+    }
+
+    $porPosto = array();
+    foreach ($postos as $item) {
+        $postoKey = isset($item['posto']) ? $item['posto'] : '000';
+        if (!isset($porPosto[$postoKey])) {
+            $porPosto[$postoKey] = array();
+        }
+        $porPosto[$postoKey][] = $item;
+    }
+    ksort($porPosto);
+
+    echo '<div class="operacao-grupo">';
+    echo '<div class="operacao-grupo-titulo">' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '</div>';
+    echo '<div class="operacao-grade-header">';
+    echo '<div>Pos.</div>';
+    echo '<div>Operação</div>';
+    echo '<div>Chips</div>';
+    echo '<div class="hide-mobile">PTS</div>';
+    echo '<div class="hide-mobile">J</div>';
+    echo '<div class="hide-mobile">SG</div>';
+    echo '</div>';
+
+    $indice = 0;
+    foreach ($porPosto as $postoKey => $listaPosto) {
+        $indice++;
+        $totalPacotes = count($listaPosto);
+        $conferidos = 0;
+        foreach ($listaPosto as $item) {
+            if (!empty($item['conf'])) {
+                $conferidos++;
+            }
+        }
+        $semUploadCount = isset($estanteSemUploadPorPosto[$postoKey]) ? (int)$estanteSemUploadPorPosto[$postoKey] : 0;
+        $classeSub = ($indice > 1) ? ' subnivel' : '';
+        echo '<div class="operacao-posto-row' . $classeSub . '" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '">';
+        echo '<div><span class="operacao-posicao">' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</span></div>';
+        echo '<div class="operacao-posto-meta">';
+        echo '<div class="operacao-posto-nome">Posto ' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</div>';
+        echo '<div class="operacao-posto-sub">' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '</div>';
+        echo '</div>';
+        echo '<div class="operacao-chips">';
+        foreach ($listaPosto as $item) {
+            $chipClasses = 'operacao-chip';
+            if (!empty($item['conf'])) {
+                $chipClasses .= ' confirmado';
+            }
+            if ($semUploadCount > 0) {
+                $chipClasses .= ' sem-upload';
+            }
+            echo '<button type="button" class="' . $chipClasses . '"';
+            echo ' data-codigo="' . htmlspecialchars($item['codigo'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-lote="' . htmlspecialchars($item['lote'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-posto="' . htmlspecialchars($item['posto'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-regional="' . htmlspecialchars($item['regional_label'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-qtd="' . htmlspecialchars($item['qtd'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-data="' . htmlspecialchars($item['data'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-usuario="' . htmlspecialchars($item['usuario_prod'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-conferido-em="' . htmlspecialchars($item['conferido_em'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-conf="' . (!empty($item['conf']) ? '1' : '0') . '">';
+            echo htmlspecialchars($item['lote'], ENT_QUOTES, 'UTF-8');
+            echo '</button>';
+        }
+        echo '</div>';
+        echo '<div class="operacao-numero"><span data-role="pts">' . $totalPacotes . '</span><span class="operacao-numero-label">PACOTES</span></div>';
+        echo '<div class="operacao-numero"><span data-role="j">' . $conferidos . '</span><span class="operacao-numero-label">CONFERIDOS</span></div>';
+        $sgClass = $semUploadCount > 0 ? 'operacao-sg tem-upload-pendente' : 'operacao-sg';
+        $sgTexto = $semUploadCount > 0 ? 'SEM UPLOAD' : 'OK';
+        echo '<div class="' . $sgClass . '" data-role="sg" title="' . ($semUploadCount > 0 ? ('Lotes sem upload: ' . $semUploadCount) : 'Sem pendencias de upload') . '">' . $sgTexto . '</div>';
+        echo '</div>';
+    }
+
+    echo '</div>';
 }
 
 // v8.17.5: Função para renderizar tabela (aceita array plano OU aninhado)
@@ -2285,6 +2644,9 @@ function iniciarConferenciaPacotes() {
     var overlayConfirmacao = document.getElementById('overlayConfirmacao');
     var confirmacaoTexto = document.getElementById('confirmacaoTexto');
     var btnConfirmacaoOk = document.getElementById('btnConfirmacaoOk');
+    var modalChipDetalhe = document.getElementById('modalChipDetalhe');
+    var tabelaDetalheChip = document.getElementById('tabelaDetalheChip');
+    var btnFecharModalChip = document.getElementById('btnFecharModalChip');
     var pacoteCodbar = document.getElementById('pacote_codbar');
     var pacoteLote = document.getElementById('pacote_lote');
     var pacoteRegional = document.getElementById('pacote_regional');
@@ -2373,6 +2735,27 @@ function iniciarConferenciaPacotes() {
         });
     }
 
+    if (btnFecharModalChip) {
+        btnFecharModalChip.addEventListener('click', function() {
+            if (modalChipDetalhe) modalChipDetalhe.style.display = 'none';
+        });
+    }
+
+    if (modalChipDetalhe) {
+        modalChipDetalhe.addEventListener('click', function(e) {
+            if (e.target === modalChipDetalhe) {
+                modalChipDetalhe.style.display = 'none';
+            }
+        });
+    }
+
+    document.addEventListener('click', function(e) {
+        var chip = e.target && e.target.closest ? e.target.closest('.operacao-chip') : null;
+        if (!chip) return;
+        destacarChipOperacao(chip.getAttribute('data-codigo') || '');
+        abrirModalChipDetalhe(chip);
+    });
+
     function obterTituloTabela(tabela) {
         var titulo = tabela ? tabela.previousElementSibling : null;
         while (titulo && titulo.tagName !== 'H3') {
@@ -2400,6 +2783,7 @@ function iniciarConferenciaPacotes() {
         span.textContent = '(' + total + ' pacotes / ' + conferidos + ' conferidos)';
         span.setAttribute('data-total', String(total));
         span.setAttribute('data-conferidos', String(conferidos));
+        sincronizarPainelOperacao();
     }
 
     function atualizarResumoTodasTabelas() {
@@ -2407,6 +2791,96 @@ function iniciarConferenciaPacotes() {
         for (var i = 0; i < tabelas.length; i++) {
             atualizarResumoTabela(tabelas[i]);
         }
+    }
+
+    function atualizarLinhaOperacao(row) {
+        if (!row) return;
+        var chips = row.querySelectorAll('.operacao-chip');
+        var total = chips.length;
+        var conferidos = 0;
+        for (var i = 0; i < chips.length; i++) {
+            if (chips[i].getAttribute('data-conf') === '1') {
+                conferidos++;
+            }
+        }
+        var pts = row.querySelector('[data-role="pts"]');
+        var j = row.querySelector('[data-role="j"]');
+        if (pts) pts.textContent = String(total);
+        if (j) j.textContent = String(conferidos);
+    }
+
+    function atualizarChipOperacaoPorCodigo(codigo, confirmado) {
+        if (!codigo) return null;
+        var chip = document.querySelector('.operacao-chip[data-codigo="' + codigo + '"]');
+        if (!chip) return null;
+        chip.setAttribute('data-conf', confirmado ? '1' : '0');
+        if (confirmado) {
+            chip.classList.add('confirmado');
+        } else {
+            chip.classList.remove('confirmado');
+        }
+        atualizarLinhaOperacao(chip.closest('.operacao-posto-row'));
+        return chip;
+    }
+
+    function destacarChipOperacao(codigo) {
+        var chipsAtivos = document.querySelectorAll('.operacao-chip.ativo');
+        for (var i = 0; i < chipsAtivos.length; i++) {
+            chipsAtivos[i].classList.remove('ativo');
+        }
+        var linhasAtivas = document.querySelectorAll('.operacao-posto-row.ativo');
+        for (var j = 0; j < linhasAtivas.length; j++) {
+            linhasAtivas[j].classList.remove('ativo');
+        }
+        if (!codigo) return;
+        var chip = document.querySelector('.operacao-chip[data-codigo="' + codigo + '"]');
+        if (!chip) return;
+        chip.classList.add('ativo');
+        var linha = chip.closest('.operacao-posto-row');
+        if (linha) {
+            linha.classList.add('ativo');
+            linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            chip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function sincronizarPainelOperacao() {
+        var chips = document.querySelectorAll('.operacao-chip');
+        for (var i = 0; i < chips.length; i++) {
+            var chip = chips[i];
+            var codigo = chip.getAttribute('data-codigo') || '';
+            var linhaTabela = codigo ? document.querySelector('tr[data-codigo="' + codigo + '"]') : null;
+            var confirmado = !!(linhaTabela && linhaTabela.classList.contains('confirmado'));
+            chip.setAttribute('data-conf', confirmado ? '1' : '0');
+            if (confirmado) {
+                chip.classList.add('confirmado');
+            } else {
+                chip.classList.remove('confirmado');
+            }
+            atualizarLinhaOperacao(chip.closest('.operacao-posto-row'));
+        }
+    }
+
+    function abrirModalChipDetalhe(chip) {
+        if (!chip || !modalChipDetalhe || !tabelaDetalheChip) return;
+        var itens = [
+            ['Lote', chip.getAttribute('data-lote') || ''],
+            ['Posto', chip.getAttribute('data-posto') || ''],
+            ['Regional', chip.getAttribute('data-regional') || ''],
+            ['Quantidade', chip.getAttribute('data-qtd') || ''],
+            ['Data', chip.getAttribute('data-data') || ''],
+            ['Responsável produção', chip.getAttribute('data-usuario') || ''],
+            ['Código de barras', chip.getAttribute('data-codigo') || ''],
+            ['Conferido em', chip.getAttribute('data-conferido-em') || 'Pendente']
+        ];
+        tabelaDetalheChip.innerHTML = '';
+        for (var i = 0; i < itens.length; i++) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<th style="text-align:left; width:170px;">' + itens[i][0] + '</th><td>' + itens[i][1] + '</td>';
+            tabelaDetalheChip.appendChild(tr);
+        }
+        modalChipDetalhe.style.display = 'flex';
     }
 
     function normalizarDataOrdem(valor) {
@@ -2961,6 +3435,7 @@ function iniciarConferenciaPacotes() {
     } catch (e3) {}
 
     atualizarResumoTodasTabelas();
+    sincronizarPainelOperacao();
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
@@ -3118,6 +3593,7 @@ function iniciarConferenciaPacotes() {
         // Verifica se já foi conferido
         if (linha.classList.contains("confirmado")) {
             enfileirarSom(pacoteJaConferido);
+            destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
             input.value = "";
             return;
         }
@@ -3205,6 +3681,10 @@ function iniciarConferenciaPacotes() {
         linha.setAttribute('data-conferido-em', conferidoAgora);
         var tdConf = linha.querySelector('.col-conferido-em');
         if (tdConf) tdConf.textContent = conferidoAgora;
+        var chipPrincipal = atualizarChipOperacaoPorCodigo(linha.getAttribute('data-codigo') || valor, true);
+        if (chipPrincipal) {
+            chipPrincipal.setAttribute('data-conferido-em', conferidoAgora);
+        }
         tipoAtual = tipoPacote;
         if (tipoPacote === 'correios') {
             regionalAtual = regionalDoPacoteNorm || regionalDoPacote;
@@ -3235,6 +3715,7 @@ function iniciarConferenciaPacotes() {
         var rect = linha.getBoundingClientRect();
         var alvo = rect.top + window.pageYOffset - (window.innerHeight / 2) + (rect.height / 2);
         window.scrollTo({ top: alvo, behavior: 'smooth' });
+        destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
         
         // Atualiza contexto da ultima leitura valida
         ultimaRegionalLida = regionalDoPacoteNorm || regionalDoPacote;
@@ -3390,6 +3871,7 @@ function iniciarConferenciaPacotes() {
                 trsConfirmados[j].classList.remove("confirmado");
             }
             atualizarResumoTodasTabelas();
+            sincronizarPainelOperacao();
             
             regionalAtual = null;
             tipoAtual = null; // v9.2: Reseta tipo

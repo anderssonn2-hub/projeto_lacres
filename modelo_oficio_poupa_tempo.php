@@ -1,5 +1,9 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
+    v9.25.6: Persistência da conferência PT em conferencia_pacotes
+    - [NOVO] Lote conferido na tela salva conf='s' em conferencia_pacotes
+    - [NOVO] Reabertura com filtro mantém lotes já conferidos em verde
+
    - NÃO depende mais de poupatempo_payload
    - Usa pt_datas (enviado pelo formulário escondido em lacres_novo.php)
    - Faz SELECT direto em ciPostosCsv + ciRegionais para montar:
@@ -214,6 +218,39 @@ try {
     $pdo_controle->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     $pdo_controle = null;
+}
+
+if (isset($_POST['salvar_conferencia_pt_ajax'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if (!$pdo_controle) {
+            throw new Exception('Conexao com o banco de dados nao disponivel.');
+        }
+
+        $posto = isset($_POST['posto']) ? preg_replace('/\D+/', '', (string)$_POST['posto']) : '';
+        $lote = isset($_POST['lote']) ? preg_replace('/\D+/', '', (string)$_POST['lote']) : '';
+        $dataexp = isset($_POST['dataexp']) ? trim((string)$_POST['dataexp']) : '';
+        $qtd = isset($_POST['qtd']) ? (int)$_POST['qtd'] : 0;
+        $codbar = isset($_POST['codbar']) ? preg_replace('/\D+/', '', (string)$_POST['codbar']) : '';
+        $usuario = isset($_SESSION['usuario']) && $_SESSION['usuario'] !== '' ? trim((string)$_SESSION['usuario']) : 'poupatempo';
+
+        if ($posto === '' || $lote === '') {
+            throw new Exception('Posto e lote sao obrigatorios.');
+        }
+        if ($dataexp === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataexp)) {
+            $dataexp = date('Y-m-d');
+        }
+
+        $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario, conferido_em)
+                VALUES (?, ?, ?, ?, ?, ?, 's', ?, NOW())
+                ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), dataexp=VALUES(dataexp), usuario=VALUES(usuario), conferido_em=NOW(), codbar=IF(VALUES(codbar) <> '', VALUES(codbar), codbar)";
+        $stmt = $pdo_controle->prepare($sql);
+        $stmt->execute(array('000', $lote, $posto, $dataexp, $qtd, $codbar, $usuario));
+
+        die(json_encode(array('success' => true)));
+    } catch (Exception $e) {
+        die(json_encode(array('success' => false, 'erro' => $e->getMessage())));
+    }
 }
 
 /* ============================================================
@@ -739,9 +776,32 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
             $postosPorCodigo[$codigo]['qtd_total'] += $quant;
         }
         
+        $postosList = array_keys($postosPorCodigo);
+        $mapaConferidos = array();
+        if (!empty($postosList)) {
+            $inPostos = "'" . implode("','", array_map('strval', $postosList)) . "'";
+            $sqlConf = "SELECT DISTINCT nlote, nposto
+                        FROM conferencia_pacotes
+                        WHERE conf = 's'
+                          AND nposto IN ($inPostos)";
+            if (!empty($datasNorm)) {
+                $sqlConf .= " AND dataexp IN ($in) ";
+            }
+            try {
+                $stmtConf = $pdo_controle->query($sqlConf);
+                while ($rc = $stmtConf->fetch(PDO::FETCH_ASSOC)) {
+                    $p = str_pad(preg_replace('/\D+/', '', (string)$rc['nposto']), 3, '0', STR_PAD_LEFT);
+                    $l = preg_replace('/\D+/', '', (string)$rc['nlote']);
+                    if ($p !== '' && $l !== '') {
+                        if (!isset($mapaConferidos[$p])) { $mapaConferidos[$p] = array(); }
+                        $mapaConferidos[$p][$l] = true;
+                    }
+                }
+            } catch (Exception $e) {}
+        }
+
         // v9.25.x: filtros opcionais por conferencia/oficio
         if ($filtrarNaoConferidos || $filtrarSemOficio) {
-            $postosList = array_keys($postosPorCodigo);
             $lotesList = array();
             foreach ($postosPorCodigo as $pp) {
                 if (!empty($pp['lotes'])) {
@@ -751,30 +811,6 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
                 }
             }
             $lotesList = array_values(array_unique($lotesList));
-
-            $mapaConferidos = array();
-            if ($filtrarNaoConferidos && !empty($postosList)) {
-                $inPostos = "'" . implode("','", array_map('strval', $postosList)) . "'";
-                $sqlConf = "SELECT DISTINCT nlote, nposto
-                            FROM conferencia_pacotes
-                            WHERE conf = 's'
-                              AND nposto IN ($inPostos)";
-                if (!empty($datasNorm)) {
-                    $sqlConf .= " AND dataexp IN ($in) ";
-                }
-                try {
-                    $stmtConf = $pdo_controle->query($sqlConf);
-                    while ($rc = $stmtConf->fetch(PDO::FETCH_ASSOC)) {
-                        $p = str_pad(preg_replace('/\D+/', '', (string)$rc['nposto']), 3, '0', STR_PAD_LEFT);
-                        $l = preg_replace('/\D+/', '', (string)$rc['nlote']);
-                        if ($p !== '' && $l !== '') {
-                            if (!isset($mapaConferidos[$p])) { $mapaConferidos[$p] = array(); }
-                            $mapaConferidos[$p][$l] = true;
-                        }
-                    }
-                } catch (Exception $e) {}
-            }
-
             $mapaOficio = array();
             if ($filtrarSemOficio && !empty($postosList)) {
                 $inPostos = "'" . implode("','", array_map('strval', $postosList)) . "'";
@@ -1945,6 +1981,16 @@ if (document.readyState === 'loading') {
 
         // garante código com 3 dígitos
         $codigo3 = str_pad($codigo, 3, '0', STR_PAD_LEFT);
+        $conferidos_iniciais = 0;
+        if (!$modo_branco && !empty($lotes_array)) {
+            foreach ($lotes_array as $ltConf) {
+                $loteConfNum = preg_replace('/\D+/', '', (string)$ltConf['lote']);
+                if ($loteConfNum !== '' && isset($mapaConferidos[$codigo3]) && isset($mapaConferidos[$codigo3][$loteConfNum])) {
+                    $conferidos_iniciais++;
+                }
+            }
+        }
+        $pendentes_iniciais = max(0, count($lotes_array) - $conferidos_iniciais);
         
         // Prioridade: dados salvos (do POST atual) > dados do banco > dados do SELECT original
         $valorLacre = isset($lacresPorPosto[$codigo3]) ? $lacresPorPosto[$codigo3] : '';
@@ -2067,8 +2113,8 @@ if (document.readyState === 'loading') {
             </div>
             <div class="contador-conferencia">
               <span>Total de Lotes: <strong id="total_lotes_<?php echo e($codigo3); ?>"><?php echo count($lotes_array); ?></strong></span>
-              <span>Conferidos: <strong id="conferidos_<?php echo e($codigo3); ?>">0</strong></span>
-              <span>Pendentes: <strong id="pendentes_<?php echo e($codigo3); ?>"><?php echo count($lotes_array); ?></strong></span>
+                            <span>Conferidos: <strong id="conferidos_<?php echo e($codigo3); ?>"><?php echo (int)$conferidos_iniciais; ?></strong></span>
+                            <span>Pendentes: <strong id="pendentes_<?php echo e($codigo3); ?>"><?php echo (int)$pendentes_iniciais; ?></strong></span>
             </div>
           </div>
 
@@ -2088,22 +2134,28 @@ if (document.readyState === 'loading') {
                             </thead>
                             <tbody>
                                 <?php foreach ($lotes_pagina as $lote): ?>
-                                <tr class="linha-lote" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote['lote']); ?>" data-checked="1">
+                                <?php
+                                    $lote_num_render = preg_replace('/\D+/', '', (string)$lote['lote']);
+                                    $esta_conferido = (!$modo_branco && $lote_num_render !== '' && isset($mapaConferidos[$codigo3]) && isset($mapaConferidos[$codigo3][$lote_num_render]));
+                                ?>
+                                <tr class="linha-lote<?php echo $esta_conferido ? ' conferido' : ''; ?>" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote['lote']); ?>" data-checked="1" data-quantidade="<?php echo e($lote['quantidade']); ?>" data-data-carga="<?php echo e($lote['data_carga']); ?>">
                                     <td class="col-checkbox nao-imprimir" style="text-align:center; padding:3px; border:1px solid #000;">
                                         <input type="checkbox" class="checkbox-lote" data-posto="<?php echo e($codigo3); ?>" 
                                                      data-quantidade="<?php echo e($lote['quantidade']); ?>" 
-                                                     data-lote="<?php echo e($lote['lote']); ?>" checked 
+                                                     data-lote="<?php echo e($lote['lote']); ?>"
+                                                     data-data-carga="<?php echo e($lote['data_carga']); ?>"
+                                                     data-conferido="<?php echo $esta_conferido ? '1' : '0'; ?>" checked 
                                                      onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
                                     </td>
                                     <td class="col-mover nao-imprimir" style="text-align:center; padding:3px; border:1px solid #000;">
                                         <button type="button" class="btn-mover-lote" onclick="moverLote(this, -1)" title="Mover para cima">↑</button>
                                         <button type="button" class="btn-mover-lote" onclick="moverLote(this, 1)" title="Mover para baixo">↓</button>
                                     </td>
-                                    <td style="text-align:left; padding:4px; border:1px solid #000; font-size:10px;"><?php echo e($lote['lote']); ?></td>
-                                    <td style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
+                                    <td class="<?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:left; padding:4px; border:1px solid #000; font-size:10px;"><?php echo e($lote['lote']); ?></td>
+                                    <td class="<?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
                                         <span class="valor-tela"><?php echo number_format($lote['quantidade'], 0, ',', '.'); ?></span>
                                     </td>
-                                    <td style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
+                                    <td class="<?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
                                         <?php echo !empty($lote['data_carga']) ? date('d-m-Y', strtotime($lote['data_carga'])) : ''; ?>
                                     </td>
                                 </tr>
@@ -2225,6 +2277,31 @@ function conferirLoteAutomatico(codigoPosto, valor) {
     }
 }
 
+function salvarConferenciaPt(codigoPosto, numeroLote, quantidade, dataCarga, codigoCompleto) {
+    var formData = new FormData();
+    formData.append('salvar_conferencia_pt_ajax', '1');
+    formData.append('posto', codigoPosto || '');
+    formData.append('lote', numeroLote || '');
+    formData.append('qtd', quantidade || '0');
+    formData.append('dataexp', dataCarga || '');
+    formData.append('codbar', codigoCompleto || '');
+    return fetch(window.location.href, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        if (!data || !data.success) {
+            console.error('Erro ao salvar conferência PT:', data && data.erro ? data.erro : 'desconhecido');
+        }
+        return data;
+    }).catch(function(error) {
+        console.error('Erro AJAX conferência PT:', error);
+        return { success: false, erro: String(error) };
+    });
+}
+
 // v9.9.4: Função para conferir lote via código de barras (extrai lote de 8 dígitos)
 function conferirLote(codigoPosto) {
     var input = document.getElementById('input_conferencia_' + codigoPosto);
@@ -2295,6 +2372,13 @@ function conferirLote(codigoPosto) {
             // Marca como conferido (verde)
             linha.classList.add('conferido');
             linha.classList.add('conferido-agora');
+            linha.setAttribute('data-conferido', '1');
+            var checkboxLinha = linha.querySelector('.checkbox-lote');
+            var quantidadeLinha = linha.getAttribute('data-quantidade') || (checkboxLinha ? checkboxLinha.getAttribute('data-quantidade') : '0');
+            var dataCargaLinha = linha.getAttribute('data-data-carga') || (checkboxLinha ? checkboxLinha.getAttribute('data-data-carga') : '');
+            if (checkboxLinha) {
+                checkboxLinha.setAttribute('data-conferido', '1');
+            }
             
             // Remove animação após 1 segundo
             setTimeout(function() {
@@ -2303,6 +2387,8 @@ function conferirLote(codigoPosto) {
             
             // Atualiza contadores
             atualizarContadores(codigoPosto);
+
+            salvarConferenciaPt(codigoPosto, numeroLote, quantidadeLinha, dataCargaLinha, codigoLido);
             
             // Limpa campo e mantém foco
             input.value = '';
@@ -2337,6 +2423,7 @@ function conferirLote(codigoPosto) {
                 recalcularTotal(codigoPosto);
                 // Atualiza contadores
                 atualizarContadores(codigoPosto);
+                salvarConferenciaPt(codigoPosto, numeroLote, cb3.getAttribute('data-quantidade') || '0', cb3.getAttribute('data-data-carga') || '', codigoLido);
                 input.value = '';
                 input.focus();
                 return;
