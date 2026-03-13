@@ -1,5 +1,10 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.4
+/* conferencia_pacotes.php — v0.9.25.5
+ * CHANGELOG v9.25.5:
+ * - [NOVO] Opção "Todos" no início da conferência
+ * - [CORRIGIDO] Aviso explícito para código dos Correios durante modo Poupa Tempo
+ * - [CORRIGIDO] Áudio mp3 para "pacote não encontrado"
+ *
  * CHANGELOG v9.25.4:
  * - [NOVO] Aviso visual e fala para "pacote não encontrado"
  * - [NOVO] Salvamento em fila com autor, turno e data de criação
@@ -1050,7 +1055,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.4</title>
+    <title>Conferência de Pacotes v0.9.25.5</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1535,7 +1540,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.4</div>
+    <div class="versao">v0.9.25.5</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1580,7 +1585,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.4</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.5</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -1596,6 +1601,7 @@ try {
     <div class="card">
         <h3>🎯 Tipo de conferência</h3>
         <div style="font-size:12px; color:#666;">Escolha para iniciar.</div>
+        <button type="button" class="btn-opcao" data-tipo="todos">Todos</button>
         <button type="button" class="btn-opcao" data-tipo="correios">Correios</button>
         <button type="button" class="btn-opcao pt" data-tipo="poupatempo">Poupa Tempo</button>
     </div>
@@ -1617,6 +1623,10 @@ try {
 
     <div class="radio-box">
         <div style="color:#fff; font-weight:600; margin-bottom:8px;">🎯 Tipo de conferência</div>
+        <label style="gap:8px; margin-right:16px;">
+            <input type="radio" name="tipo_inicio" value="todos">
+            Todos
+        </label>
         <label style="gap:8px; margin-right:16px;">
             <input type="radio" name="tipo_inicio" value="correios" checked>
             Correios
@@ -1835,7 +1845,7 @@ try {
             function desbloquearAudios() {
                 if (audioDesbloqueado) return;
                 audioDesbloqueado = true;
-                var ids = ['beep', 'concluido', 'pacotejaconferido', 'pacotedeoutraregional', 'posto_poupatempo', 'pertence_correios'];
+                var ids = ['beep', 'concluido', 'pacotejaconferido', 'pacotedeoutraregional', 'posto_poupatempo', 'pertence_correios', 'pacote_nao_encontrado'];
                 for (var i = 0; i < ids.length; i++) {
                     var a = document.getElementById(ids[i]);
                     if (!a) continue;
@@ -1904,7 +1914,13 @@ try {
                             painel.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }
                     }
-                    if (window.speechSynthesis) {
+                    var audioNaoEncontrado = document.getElementById('pacote_nao_encontrado');
+                    if (audioNaoEncontrado) {
+                        try {
+                            audioNaoEncontrado.currentTime = 0;
+                            audioNaoEncontrado.play();
+                        } catch (e) {}
+                    } else if (window.speechSynthesis) {
                         try {
                             var ut = new SpeechSynthesisUtterance('pacote não encontrado');
                             ut.lang = 'pt-BR';
@@ -2210,6 +2226,7 @@ if (empty($regionais_data)) {
 <audio id="pacotedeoutraregional" src="pacotedeoutraregional.mp3" preload="auto"></audio>
 <audio id="posto_poupatempo" src="posto_poupatempo.mp3" preload="auto"></audio>
 <audio id="pertence_correios" src="pertence_aos_correios.mp3" preload="auto"></audio>
+<audio id="pacote_nao_encontrado" src="pacote_nao_foi_encontrado.mp3" preload="auto"></audio>
 
 <script>
 // ========================================
@@ -2250,6 +2267,7 @@ function iniciarConferenciaPacotes() {
     var pacoteOutraRegional = document.getElementById("pacotedeoutraregional");
     var postoPoupaTempo = document.getElementById("posto_poupatempo");
     var pertenceCorreios = document.getElementById("pertence_correios");
+    var pacoteNaoEncontradoAudio = document.getElementById("pacote_nao_encontrado");
     var muteBeep = document.getElementById("muteBeep");
     var btnResetar = document.getElementById("resetar");
     var usuarioBadge = document.getElementById("usuarioBadge");
@@ -2480,6 +2498,34 @@ function iniciarConferenciaPacotes() {
         } catch (e) {}
     }
 
+    function tocarPacoteNaoEncontrado() {
+        if (pacoteNaoEncontradoAudio) {
+            enfileirarSom(pacoteNaoEncontradoAudio);
+            return;
+        }
+        falarTexto('pacote não encontrado');
+    }
+
+    function avisarIncompatibilidadeTipo(tipoPacote) {
+        if (tipoPacote === 'correios') {
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
+            }
+            if (pertenceCorreios) {
+                enfileirarSom(pertenceCorreios);
+            }
+            falarTexto('posto dos correios');
+            return;
+        }
+        if (mensagemLeitura) {
+            mensagemLeitura.innerHTML = '<strong>Posto do Poupa Tempo:</strong> altere o tipo para Poupa Tempo ou Todos.';
+        }
+        if (postoPoupaTempo) {
+            enfileirarSom(postoPoupaTempo);
+        }
+        falarTexto('posto do poupa tempo');
+    }
+
     // Encadeia para tocar o próximo som quando o atual terminar
     var listaSons = [];
     if (beep) listaSons.push(beep);
@@ -2488,6 +2534,7 @@ function iniciarConferenciaPacotes() {
     if (pacoteOutraRegional) listaSons.push(pacoteOutraRegional);
     if (postoPoupaTempo) listaSons.push(postoPoupaTempo);
     if (pertenceCorreios) listaSons.push(pertenceCorreios);
+    if (pacoteNaoEncontradoAudio) listaSons.push(pacoteNaoEncontradoAudio);
     for (var si = 0; si < listaSons.length; si++) {
         listaSons[si].addEventListener('ended', function() {
             tocarProximoSom();
@@ -3036,7 +3083,7 @@ function iniciarConferenciaPacotes() {
                     painelPacotesNovos.style.display = 'block';
                     painelPacotesNovos.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
-                falarTexto('pacote não encontrado');
+                tocarPacoteNaoEncontrado();
                 if (mensagemLeitura) {
                     mensagemLeitura.innerHTML = '<strong>Pacote não encontrado:</strong> adicionado à lista pendente.';
                 }
@@ -3061,6 +3108,8 @@ function iniciarConferenciaPacotes() {
             return;
         }
         
+        var tipoSelecionado = obterTipoInicioSelecionado();
+        var modoTodos = tipoSelecionado === 'todos';
         var regionalDoPacote = obterRegionalLinha(linha);
         var regionalDoPacoteNorm = normalizarRegionalValor(regionalDoPacote);
         var isPoupaTempo = linha.getAttribute("data-ispt") === "1";
@@ -3094,36 +3143,40 @@ function iniciarConferenciaPacotes() {
         
         // Caso 1: Primeiro pacote da conferência - sempre beep
         if (podeConferir && !primeiroConferido) {
-            tipoAtual = obterTipoInicioSelecionado();
-            if (tipoAtual === tipoPacote) {
+            tipoAtual = tipoSelecionado;
+            if (modoTodos || tipoAtual === tipoPacote) {
+                tipoAtual = tipoPacote;
                 regionalAtual = regionalDoPacoteNorm || regionalDoPacote;
             } else {
                 podeConferir = false;
-                if (tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
-                    somAlerta = postoPoupaTempo;
-                }
-                if (tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
-                    somAlerta = pertenceCorreios;
-                }
+                avisarIncompatibilidadeTipo(tipoPacote);
             }
             if (podeConferir) {
                 primeiroConferido = true;
             }
         }
         // Caso 2: Pacote Poupa Tempo aparecendo em meio aos Correios
-        else if (podeConferir && tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
+        else if (!modoTodos && podeConferir && tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
             somAlerta = postoPoupaTempo; // Alerta: PT misturado com correios!
             podeConferir = false;
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Posto do Poupa Tempo:</strong> altere o tipo para Poupa Tempo ou Todos.';
+            }
+            falarTexto('posto do poupa tempo');
             // NÃO altera regionalAtual nem tipoAtual - continua conferindo correios
         }
         // Caso 3: Pacote Correios aparecendo em meio ao Poupa Tempo
-        else if (podeConferir && tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
+        else if (!modoTodos && podeConferir && tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
             somAlerta = pertenceCorreios; // Alerta: pertence aos correios!
             podeConferir = false;
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
+            }
+            falarTexto('posto dos correios');
             // NÃO altera regionalAtual nem tipoAtual
         }
         // Caso 4: Regional diferente (mesmo tipo)
-        else if (podeConferir && regionalDoPacoteNorm && regionalDoPacoteNorm !== normalizarRegionalValor(regionalAtual) && tipoPacote === tipoAtual) {
+        else if (!modoTodos && podeConferir && regionalDoPacoteNorm && regionalDoPacoteNorm !== normalizarRegionalValor(regionalAtual) && tipoPacote === tipoAtual) {
             somAlerta = pacoteOutraRegional; // Alerta: regional diferente!
             podeConferir = false;
             // NÃO altera regionalAtual nem tipoAtual
@@ -3152,6 +3205,10 @@ function iniciarConferenciaPacotes() {
         linha.setAttribute('data-conferido-em', conferidoAgora);
         var tdConf = linha.querySelector('.col-conferido-em');
         if (tdConf) tdConf.textContent = conferidoAgora;
+        tipoAtual = tipoPacote;
+        if (tipoPacote === 'correios') {
+            regionalAtual = regionalDoPacoteNorm || regionalDoPacote;
+        }
         atualizarResumoTabela(linha.closest('table'));
         
         // Toca os sons: beep na leitura válida, alerta se necessário
