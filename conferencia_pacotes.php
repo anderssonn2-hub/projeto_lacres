@@ -1,5 +1,11 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.6
+/* conferencia_pacotes.php — v0.9.25.7
+ * CHANGELOG v9.25.7:
+ * - [CORRIGIDO] Aviso de pacote não encontrado emitido apenas uma vez por leitura
+ * - [NOVO] Classificação por chips e modo tradicional iniciam recolhidos e alternam entre si
+ * - [AJUSTE] Painel de operação com títulos destacados, contadores de Pacotes, Conferidos e Pendentes
+ * - [AJUSTE] Datas exibidas no padrão brasileiro e reset visual sincronizado entre tabela e chips
+ *
  * CHANGELOG v9.25.6:
  * - [NOVO] Card Operação com conferência por chips e detalhamento por lote
  * - [NOVO] Rolagem automática para o chip correspondente ao código lido
@@ -885,7 +891,7 @@ try {
 
     $periodo_operacao_label = 'Periodo nao informado';
     if ($data_ini !== '' && $data_fim !== '') {
-        $periodo_operacao_label = $data_ini . ' a ' . $data_fim;
+        $periodo_operacao_label = normalizarDataExib($data_ini) . ' a ' . normalizarDataExib($data_fim);
     } elseif (!empty($datas_exib)) {
         if (count($datas_exib) === 1) {
             $periodo_operacao_label = $datas_exib[0];
@@ -1116,7 +1122,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.6</title>
+    <title>Conferência de Pacotes v0.9.25.7</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1361,6 +1367,39 @@ try {
             font-size: 11px;
             font-weight: 700;
         }
+        .painel-leitura {
+            background: #fff;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 16px 0 12px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+            border: 1px solid #dde6f1;
+        }
+        .painel-leitura-topo {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+        }
+        .painel-leitura-acoes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .modos-visualizacao {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .secao-visualizacao {
+            display: block;
+            margin-top: 10px;
+        }
+        .secao-visualizacao.oculta {
+            display: none;
+        }
         .painel-operacao {
             background: linear-gradient(180deg, #0b2d4d 0%, #071a2d 100%);
             border-radius: 14px;
@@ -1408,6 +1447,11 @@ try {
             background: rgba(255,255,255,0.04);
             padding: 10px;
         }
+        .operacao-grupo.tipo-pt { border-left: 5px solid #8de96b; }
+        .operacao-grupo.tipo-r01 { border-left: 5px solid #ffd54f; }
+        .operacao-grupo.tipo-capital { border-left: 5px solid #53c2ff; }
+        .operacao-grupo.tipo-central { border-left: 5px solid #ff8a65; }
+        .operacao-grupo.tipo-regional { border-left: 5px solid #b39ddb; }
         .operacao-grupo-titulo,
         .operacao-grade-header,
         .operacao-posto-row {
@@ -1417,12 +1461,28 @@ try {
             align-items: center;
         }
         .operacao-grupo-titulo {
-            font-size: 13px;
-            font-weight: 800;
-            color: #9dd3ff;
-            letter-spacing: 0.8px;
+            padding: 6px 0 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 6px;
+        }
+        .operacao-grupo-info {
+            grid-column: 1 / span 3;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .operacao-grupo-nome {
+            font-size: 24px;
+            font-weight: 900;
+            color: #f8fbff;
+            line-height: 1.1;
+        }
+        .operacao-grupo-resumo {
+            font-size: 12px;
+            color: #a7cae7;
+            font-weight: 700;
             text-transform: uppercase;
-            padding: 4px 0 10px;
+            letter-spacing: 0.9px;
         }
         .operacao-grade-header {
             font-size: 11px;
@@ -1458,8 +1518,9 @@ try {
             box-shadow: inset 0 -2px 0 rgba(0,0,0,0.18);
         }
         .operacao-posto-meta { min-width: 0; }
-        .operacao-posto-nome { font-size: 16px; font-weight: 800; color: #ffffff; }
+        .operacao-posto-nome { font-size: 18px; font-weight: 900; color: #ffffff; }
         .operacao-posto-sub { font-size: 11px; color: #b9cde0; margin-top: 2px; }
+        .operacao-posto-aux { font-size: 10px; color: #ffe39a; margin-top: 3px; font-weight: 700; }
         .operacao-chips {
             display: flex;
             flex-wrap: wrap;
@@ -1507,13 +1568,13 @@ try {
             margin-top: 1px;
             letter-spacing: 0.7px;
         }
-        .operacao-sg {
+        .operacao-pendentes {
             text-align: center;
-            font-size: 11px;
-            font-weight: 800;
-            color: #dce9f7;
+            font-size: 22px;
+            font-weight: 900;
+            color: #ffe39a;
         }
-        .operacao-sg.tem-upload-pendente { color: #ffe66d; }
+        .operacao-pendentes .operacao-numero-label { color: #f4d68b; }
         .modal-chip {
             position: fixed;
             inset: 0;
@@ -1552,15 +1613,18 @@ try {
         }
         .painel-ultimas ul { margin: 8px 0 0; padding-left: 18px; }
         .btn-toggle {
-            padding: 8px 14px;
-            background: #17a2b8;
+            padding: 10px 16px;
+            background: #1f5f8b;
             color: #fff;
             border: none;
-            border-radius: 4px;
+            border-radius: 999px;
             cursor: pointer;
-            font-weight: 600;
+            font-weight: 700;
             margin-top: 6px;
+            transition: background .15s ease, transform .15s ease;
         }
+        .btn-toggle:hover { transform: translateY(-1px); }
+        .btn-toggle.ativo { background: #0d2f4f; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.16); }
         #indicador-dias {
             background: #fff;
             border: 1px solid #ddd;
@@ -1782,14 +1846,19 @@ try {
             .operacao-posto-row {
                 grid-template-columns: 58px minmax(140px, 1fr);
             }
+            .operacao-grupo-info {
+                grid-column: 1 / -1;
+            }
             .operacao-grade-header .hide-mobile,
             .operacao-posto-row .operacao-chips,
             .operacao-posto-row .operacao-numero,
-            .operacao-posto-row .operacao-sg {
+            .operacao-posto-row .operacao-pendentes,
+            .operacao-grupo-titulo .operacao-numero,
+            .operacao-grupo-titulo .operacao-pendentes {
                 grid-column: 1 / -1;
             }
             .operacao-numero,
-            .operacao-sg { text-align: left; }
+            .operacao-pendentes { text-align: left; }
             .operacao-posto-row.subnivel { margin-left: 0; }
             #resetar { margin-left: 0; margin-top: 8px; width: 100%; }
         }
@@ -1797,7 +1866,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.6</div>
+    <div class="versao">v0.9.25.7</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1842,7 +1911,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.6</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.7</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -2018,10 +2087,24 @@ try {
     </div>
 </div>
 
-<button class="btn-toggle" type="button" onclick="var el=document.getElementById('painel-estatisticas'); el.style.display = (el.style.display==='none'?'block':'none');">
-    📊 Mostrar/Ocultar Estatísticas
-</button>
+<div class="painel-leitura">
+    <div class="painel-leitura-topo">
+        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus
+            oninput="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
+            onchange="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
+            onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);} }">
+        <div class="painel-leitura-acoes">
+            <button id="resetar">🔄 Resetar Conferência</button>
+        </div>
+    </div>
+    <div class="mensagem-leitura" id="mensagemLeitura"></div>
+    <div class="modos-visualizacao">
+        <button class="btn-toggle" type="button" id="btnMostrarClassificacao" data-target="classificacao" aria-expanded="false">🏆 Classificação por chips</button>
+        <button class="btn-toggle" type="button" id="btnMostrarTradicional" data-target="tradicional" aria-expanded="false">📋 Modo tradicional por regional</button>
+    </div>
+</div>
 
+<div id="secaoClassificacao" class="secao-visualizacao oculta">
 <div id="painel-estatisticas" style="display:block;">
     <div class="painel-operacao" id="painelOperacao">
         <div class="painel-operacao-topo">
@@ -2115,13 +2198,6 @@ try {
 
 </div>
 
-<div>
-        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus
-            oninput="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
-            onchange="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
-            onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);} }">
-    <button id="resetar">🔄 Resetar Conferência</button>
-    <div class="mensagem-leitura" id="mensagemLeitura"></div>
 </div>
 
     <script>
@@ -2306,6 +2382,8 @@ try {
     })();
     </script>
 
+<div id="secaoTradicional" class="secao-visualizacao oculta">
+
 <!-- Tabelas Agrupadas -->
 <div id="tabelas">
 <?php
@@ -2317,6 +2395,14 @@ try {
 // v9.24.0: Banner por grupo
 function renderizarBanner($texto, $classe) {
     echo '<div class="banner-grupo ' . $classe . '">' . htmlspecialchars($texto, ENT_QUOTES, 'UTF-8') . '</div>';
+}
+
+function obterClasseGrupoOperacao($tituloGrupo) {
+    if ($tituloGrupo === 'Poupa Tempo') return 'tipo-pt';
+    if ($tituloGrupo === 'Posto 001') return 'tipo-r01';
+    if ($tituloGrupo === 'Capital') return 'tipo-capital';
+    if ($tituloGrupo === 'Central IIPR') return 'tipo-central';
+    return 'tipo-regional';
 }
 
 function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPosto) {
@@ -2349,15 +2435,33 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
     }
     ksort($porPosto);
 
-    echo '<div class="operacao-grupo">';
-    echo '<div class="operacao-grupo-titulo">' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '</div>';
+    $totalGrupo = count($postos);
+    $conferidosGrupo = 0;
+    foreach ($postos as $itemGrupo) {
+        if (!empty($itemGrupo['conf'])) {
+            $conferidosGrupo++;
+        }
+    }
+    $pendentesGrupo = max(0, $totalGrupo - $conferidosGrupo);
+    $classeGrupo = obterClasseGrupoOperacao($tituloGrupo);
+
+    echo '<div class="operacao-grupo ' . $classeGrupo . '">';
+    echo '<div class="operacao-grupo-titulo">';
+    echo '<div class="operacao-grupo-info">';
+    echo '<div class="operacao-grupo-nome">' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '</div>';
+    echo '<div class="operacao-grupo-resumo">Total de pacotes ' . $totalGrupo . '</div>';
+    echo '</div>';
+    echo '<div class="operacao-numero"><span>' . $totalGrupo . '</span><span class="operacao-numero-label">PACOTES</span></div>';
+    echo '<div class="operacao-numero"><span>' . $conferidosGrupo . '</span><span class="operacao-numero-label">CONFERIDOS</span></div>';
+    echo '<div class="operacao-pendentes"><span>' . $pendentesGrupo . '</span><span class="operacao-numero-label">PENDENTES</span></div>';
+    echo '</div>';
     echo '<div class="operacao-grade-header">';
     echo '<div>Pos.</div>';
     echo '<div>Operação</div>';
     echo '<div>Chips</div>';
-    echo '<div class="hide-mobile">PTS</div>';
-    echo '<div class="hide-mobile">J</div>';
-    echo '<div class="hide-mobile">SG</div>';
+    echo '<div class="hide-mobile">Pacotes</div>';
+    echo '<div class="hide-mobile">Conferidos</div>';
+    echo '<div class="hide-mobile">Pendentes</div>';
     echo '</div>';
 
     $indice = 0;
@@ -2370,6 +2474,7 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
                 $conferidos++;
             }
         }
+        $pendentes = max(0, $totalPacotes - $conferidos);
         $semUploadCount = isset($estanteSemUploadPorPosto[$postoKey]) ? (int)$estanteSemUploadPorPosto[$postoKey] : 0;
         $classeSub = ($indice > 1) ? ' subnivel' : '';
         echo '<div class="operacao-posto-row' . $classeSub . '" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '">';
@@ -2377,6 +2482,9 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
         echo '<div class="operacao-posto-meta">';
         echo '<div class="operacao-posto-nome">Posto ' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</div>';
         echo '<div class="operacao-posto-sub">' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '</div>';
+        if ($semUploadCount > 0) {
+            echo '<div class="operacao-posto-aux">Sem upload: ' . $semUploadCount . '</div>';
+        }
         echo '</div>';
         echo '<div class="operacao-chips">';
         foreach ($listaPosto as $item) {
@@ -2401,11 +2509,9 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
             echo '</button>';
         }
         echo '</div>';
-        echo '<div class="operacao-numero"><span data-role="pts">' . $totalPacotes . '</span><span class="operacao-numero-label">PACOTES</span></div>';
-        echo '<div class="operacao-numero"><span data-role="j">' . $conferidos . '</span><span class="operacao-numero-label">CONFERIDOS</span></div>';
-        $sgClass = $semUploadCount > 0 ? 'operacao-sg tem-upload-pendente' : 'operacao-sg';
-        $sgTexto = $semUploadCount > 0 ? 'SEM UPLOAD' : 'OK';
-        echo '<div class="' . $sgClass . '" data-role="sg" title="' . ($semUploadCount > 0 ? ('Lotes sem upload: ' . $semUploadCount) : 'Sem pendencias de upload') . '">' . $sgTexto . '</div>';
+        echo '<div class="operacao-numero"><span data-role="pacotes">' . $totalPacotes . '</span><span class="operacao-numero-label">PACOTES</span></div>';
+        echo '<div class="operacao-numero"><span data-role="conferidos">' . $conferidos . '</span><span class="operacao-numero-label">CONFERIDOS</span></div>';
+        echo '<div class="operacao-pendentes"><span data-role="pendentes">' . $pendentes . '</span><span class="operacao-numero-label">PENDENTES</span></div>';
         echo '</div>';
     }
 
@@ -2446,7 +2552,7 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     }
     
     echo '<h3>' . htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
-    echo ' <span class="contagem-pacotes" data-total="' . $total_pacotes . '" data-conferidos="' . $total_conferidos . '" style="color:#666; font-weight:normal; font-size:14px;">(' . $total_pacotes . ' pacotes / ' . $total_conferidos . ' conferidos)</span>';
+    echo ' <span class="contagem-pacotes" data-total="' . $total_pacotes . '" data-conferidos="' . $total_conferidos . '" style="color:#666; font-weight:normal; font-size:14px;">(' . $total_pacotes . ' pacotes / ' . $total_conferidos . ' conferidos / ' . max(0, $total_pacotes - $total_conferidos) . ' pendentes)</span>';
     if ($ehPoupaTempo) {
         echo ' <span class="tag-pt">POUPA TEMPO</span>';
     }
@@ -2578,6 +2684,8 @@ if (empty($regionais_data)) {
 
 </div>
 
+</div>
+
 <!-- Áudios -->
 <audio id="beep" src="beep.mp3" preload="auto"></audio>
 <audio id="concluido" src="concluido.mp3" preload="auto"></audio>
@@ -2647,6 +2755,10 @@ function iniciarConferenciaPacotes() {
     var modalChipDetalhe = document.getElementById('modalChipDetalhe');
     var tabelaDetalheChip = document.getElementById('tabelaDetalheChip');
     var btnFecharModalChip = document.getElementById('btnFecharModalChip');
+    var btnMostrarClassificacao = document.getElementById('btnMostrarClassificacao');
+    var btnMostrarTradicional = document.getElementById('btnMostrarTradicional');
+    var secaoClassificacao = document.getElementById('secaoClassificacao');
+    var secaoTradicional = document.getElementById('secaoTradicional');
     var pacoteCodbar = document.getElementById('pacote_codbar');
     var pacoteLote = document.getElementById('pacote_lote');
     var pacoteRegional = document.getElementById('pacote_regional');
@@ -2714,6 +2826,9 @@ function iniciarConferenciaPacotes() {
     var filaSons = [];
     var tocando = false;
     var ultimoCodLido = '';
+    var codigosEmProcessamento = {};
+    var ultimoCodigoProcessado = '';
+    var ultimaLeituraProcessadaEm = 0;
 
     function mostrarConfirmacao(texto, autoFechar) {
         if (confirmacaoTexto) {
@@ -2756,6 +2871,39 @@ function iniciarConferenciaPacotes() {
         abrirModalChipDetalhe(chip);
     });
 
+    function alternarModoVisualizacao(modo) {
+        var abrirClassificacao = modo === 'classificacao';
+        var abrirTradicional = modo === 'tradicional';
+        if (secaoClassificacao) {
+            secaoClassificacao.classList.toggle('oculta', !abrirClassificacao);
+        }
+        if (secaoTradicional) {
+            secaoTradicional.classList.toggle('oculta', !abrirTradicional);
+        }
+        if (btnMostrarClassificacao) {
+            btnMostrarClassificacao.classList.toggle('ativo', abrirClassificacao);
+            btnMostrarClassificacao.setAttribute('aria-expanded', abrirClassificacao ? 'true' : 'false');
+        }
+        if (btnMostrarTradicional) {
+            btnMostrarTradicional.classList.toggle('ativo', abrirTradicional);
+            btnMostrarTradicional.setAttribute('aria-expanded', abrirTradicional ? 'true' : 'false');
+        }
+    }
+
+    if (btnMostrarClassificacao) {
+        btnMostrarClassificacao.addEventListener('click', function() {
+            var aberto = secaoClassificacao && !secaoClassificacao.classList.contains('oculta');
+            alternarModoVisualizacao(aberto ? '' : 'classificacao');
+        });
+    }
+
+    if (btnMostrarTradicional) {
+        btnMostrarTradicional.addEventListener('click', function() {
+            var aberto = secaoTradicional && !secaoTradicional.classList.contains('oculta');
+            alternarModoVisualizacao(aberto ? '' : 'tradicional');
+        });
+    }
+
     function obterTituloTabela(tabela) {
         var titulo = tabela ? tabela.previousElementSibling : null;
         while (titulo && titulo.tagName !== 'H3') {
@@ -2780,7 +2928,7 @@ function iniciarConferenciaPacotes() {
         if (!titulo) return;
         var span = titulo.querySelector('.contagem-pacotes');
         if (!span) return;
-        span.textContent = '(' + total + ' pacotes / ' + conferidos + ' conferidos)';
+        span.textContent = '(' + total + ' pacotes / ' + conferidos + ' conferidos / ' + Math.max(0, total - conferidos) + ' pendentes)';
         span.setAttribute('data-total', String(total));
         span.setAttribute('data-conferidos', String(conferidos));
         sincronizarPainelOperacao();
@@ -2803,10 +2951,12 @@ function iniciarConferenciaPacotes() {
                 conferidos++;
             }
         }
-        var pts = row.querySelector('[data-role="pts"]');
-        var j = row.querySelector('[data-role="j"]');
-        if (pts) pts.textContent = String(total);
-        if (j) j.textContent = String(conferidos);
+        var pacotes = row.querySelector('[data-role="pacotes"]');
+        var conferidosEl = row.querySelector('[data-role="conferidos"]');
+        var pendentes = row.querySelector('[data-role="pendentes"]');
+        if (pacotes) pacotes.textContent = String(total);
+        if (conferidosEl) conferidosEl.textContent = String(conferidos);
+        if (pendentes) pendentes.textContent = String(Math.max(0, total - conferidos));
     }
 
     function atualizarChipOperacaoPorCodigo(codigo, confirmado) {
@@ -2869,10 +3019,10 @@ function iniciarConferenciaPacotes() {
             ['Posto', chip.getAttribute('data-posto') || ''],
             ['Regional', chip.getAttribute('data-regional') || ''],
             ['Quantidade', chip.getAttribute('data-qtd') || ''],
-            ['Data', chip.getAttribute('data-data') || ''],
+            ['Data', formatarDataExibicao(chip.getAttribute('data-data') || '')],
             ['Responsável produção', chip.getAttribute('data-usuario') || ''],
             ['Código de barras', chip.getAttribute('data-codigo') || ''],
-            ['Conferido em', chip.getAttribute('data-conferido-em') || 'Pendente']
+            ['Conferido em', formatarDataExibicao(chip.getAttribute('data-conferido-em') || '') || 'Pendente']
         ];
         tabelaDetalheChip.innerHTML = '';
         for (var i = 0; i < itens.length; i++) {
@@ -2891,6 +3041,20 @@ function iniciarConferenciaPacotes() {
             return p[2] + '-' + p[1] + '-' + p[0];
         }
         return valor;
+    }
+
+    function formatarDataExibicao(valor) {
+        if (!valor) return '';
+        var texto = String(valor).trim();
+        var m = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::\d{2})?)?$/);
+        if (m) {
+            var base = m[3] + '-' + m[2] + '-' + m[1];
+            if (m[4] && m[5]) {
+                return base + ' ' + m[4] + ':' + m[5];
+            }
+            return base;
+        }
+        return texto;
     }
 
     function formatarDataHoraAtual() {
@@ -3139,7 +3303,7 @@ function iniciarConferenciaPacotes() {
                 '<td>' + p.regional + '</td>' +
                 '<td>' + p.posto + '</td>' +
                 '<td>' + p.quantidade + '</td>' +
-                '<td>' + p.dataexp + '</td>' +
+                '<td>' + formatarDataExibicao(p.dataexp) + '</td>' +
                 '<td>' + (p.responsavel || '') + '</td>' +
                 '<td>' +
                 '<button type="button" class="btn-acao btn-salvar" data-editar="' + i + '">Editar</button> ' +
@@ -3504,8 +3668,26 @@ function iniciarConferenciaPacotes() {
             valor = valor.substr(0, 19);
         }
         if (valor.length !== 19) {
-            input.value = "";
+            input.value = '';
             return;
+        }
+
+        var agoraLeitura = Date.now();
+        if (codigosEmProcessamento[valor]) {
+            return;
+        }
+        if (ultimoCodigoProcessado === valor && (agoraLeitura - ultimaLeituraProcessadaEm) < 700) {
+            return;
+        }
+        codigosEmProcessamento[valor] = true;
+        ultimoCodigoProcessado = valor;
+        ultimaLeituraProcessadaEm = agoraLeitura;
+
+        function finalizarProcessamento(limparInput) {
+            delete codigosEmProcessamento[valor];
+            if (limparInput) {
+                input.value = '';
+            }
         }
 
         desbloquearAudio();
@@ -3519,15 +3701,12 @@ function iniciarConferenciaPacotes() {
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto bloqueado:</strong> ' + postoLido + ' ' + (motivoBloq || '');
             }
-            input.value = "";
+            finalizarProcessamento(true);
             return;
         }
-        
-        // Aplicar transformações opcionais
-        // valor = substituirMultiplosPadroes(valor);
-        
+
         var linha = document.querySelector('tr[data-codigo="' + valor + '"]');
-        
+
         if (!linha) {
             verificarPacoteOutraData(valor, function(resp) {
                 if (resp && resp.success && resp.status === 'outra_data') {
@@ -3535,7 +3714,7 @@ function iniciarConferenciaPacotes() {
                         mensagemLeitura.innerHTML = '<strong>Pacote de outra data:</strong> ' + formatarDataBr(resp.data || '');
                     }
                     falarTexto('pacote de outra data');
-                    input.value = "";
+                    finalizarProcessamento(true);
                     return;
                 }
 
@@ -3562,47 +3741,43 @@ function iniciarConferenciaPacotes() {
                 if (mensagemLeitura) {
                     mensagemLeitura.innerHTML = '<strong>Pacote não encontrado:</strong> adicionado à lista pendente.';
                 }
-                input.value = "";
+                finalizarProcessamento(true);
             });
             return;
         }
 
-        // v9.23.1: responsável obrigatório
         if (!usuarioAtual) {
             alert('Informe o responsável da conferência para iniciar.');
-            input.value = "";
             if (overlayUsuario) { overlayUsuario.style.display = 'flex'; }
             if (conteudoPagina) { conteudoPagina.classList.add('page-locked'); }
             if (usuarioInputModal) { usuarioInputModal.focus(); }
+            finalizarProcessamento(true);
             return;
         }
 
         if (!tipoEscolhido) {
             if (overlayTipo) overlayTipo.style.display = 'flex';
-            input.value = "";
+            finalizarProcessamento(true);
             return;
         }
-        
+
         var tipoSelecionado = obterTipoInicioSelecionado();
         var modoTodos = tipoSelecionado === 'todos';
         var regionalDoPacote = obterRegionalLinha(linha);
         var regionalDoPacoteNorm = normalizarRegionalValor(regionalDoPacote);
-        var isPoupaTempo = linha.getAttribute("data-ispt") === "1";
+        var isPoupaTempo = linha.getAttribute('data-ispt') === '1';
         var tipoPacote = isPoupaTempo ? 'poupatempo' : 'correios';
-        
-        // Verifica se já foi conferido
-        if (linha.classList.contains("confirmado")) {
+
+        if (linha.classList.contains('confirmado')) {
             enfileirarSom(pacoteJaConferido);
             destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
-            input.value = "";
+            finalizarProcessamento(true);
             return;
         }
-        
-        // v9.23.4: Lógica inteligente de sons
+
         var somAlerta = null;
         var podeConferir = true;
 
-        // Bloqueia outra regional enquanto a atual não foi concluída (Correios)
         if (podeConferir && tipoPacote === 'correios' && tipoAtual === 'correios') {
             var regionalAtualNormCheck = normalizarRegionalValor(regionalAtual);
             if (regionalAtualNormCheck && regionalDoPacoteNorm && regionalDoPacoteNorm !== regionalAtualNormCheck) {
@@ -3611,13 +3786,11 @@ function iniciarConferenciaPacotes() {
             }
         }
 
-        // Alerta de outra regional baseado na ultima leitura valida (somente Correios)
         if (ultimaRegionalLida && ultimoTipoLido === tipoPacote && tipoPacote === 'correios' && regionalDoPacoteNorm && regionalDoPacoteNorm !== ultimaRegionalLida) {
             somAlerta = pacoteOutraRegional;
             podeConferir = false;
         }
-        
-        // Caso 1: Primeiro pacote da conferência - sempre beep
+
         if (podeConferir && !primeiroConferido) {
             tipoAtual = tipoSelecionado;
             if (modoTodos || tipoAtual === tipoPacote) {
@@ -3630,35 +3803,25 @@ function iniciarConferenciaPacotes() {
             if (podeConferir) {
                 primeiroConferido = true;
             }
-        }
-        // Caso 2: Pacote Poupa Tempo aparecendo em meio aos Correios
-        else if (!modoTodos && podeConferir && tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
-            somAlerta = postoPoupaTempo; // Alerta: PT misturado com correios!
+        } else if (!modoTodos && podeConferir && tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
+            somAlerta = postoPoupaTempo;
             podeConferir = false;
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto do Poupa Tempo:</strong> altere o tipo para Poupa Tempo ou Todos.';
             }
             falarTexto('posto do poupa tempo');
-            // NÃO altera regionalAtual nem tipoAtual - continua conferindo correios
-        }
-        // Caso 3: Pacote Correios aparecendo em meio ao Poupa Tempo
-        else if (!modoTodos && podeConferir && tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
-            somAlerta = pertenceCorreios; // Alerta: pertence aos correios!
+        } else if (!modoTodos && podeConferir && tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
+            somAlerta = pertenceCorreios;
             podeConferir = false;
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
             }
             falarTexto('posto dos correios');
-            // NÃO altera regionalAtual nem tipoAtual
-        }
-        // Caso 4: Regional diferente (mesmo tipo)
-        else if (!modoTodos && podeConferir && regionalDoPacoteNorm && regionalDoPacoteNorm !== normalizarRegionalValor(regionalAtual) && tipoPacote === tipoAtual) {
-            somAlerta = pacoteOutraRegional; // Alerta: regional diferente!
+        } else if (!modoTodos && podeConferir && regionalDoPacoteNorm && regionalDoPacoteNorm !== normalizarRegionalValor(regionalAtual) && tipoPacote === tipoAtual) {
+            somAlerta = pacoteOutraRegional;
             podeConferir = false;
-            // NÃO altera regionalAtual nem tipoAtual
         }
 
-        // PT único: emitir aviso específico mesmo no primeiro pacote
         if (podeConferir && tipoPacote === 'poupatempo') {
             var totalPT = document.querySelectorAll('tbody tr[data-ispt="1"]').length;
             if (totalPT === 1 && !somAlerta) {
@@ -3666,17 +3829,15 @@ function iniciarConferenciaPacotes() {
             }
         }
 
-        // Se não pode conferir, apenas alerta
         if (!podeConferir) {
             if (somAlerta) {
                 enfileirarSom(somAlerta);
             }
-            input.value = "";
+            finalizarProcessamento(true);
             return;
         }
-        
-        // Marca como conferido
-        linha.classList.add("confirmado");
+
+        linha.classList.add('confirmado');
         var conferidoAgora = formatarDataHoraAtual();
         linha.setAttribute('data-conferido-em', conferidoAgora);
         var tdConf = linha.querySelector('.col-conferido-em');
@@ -3690,8 +3851,7 @@ function iniciarConferenciaPacotes() {
             regionalAtual = regionalDoPacoteNorm || regionalDoPacote;
         }
         atualizarResumoTabela(linha.closest('table'));
-        
-        // Toca os sons: beep na leitura válida, alerta se necessário
+
         if (!muteBeep || !muteBeep.checked) {
             enfileirarSom(beep);
         }
@@ -3702,10 +3862,7 @@ function iniciarConferenciaPacotes() {
         if (mensagemLeitura) {
             mensagemLeitura.textContent = '';
         }
-        
-        input.value = "";
-        
-        // Centraliza a linha na tela e destaca última leitura
+
         var ultimas = document.querySelectorAll('tr.ultimo-lido');
         for (var u = 0; u < ultimas.length; u++) {
             ultimas[u].classList.remove('ultimo-lido');
@@ -3716,31 +3873,26 @@ function iniciarConferenciaPacotes() {
         var alvo = rect.top + window.pageYOffset - (window.innerHeight / 2) + (rect.height / 2);
         window.scrollTo({ top: alvo, behavior: 'smooth' });
         destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
-        
-        // Atualiza contexto da ultima leitura valida
+
         ultimaRegionalLida = regionalDoPacoteNorm || regionalDoPacote;
         ultimoTipoLido = tipoPacote;
 
-        // Salvar no banco (sempre que houver usuario)
         if (usuarioAtual) {
-            var lote = linha.getAttribute("data-lote");
-            var regional = linha.getAttribute("data-regional");
-            var posto = linha.getAttribute("data-posto");
-            var dataexp = linha.getAttribute("data-data-sql") || linha.getAttribute("data-data");
-            var qtd = linha.getAttribute("data-qtd");
-            var codbar = linha.getAttribute("data-codigo");
+            var lote = linha.getAttribute('data-lote');
+            var regional = linha.getAttribute('data-regional');
+            var posto = linha.getAttribute('data-posto');
+            var dataexp = linha.getAttribute('data-data-sql') || linha.getAttribute('data-data');
+            var qtd = linha.getAttribute('data-qtd');
+            var codbar = linha.getAttribute('data-codigo');
             salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuarioAtual);
         }
-        
-        // v9.2: Verifica se completou o GRUPO atual (PT, Capital, R01, 999, ou outra regional)
+
         var grupoAtual = null;
         var todasLinhas = document.querySelectorAll('tbody tr');
         var linhasDoGrupo = [];
-        
-        // Determina qual grupo está sendo conferido
+
         if (tipoAtual === 'poupatempo') {
             grupoAtual = linha.getAttribute('data-pt-group') || linha.getAttribute('data-posto');
-            // Linhas PT do mesmo posto
             for (var i = 0; i < todasLinhas.length; i++) {
                 if (todasLinhas[i].getAttribute('data-ispt') === '1' &&
                     (todasLinhas[i].getAttribute('data-pt-group') === grupoAtual || todasLinhas[i].getAttribute('data-posto') === grupoAtual)) {
@@ -3751,40 +3903,39 @@ function iniciarConferenciaPacotes() {
             var regionalAtualNorm = normalizarRegionalValor(regionalAtual || regionalDoPacoteNorm);
             if (regionalAtualNorm === '000' || regionalAtualNorm === '999' || regionalAtualNorm === '001') {
                 grupoAtual = linha.getAttribute('data-posto');
-                for (var i = 0; i < todasLinhas.length; i++) {
-                    if (obterRegionalLinha(todasLinhas[i]) === regionalAtualNorm &&
-                        todasLinhas[i].getAttribute('data-ispt') !== '1' &&
-                        todasLinhas[i].getAttribute('data-posto') === grupoAtual) {
-                        linhasDoGrupo.push(todasLinhas[i]);
+                for (var i2 = 0; i2 < todasLinhas.length; i2++) {
+                    if (obterRegionalLinha(todasLinhas[i2]) === regionalAtualNorm &&
+                        todasLinhas[i2].getAttribute('data-ispt') !== '1' &&
+                        todasLinhas[i2].getAttribute('data-posto') === grupoAtual) {
+                        linhasDoGrupo.push(todasLinhas[i2]);
                     }
                 }
             } else {
                 grupoAtual = regionalAtualNorm;
-                // Todas as linhas da regional atual que NÃO sejam PT
-                for (var i = 0; i < todasLinhas.length; i++) {
-                    if (obterRegionalLinha(todasLinhas[i]) === regionalAtualNorm && 
-                        todasLinhas[i].getAttribute('data-ispt') !== '1') {
-                        linhasDoGrupo.push(todasLinhas[i]);
+                for (var i3 = 0; i3 < todasLinhas.length; i3++) {
+                    if (obterRegionalLinha(todasLinhas[i3]) === regionalAtualNorm &&
+                        todasLinhas[i3].getAttribute('data-ispt') !== '1') {
+                        linhasDoGrupo.push(todasLinhas[i3]);
                     }
                 }
             }
         }
-        
-        // Conta quantos foram conferidos
+
         var conferidosDoGrupo = 0;
         for (var j = 0; j < linhasDoGrupo.length; j++) {
             if (linhasDoGrupo[j].classList.contains('confirmado')) {
                 conferidosDoGrupo++;
             }
         }
-        
-        // Se completou o grupo, toca concluído e reseta contexto
+
         if (conferidosDoGrupo === linhasDoGrupo.length && linhasDoGrupo.length > 0) {
             enfileirarSom(concluido);
             regionalAtual = null;
             tipoAtual = null;
             primeiroConferido = false;
         }
+
+        finalizarProcessamento(true);
     }
 
     window.processarLeituraCodigo = processarLeituraCodigo;

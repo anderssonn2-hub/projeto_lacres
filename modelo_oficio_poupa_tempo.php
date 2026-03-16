@@ -1,6 +1,6 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
-    v9.25.6: Persistência da conferência PT em conferencia_pacotes
+    v9.25.7: Persistência da conferência PT em conferencia_pacotes
     - [NOVO] Lote conferido na tela salva conf='s' em conferencia_pacotes
     - [NOVO] Reabertura com filtro mantém lotes já conferidos em verde
 
@@ -1060,7 +1060,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .oficio *{box-sizing:border-box}
 
 /* Classes de layout */
-    overflow:visible;
 .cols65{width:65%}
 .cols50{width:50%}
 .cols25{width:25%}
