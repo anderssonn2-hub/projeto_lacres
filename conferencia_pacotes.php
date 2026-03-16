@@ -1304,6 +1304,11 @@ try {
             70% { box-shadow: 0 0 0 10px rgba(0,123,255,0); }
             100% { box-shadow: 0 0 0 0 rgba(0,123,255,0); }
         }
+        @keyframes pulseChipAtivo {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,230,109,0.42); }
+            50% { transform: scale(1.03); box-shadow: 0 0 0 8px rgba(255,230,109,0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,230,109,0); }
+        }
         
         .tag-pt {
             background: #e74c3c;
@@ -1499,10 +1504,10 @@ try {
             margin-top: 8px;
             scroll-margin-top: 110px;
         }
-        .operacao-posto-row.subnivel { margin-left: 18px; }
         .operacao-posto-row.ativo {
             border-color: #ffe66d;
             box-shadow: 0 0 0 2px rgba(255,230,109,0.18);
+            animation: pulse 1.8s ease-in-out infinite;
         }
         .operacao-posicao {
             display: inline-flex;
@@ -1551,6 +1556,7 @@ try {
         .operacao-chip.ativo {
             outline: 2px solid #ffe66d;
             outline-offset: 1px;
+            animation: pulseChipAtivo 1.8s ease-in-out infinite;
         }
         .operacao-chip.sem-upload {
             border-style: dashed;
@@ -1992,6 +1998,61 @@ try {
     </form>
 </div>
 
+<div class="cards-resumo" id="cardsResumoFixos">
+    <div class="card-resumo">
+        <h4>Pacotes na tela</h4>
+        <div class="valor"><?php echo (int)$total_codigos; ?></div>
+    </div>
+    <div class="card-resumo">
+        <h4>Carteiras emitidas</h4>
+        <div class="valor"><?php echo number_format((int)$stats['carteiras_emitidas'], 0, ',', '.'); ?></div>
+    </div>
+    <div class="card-resumo">
+        <h4>Carteiras conferidas</h4>
+        <div class="valor"><?php echo number_format((int)$stats['carteiras_conferidas'], 0, ',', '.'); ?></div>
+    </div>
+    <div class="card-resumo">
+        <h4>Postos com retirada</h4>
+        <div class="valor"><?php echo (int)$stats['postos_conferidos']; ?></div>
+    </div>
+    <div class="card-resumo">
+        <h4>Pacotes conferidos</h4>
+        <div class="valor"><?php echo (int)$stats['pacotes_conferidos']; ?></div>
+    </div>
+    <div class="card-resumo">
+        <h4>Pacotes na estante</h4>
+        <div class="valor"><?php echo (int)$estante_stats['total']; ?></div>
+    </div>
+    <div class="card-resumo">
+        <h4>Lotes sem upload</h4>
+        <div class="valor"><?php echo (int)count($estante_lotes_sem_upload); ?></div>
+    </div>
+</div>
+
+<div class="painel-estante" id="painelEstanteFixo">
+    <h4>🔎 Lotes na estante sem upload</h4>
+    <div class="breakdown">
+        Capital: <?php echo (int)$estante_stats['capital']; ?> | Central: <?php echo (int)$estante_stats['central']; ?> | Regional: <?php echo (int)$estante_stats['regional']; ?> | PT: <?php echo (int)$estante_stats['poupatempo']; ?>
+    </div>
+    <?php if (!empty($estante_lotes_sem_upload)) { ?>
+        <div class="lista-lotes">
+            <?php
+            $limite = 50;
+            $total_lotes = count($estante_lotes_sem_upload);
+            $mostrar = array_slice($estante_lotes_sem_upload, 0, $limite);
+            foreach ($mostrar as $lote) {
+                echo '<span class="lote-badge">' . e($lote) . '</span>';
+            }
+            if ($total_lotes > $limite) {
+                echo '<span class="lote-badge">+ ' . e($total_lotes - $limite) . ' outros</span>';
+            }
+            ?>
+        </div>
+    <?php } else { ?>
+        <div style="font-size:12px; color:#666;">Nenhum lote pendente no filtro atual.</div>
+    <?php } ?>
+</div>
+
 
 <div class="painel-pacotes-novos" id="painelPacotesNovos" style="display:none;">
     <strong>📥 Pacotes não listados</strong>
@@ -2140,62 +2201,6 @@ try {
             ?>
         </div>
     </div>
-
-    <div class="cards-resumo">
-        <div class="card-resumo">
-            <h4>Pacotes na tela</h4>
-            <div class="valor"><?php echo (int)$total_codigos; ?></div>
-        </div>
-        <div class="card-resumo">
-            <h4>Carteiras emitidas</h4>
-            <div class="valor"><?php echo number_format((int)$stats['carteiras_emitidas'], 0, ',', '.'); ?></div>
-        </div>
-        <div class="card-resumo">
-            <h4>Carteiras conferidas</h4>
-            <div class="valor"><?php echo number_format((int)$stats['carteiras_conferidas'], 0, ',', '.'); ?></div>
-        </div>
-        <div class="card-resumo">
-            <h4>Postos com retirada</h4>
-            <div class="valor"><?php echo (int)$stats['postos_conferidos']; ?></div>
-        </div>
-        <div class="card-resumo">
-            <h4>Pacotes conferidos</h4>
-            <div class="valor"><?php echo (int)$stats['pacotes_conferidos']; ?></div>
-        </div>
-        <div class="card-resumo">
-            <h4>Pacotes na estante</h4>
-            <div class="valor"><?php echo (int)$estante_stats['total']; ?></div>
-        </div>
-        <div class="card-resumo">
-            <h4>Lotes sem upload</h4>
-            <div class="valor"><?php echo (int)count($estante_lotes_sem_upload); ?></div>
-        </div>
-    </div>
-
-    <div class="painel-estante">
-        <h4>🔎 Lotes na estante sem upload</h4>
-        <div class="breakdown">
-            Capital: <?php echo (int)$estante_stats['capital']; ?> | Central: <?php echo (int)$estante_stats['central']; ?> | Regional: <?php echo (int)$estante_stats['regional']; ?> | PT: <?php echo (int)$estante_stats['poupatempo']; ?>
-        </div>
-        <?php if (!empty($estante_lotes_sem_upload)) { ?>
-            <div class="lista-lotes">
-                <?php
-                $limite = 50;
-                $total_lotes = count($estante_lotes_sem_upload);
-                $mostrar = array_slice($estante_lotes_sem_upload, 0, $limite);
-                foreach ($mostrar as $lote) {
-                    echo '<span class="lote-badge">' . e($lote) . '</span>';
-                }
-                if ($total_lotes > $limite) {
-                    echo '<span class="lote-badge">+ ' . e($total_lotes - $limite) . ' outros</span>';
-                }
-                ?>
-            </div>
-        <?php } else { ?>
-            <div style="font-size:12px; color:#666;">Nenhum lote pendente no filtro atual.</div>
-        <?php } ?>
-    </div>
-
 </div>
 
 </div>
@@ -2394,7 +2399,8 @@ try {
 
 // v9.24.0: Banner por grupo
 function renderizarBanner($texto, $classe) {
-    echo '<div class="banner-grupo ' . $classe . '">' . htmlspecialchars($texto, ENT_QUOTES, 'UTF-8') . '</div>';
+    $tipoView = ($classe === 'banner-pt') ? 'poupatempo' : 'correios';
+    echo '<div class="banner-grupo ' . $classe . '" data-view="' . $tipoView . '">' . htmlspecialchars($texto, ENT_QUOTES, 'UTF-8') . '</div>';
 }
 
 function obterClasseGrupoOperacao($tituloGrupo) {
@@ -2444,8 +2450,9 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
     }
     $pendentesGrupo = max(0, $totalGrupo - $conferidosGrupo);
     $classeGrupo = obterClasseGrupoOperacao($tituloGrupo);
+    $tipoViewGrupo = (!empty($postos[0]['isPT']) && (int)$postos[0]['isPT'] === 1) ? 'poupatempo' : 'correios';
 
-    echo '<div class="operacao-grupo ' . $classeGrupo . '">';
+    echo '<div class="operacao-grupo ' . $classeGrupo . '" data-view="' . $tipoViewGrupo . '">';
     echo '<div class="operacao-grupo-titulo">';
     echo '<div class="operacao-grupo-info">';
     echo '<div class="operacao-grupo-nome">' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '</div>';
@@ -2464,9 +2471,7 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
     echo '<div class="hide-mobile">Pendentes</div>';
     echo '</div>';
 
-    $indice = 0;
     foreach ($porPosto as $postoKey => $listaPosto) {
-        $indice++;
         $totalPacotes = count($listaPosto);
         $conferidos = 0;
         foreach ($listaPosto as $item) {
@@ -2476,8 +2481,7 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
         }
         $pendentes = max(0, $totalPacotes - $conferidos);
         $semUploadCount = isset($estanteSemUploadPorPosto[$postoKey]) ? (int)$estanteSemUploadPorPosto[$postoKey] : 0;
-        $classeSub = ($indice > 1) ? ' subnivel' : '';
-        echo '<div class="operacao-posto-row' . $classeSub . '" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '">';
+        echo '<div class="operacao-posto-row" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '">';
         echo '<div><span class="operacao-posicao">' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</span></div>';
         echo '<div class="operacao-posto-meta">';
         echo '<div class="operacao-posto-nome">Posto ' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</div>';
@@ -2550,14 +2554,15 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
             $total_conferidos++;
         }
     }
+    $tipoView = $ehPoupaTempo ? 'poupatempo' : 'correios';
     
-    echo '<h3>' . htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
+    echo '<h3 data-view="' . $tipoView . '">' . htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
     echo ' <span class="contagem-pacotes" data-total="' . $total_pacotes . '" data-conferidos="' . $total_conferidos . '" style="color:#666; font-weight:normal; font-size:14px;">(' . $total_pacotes . ' pacotes / ' . $total_conferidos . ' conferidos / ' . max(0, $total_pacotes - $total_conferidos) . ' pendentes)</span>';
     if ($ehPoupaTempo) {
         echo ' <span class="tag-pt">POUPA TEMPO</span>';
     }
     echo '</h3>';
-    echo '<table>';
+    echo '<table data-view="' . $tipoView . '">';
     echo '<thead><tr>';
     echo '<th>Regional</th>';
     echo '<th class="sortable" data-sort="lote">Lote <span class="sort-indicator">↕</span></th>';
@@ -2637,7 +2642,7 @@ if (!empty($grupo_capital)) {
         $capital_por_posto[$p['posto']][] = $p;
     }
     ksort($capital_por_posto);
-    echo '<div class="grupo-capital-wrapper">';
+    echo '<div class="grupo-capital-wrapper" data-view="correios">';
     echo '<div class="grupo-capital-titulo">Capital</div>';
     foreach ($capital_por_posto as $postoKey => $lista) {
         echo '<div class="subgrupo-posto">';
@@ -2656,7 +2661,7 @@ if (!empty($grupo_999)) {
         $central_por_posto[$p['posto']][] = $p;
     }
     ksort($central_por_posto);
-    echo '<div class="grupo-central-wrapper">';
+    echo '<div class="grupo-central-wrapper" data-view="correios">';
     echo '<div class="grupo-central-titulo">Central IIPR</div>';
     foreach ($central_por_posto as $postoKey => $lista) {
         echo '<div class="subgrupo-posto">';
@@ -2890,6 +2895,70 @@ function iniciarConferenciaPacotes() {
         }
     }
 
+    function nomeResponsavelValido(nome) {
+        var texto = String(nome || '').trim();
+        if (!texto) return false;
+        var invalido = texto.toLowerCase();
+        return invalido !== 'teste' && invalido !== 'não informado' && invalido !== 'nao informado';
+    }
+
+    function centralizarElemento(elemento) {
+        if (!elemento || elemento.offsetParent === null) return;
+        var rect = elemento.getBoundingClientRect();
+        var topo = rect.top + window.pageYOffset - (window.innerHeight / 2) + (rect.height / 2);
+        window.scrollTo({ top: Math.max(0, topo), behavior: 'smooth' });
+    }
+
+    function correspondeTipoVisual(tipo, isPt) {
+        if (tipo === 'todos') return true;
+        if (tipo === 'poupatempo') return !!isPt;
+        return !isPt;
+    }
+
+    function aplicarFiltroTipoVisual(tipo) {
+        var tipoAtualVisual = tipo || obterTipoInicioSelecionado();
+        var linhas = document.querySelectorAll('#tabelas tbody tr');
+        for (var i = 0; i < linhas.length; i++) {
+            var linha = linhas[i];
+            var isPt = linha.getAttribute('data-ispt') === '1';
+            linha.style.display = correspondeTipoVisual(tipoAtualVisual, isPt) ? '' : 'none';
+        }
+
+        var tabelas = document.querySelectorAll('#tabelas table[data-view]');
+        for (var j = 0; j < tabelas.length; j++) {
+            var tabela = tabelas[j];
+            var visiveis = tabela.querySelectorAll('tbody tr:not([style*="display: none"])').length;
+            var exibirTabela = visiveis > 0;
+            tabela.style.display = exibirTabela ? '' : 'none';
+            var titulo = obterTituloTabela(tabela);
+            if (titulo) titulo.style.display = exibirTabela ? '' : 'none';
+        }
+
+        var blocosCorreios = document.querySelectorAll('.grupo-capital-wrapper[data-view], .grupo-central-wrapper[data-view]');
+        for (var k = 0; k < blocosCorreios.length; k++) {
+            var bloco = blocosCorreios[k];
+            var temTabelaVisivel = bloco.querySelector('table[data-view]:not([style*="display: none"])');
+            bloco.style.display = temTabelaVisivel ? '' : 'none';
+        }
+
+        var banners = document.querySelectorAll('.banner-grupo[data-view]');
+        for (var b = 0; b < banners.length; b++) {
+            var banner = banners[b];
+            var view = banner.getAttribute('data-view') || 'todos';
+            banner.style.display = (tipoAtualVisual === 'todos' || view === tipoAtualVisual) ? '' : 'none';
+        }
+
+        var gruposOperacao = document.querySelectorAll('.operacao-grupo[data-view]');
+        for (var g = 0; g < gruposOperacao.length; g++) {
+            var grupo = gruposOperacao[g];
+            var groupView = grupo.getAttribute('data-view') || 'todos';
+            grupo.style.display = (tipoAtualVisual === 'todos' || groupView === tipoAtualVisual) ? '' : 'none';
+        }
+
+        atualizarResumoTodasTabelas();
+        sincronizarPainelOperacao();
+    }
+
     if (btnMostrarClassificacao) {
         btnMostrarClassificacao.addEventListener('click', function() {
             var aberto = secaoClassificacao && !secaoClassificacao.classList.contains('oculta');
@@ -2917,9 +2986,13 @@ function iniciarConferenciaPacotes() {
         var tbody = tabela.tBodies && tabela.tBodies[0] ? tabela.tBodies[0] : null;
         if (!tbody) return;
         var linhas = tbody.rows;
-        var total = linhas.length;
+        var total = 0;
         var conferidos = 0;
         for (var i = 0; i < linhas.length; i++) {
+            if (linhas[i].style.display === 'none') {
+                continue;
+            }
+            total++;
             if (linhas[i].classList.contains('confirmado')) {
                 conferidos++;
             }
@@ -2989,9 +3062,9 @@ function iniciarConferenciaPacotes() {
         var linha = chip.closest('.operacao-posto-row');
         if (linha) {
             linha.classList.add('ativo');
-            linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            centralizarElemento(linha);
         } else {
-            chip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            centralizarElemento(chip);
         }
     }
 
@@ -3242,9 +3315,15 @@ function iniciarConferenciaPacotes() {
         }
         tipoEscolhido = true;
         if (overlayTipo) overlayTipo.style.display = 'none';
+        regionalAtual = null;
+        tipoAtual = null;
+        primeiroConferido = false;
+        ultimaRegionalLida = null;
+        ultimoTipoLido = null;
         try {
             sessionStorage.setItem(storageTipoKey, tipo);
         } catch (e) {}
+        aplicarFiltroTipoVisual(tipo);
         if (input) input.focus();
     }
 
@@ -3497,6 +3576,10 @@ function iniciarConferenciaPacotes() {
     }
 
     function liberarPaginaComUsuario(nome, restaurar) {
+        if (!nomeResponsavelValido(nome)) {
+            if (usuarioInputModal) usuarioInputModal.focus();
+            return;
+        }
         aplicarModoConsulta(false);
         try { localStorage.removeItem(storageModoKey); } catch (e) {}
         usuarioAtual = nome;
@@ -3531,7 +3614,7 @@ function iniciarConferenciaPacotes() {
     if (btnConfirmarUsuario) {
         btnConfirmarUsuario.addEventListener('click', function() {
             var nome = usuarioInputModal ? usuarioInputModal.value.trim() : '';
-            if (!nome) {
+            if (!nomeResponsavelValido(nome)) {
                 alert('Informe o responsável da conferência.');
                 if (usuarioInputModal) usuarioInputModal.focus();
                 return;
@@ -3563,6 +3646,13 @@ function iniciarConferenciaPacotes() {
         });
     }
 
+    var radiosTipo = document.querySelectorAll('input[name="tipo_inicio"]');
+    for (var rt = 0; rt < radiosTipo.length; rt++) {
+        radiosTipo[rt].addEventListener('change', function() {
+            selecionarTipoConferencia(this.value);
+        });
+    }
+
     if (usuarioInputModal) {
         usuarioInputModal.addEventListener('keydown', function(e) {
             if (e.keyCode === 13) {
@@ -3591,13 +3681,16 @@ function iniciarConferenciaPacotes() {
             ativarConsulta();
         } else {
             var nomeSalvo = sessionStorage.getItem(storageUsuarioKey) || '';
-            if (nomeSalvo) {
+            if (nomeResponsavelValido(nomeSalvo)) {
                 if (usuarioInputModal) usuarioInputModal.value = nomeSalvo;
                 liberarPaginaComUsuario(nomeSalvo, true);
+            } else {
+                try { sessionStorage.removeItem(storageUsuarioKey); } catch (e4) {}
             }
         }
     } catch (e3) {}
 
+    aplicarFiltroTipoVisual(obterTipoInicioSelecionado());
     atualizarResumoTodasTabelas();
     sincronizarPainelOperacao();
     
@@ -3869,9 +3962,7 @@ function iniciarConferenciaPacotes() {
         }
         linha.classList.add('ultimo-lido');
 
-        var rect = linha.getBoundingClientRect();
-        var alvo = rect.top + window.pageYOffset - (window.innerHeight / 2) + (rect.height / 2);
-        window.scrollTo({ top: alvo, behavior: 'smooth' });
+        centralizarElemento(linha);
         destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
 
         ultimaRegionalLida = regionalDoPacoteNorm || regionalDoPacote;
