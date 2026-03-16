@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.7
+/* conferencia_pacotes.php — v0.9.25.8
+ * CHANGELOG v9.25.8:
+ * - [AJUSTE] Filtro inicial usa a data do dia por padrao
+ * - [AJUSTE] Versao atualizada para 0.9.25.8
+ *
  * CHANGELOG v9.25.7:
  * - [CORRIGIDO] Aviso de pacote não encontrado emitido apenas uma vez por leitura
  * - [NOVO] Classificação por chips e modo tradicional iniciam recolhidos e alternam entre si
@@ -708,23 +712,16 @@ try {
         }
     }
 
-    // v8.17.2: Se nenhum filtro, carrega APENAS última data (rápido)
+    // v9.25.8: Se nenhum filtro, usa a data atual
     if ($data_ini_sql === '' && $data_fim_sql === '' && empty($datas_sql)) {
-        $stmt = $pdo->query("SELECT DISTINCT DATE_FORMAT(dataCarga, '%Y-%m-%d') as data 
-                             FROM ciPostosCsv 
-                             WHERE dataCarga IS NOT NULL 
-                             ORDER BY dataCarga DESC 
-                             LIMIT 1");
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row && !empty($row['data'])) {
-            $data_ini_sql = $row['data'];
-            $data_fim_sql = $row['data'];
-            if ($data_ini === '') {
-                $data_ini = $row['data'];
-            }
-            if ($data_fim === '') {
-                $data_fim = $row['data'];
-            }
+        $hoje = date('Y-m-d');
+        $data_ini_sql = $hoje;
+        $data_fim_sql = $hoje;
+        if ($data_ini === '') {
+            $data_ini = $hoje;
+        }
+        if ($data_fim === '') {
+            $data_fim = $hoje;
         }
     }
 
@@ -1122,7 +1119,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.7</title>
+    <title>Conferência de Pacotes v0.9.25.8</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1872,7 +1869,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.7</div>
+    <div class="versao">v0.9.25.8</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1917,7 +1914,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.7</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.8</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">

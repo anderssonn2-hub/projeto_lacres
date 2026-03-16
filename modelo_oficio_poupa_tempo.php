@@ -1,6 +1,6 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
-    v9.25.7: Persistência da conferência PT em conferencia_pacotes
+    v9.25.8: Persistência da conferência PT em conferencia_pacotes
     - [NOVO] Lote conferido na tela salva conf='s' em conferencia_pacotes
     - [NOVO] Reabertura com filtro mantém lotes já conferidos em verde
 

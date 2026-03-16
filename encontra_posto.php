@@ -1,5 +1,5 @@
 <?php
-/* encontra_posto.php — v2.3
+/* encontra_posto.php — v0.9.25.8
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
  * Registra leituras para controle da estante.
@@ -135,6 +135,11 @@ try {
         $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
         $data_ini = normalizarDataIso(isset($_POST['data_ini']) ? $_POST['data_ini'] : '');
         $data_fim = normalizarDataIso(isset($_POST['data_fim']) ? $_POST['data_fim'] : '');
+        $hoje = date('Y-m-d');
+        if ($data_ini === '' && $data_fim === '' && empty($datas_alvo)) {
+            $data_ini = $hoje;
+            $data_fim = $hoje;
+        }
         if ($data_ini !== '' && $data_fim === '') {
             $data_fim = $data_ini;
         }
@@ -249,6 +254,11 @@ try {
         $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
         $data_ini = normalizarDataIso(isset($_POST['data_ini']) ? $_POST['data_ini'] : '');
         $data_fim = normalizarDataIso(isset($_POST['data_fim']) ? $_POST['data_fim'] : '');
+        $hoje = date('Y-m-d');
+        if ($data_ini === '' && $data_fim === '' && empty($datas_alvo)) {
+            $data_ini = $hoje;
+            $data_fim = $hoje;
+        }
         if ($data_ini !== '' && $data_fim === '') {
             $data_fim = $data_ini;
         }
@@ -307,6 +317,9 @@ try {
             $voz = 'Poupa Tempo ' . $posto_int;
             $tipo_posto = 'poupatempo';
             $label_tipo = 'Poupa Tempo';
+        } elseif ($posto_pad === '001') {
+            $voz = 'Posto 001';
+            $label_tipo = 'Posto 001';
         } elseif ($regional_real === 0) {
             $voz = 'Posto ' . $posto_int;
             $label_tipo = 'Capital';
@@ -500,7 +513,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto v0.9.25.3 - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.25.8 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -806,8 +819,8 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.25.3</span>
-        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.3</span>
+        <span class="versao">v0.9.25.8</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.8</span>
         <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">
@@ -879,36 +892,6 @@ try {
         <div class="resultado-body" id="resultadoBody"></div>
     </div>
 
-    <div class="estantes-container">
-        <div class="estantes-header">
-            <h3>Mapa de Estantes</h3>
-            <div class="estantes-toggle" id="estantesToggle">
-                <button type="button" data-view="todas" class="ativo">Todas</button>
-                <button type="button" data-view="correios">Correios</button>
-                <button type="button" data-view="poupatempo">Poupa Tempo</button>
-            </div>
-        </div>
-        <div class="estantes-resumo" id="estantesResumo">Correios: 0 lotes | Poupa Tempo: 0 lotes</div>
-        <div class="estantes-grid">
-            <div class="estante" data-grupo="correios">
-                <div class="estante-coluna">
-                    <div class="estante-titulo">Correios - Estante 1</div>
-                    <div id="estanteCorreiosA"></div>
-                </div>
-                <div class="estante-coluna">
-                    <div class="estante-titulo">Correios - Estante 2</div>
-                    <div id="estanteCorreiosB"></div>
-                </div>
-            </div>
-            <div class="estante" data-grupo="poupatempo">
-                <div class="estante-coluna">
-                    <div class="estante-titulo">Poupa Tempo</div>
-                    <div id="estantePoupaTempo"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
 </div>
 
 <audio id="audioBeep" src="beep.mp3" preload="auto"></audio>
@@ -951,6 +934,15 @@ function formatarHoje() {
     var mm = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1);
     var dd = (d.getDate() < 10 ? '0' : '') + d.getDate();
     return yyyy + '-' + mm + '-' + dd;
+}
+
+function formatarDataBr(valor) {
+    var texto = String(valor || '').trim();
+    var m = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+        return m[3] + '-' + m[2] + '-' + m[1];
+    }
+    return texto;
 }
 
 function obterDataIni() {
@@ -1019,7 +1011,7 @@ function atualizarBannerDatas() {
     if (!banner || !texto) return;
     if (ini) {
         var confirmado = periodoConfirmado();
-        texto.textContent = 'Periodo ativo: ' + ini + ' a ' + (fim || ini) + (confirmado ? '' : ' (nao confirmado)');
+        texto.textContent = 'Periodo ativo: ' + formatarDataBr(ini) + ' a ' + formatarDataBr(fim || ini) + (confirmado ? '' : ' (nao confirmado)');
         banner.style.display = 'flex';
     } else {
         banner.style.display = 'none';
@@ -1217,12 +1209,25 @@ function exibirResultado(dados) {
         header.className += ' bg-desconhecido';
     }
 
+    numDiv.style.fontSize = '';
+    tipoDiv.style.fontSize = '';
+    tipoDiv.style.fontWeight = '';
     if (dados.entrega === 'poupatempo') {
-        numDiv.textContent = 'PT ' + dados.posto_int;
+        numDiv.textContent = 'Posto ' + dados.posto;
+        tipoDiv.textContent = 'Poupa Tempo';
+    } else if (String(dados.posto) === '001') {
+        numDiv.textContent = 'Posto 001';
+        tipoDiv.textContent = 'Posto 001';
+    } else if (dados.regional !== 0 && dados.regional !== 999 && dados.posto_encontrado) {
+        numDiv.textContent = 'Regional ' + dados.regional_pad;
+        tipoDiv.textContent = 'Posto ' + dados.posto;
+        numDiv.style.fontSize = '64px';
+        tipoDiv.style.fontSize = '18px';
+        tipoDiv.style.fontWeight = '700';
     } else {
         numDiv.textContent = 'Posto ' + dados.posto;
+        tipoDiv.textContent = dados.label_tipo;
     }
-    tipoDiv.textContent = dados.label_tipo;
 
     body.innerHTML = '';
 
@@ -1619,11 +1624,11 @@ atualizarIndicadorFoco();
 var inputIni = document.getElementById('data_ini_estante');
 var inputFim = document.getElementById('data_fim_estante');
 if (inputIni && inputFim) {
-    var salvaIni = localStorage.getItem('estante_data_ini') || '';
-    var salvaFim = localStorage.getItem('estante_data_fim') || '';
     var hoje = formatarHoje();
-    inputIni.value = salvaIni !== '' ? salvaIni : hoje;
-    inputFim.value = salvaFim !== '' ? salvaFim : inputIni.value;
+    inputIni.value = hoje;
+    inputFim.value = hoje;
+    localStorage.setItem('estante_data_ini', hoje);
+    localStorage.setItem('estante_data_fim', hoje);
     inputIni.addEventListener('change', salvarDatasAlvo);
     inputFim.addEventListener('change', salvarDatasAlvo);
     inputIni.addEventListener('blur', salvarDatasAlvo);
@@ -1654,11 +1659,8 @@ if (btnCancelar) {
     btnCancelar.addEventListener('click', fecharModalDatas);
 }
 atualizarBannerDatas();
-if (!periodoConfirmado()) {
-    abrirModalDatas();
-} else {
-    fecharModalDatas();
-}
+confirmarPeriodoAtual();
+fecharModalDatas();
 var toggleBtns = document.querySelectorAll('#estantesToggle button[data-view]');
 for (var i = 0; i < toggleBtns.length; i++) {
     toggleBtns[i].addEventListener('click', function() {
