@@ -3453,11 +3453,10 @@ function iniciarConferenciaPacotes() {
     }
 
     function normalizarTextoVoz(texto) {
-        var base = String(texto || '').toLowerCase();
-        if (base.normalize) {
-            base = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        }
-        return base
+        return String(texto || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
             .replace(/[^a-z0-9\s]/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
