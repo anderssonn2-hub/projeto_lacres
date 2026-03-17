@@ -1,5 +1,14 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.8
+/* conferencia_pacotes.php — v0.9.25.10
+ * CHANGELOG v9.25.10:
+ * - [NOVO] Grupos de malote IIPR e malote Correios para separar linhas repetidas do mesmo posto
+ * - [NOVO] Persistência dos grupos no modo chips para futura renderização fiel do ofício
+ *
+ * CHANGELOG v9.25.9:
+ * - [NOVO] Atribuição de lotes a lacres IIPR e malotes Correios no modo chips
+ * - [NOVO] Persistência por lote em conferencia_pacotes_lacres para reaproveitar no ofício
+ * - [AJUSTE] Reset da conferência também limpa vínculos do período filtrado
+ *
  * CHANGELOG v9.25.8:
  * - [AJUSTE] Filtro inicial usa a data do dia por padrao
  * - [AJUSTE] Versao atualizada para 0.9.25.8
@@ -290,6 +299,37 @@ try {
         PRIMARY KEY (id)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
 
+    // v9.25.9: Vinculo fino entre lote conferido e malotes/lacres usados no modo chips
+    $pdo->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_lacres (
+        id INT NOT NULL AUTO_INCREMENT,
+        codbar VARCHAR(25) NOT NULL,
+        lote VARCHAR(8) NOT NULL,
+        regional VARCHAR(3) NOT NULL,
+        posto VARCHAR(10) NOT NULL,
+        dataexp DATE NOT NULL,
+        qtd INT(5) NOT NULL DEFAULT 0,
+        lacre_iipr INT(11) DEFAULT NULL,
+        grupo_iipr VARCHAR(40) DEFAULT NULL,
+        lacre_correios INT(11) DEFAULT NULL,
+        grupo_correios VARCHAR(40) DEFAULT NULL,
+        etiqueta_correios VARCHAR(35) DEFAULT NULL,
+        usuario_lacre VARCHAR(120) DEFAULT NULL,
+        atualizado_em DATETIME NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_codbar (codbar),
+        KEY idx_periodo (dataexp),
+        KEY idx_posto_lote (posto, lote)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    $colsGrupoIipr = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes_lacres LIKE 'grupo_iipr'")->fetchAll();
+    if (count($colsGrupoIipr) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes_lacres ADD COLUMN grupo_iipr VARCHAR(40) DEFAULT NULL AFTER lacre_iipr");
+    }
+    $colsGrupoCorreios = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes_lacres LIKE 'grupo_correios'")->fetchAll();
+    if (count($colsGrupoCorreios) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes_lacres ADD COLUMN grupo_correios VARCHAR(40) DEFAULT NULL AFTER lacre_correios");
+    }
+
     // Handler AJAX salvar
     if (isset($_POST['salvar_lote_ajax'])) {
         $lote = trim($_POST['lote']);
@@ -315,6 +355,91 @@ try {
         $stmt = null; // v8.17.4: Libera statement
         $pdo = null;  // v8.17.4: Fecha conexão
         die(json_encode(array('success' => true)));
+    }
+
+    if (isset($_POST['salvar_atribuicao_lacres_ajax'])) {
+        $payload = isset($_POST['pacotes']) ? $_POST['pacotes'] : '';
+        $usuario_lacre = isset($_POST['usuario']) ? trim($_POST['usuario']) : '';
+        if ($usuario_lacre === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Usuario obrigatorio')));
+        }
+
+        $pacotes = json_decode($payload, true);
+        if (!is_array($pacotes) || empty($pacotes)) {
+            die(json_encode(array('success' => false, 'erro' => 'Nenhum lote informado')));
+        }
+
+        $sqlUpsert = "INSERT INTO conferencia_pacotes_lacres
+            (codbar, lote, regional, posto, dataexp, qtd, lacre_iipr, grupo_iipr, lacre_correios, grupo_correios, etiqueta_correios, usuario_lacre, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+                lote = VALUES(lote),
+                regional = VALUES(regional),
+                posto = VALUES(posto),
+                dataexp = VALUES(dataexp),
+                qtd = VALUES(qtd),
+                lacre_iipr = VALUES(lacre_iipr),
+                grupo_iipr = VALUES(grupo_iipr),
+                lacre_correios = VALUES(lacre_correios),
+                grupo_correios = VALUES(grupo_correios),
+                etiqueta_correios = VALUES(etiqueta_correios),
+                usuario_lacre = VALUES(usuario_lacre),
+                atualizado_em = NOW()";
+        $stmtUpsert = $pdo->prepare($sqlUpsert);
+        $stmtDelete = $pdo->prepare("DELETE FROM conferencia_pacotes_lacres WHERE codbar = ?");
+
+        $salvos = 0;
+        foreach ($pacotes as $pacote) {
+            $codbar = isset($pacote['codbar']) ? preg_replace('/\D+/', '', (string)$pacote['codbar']) : '';
+            $lote = isset($pacote['lote']) ? str_pad(preg_replace('/\D+/', '', (string)$pacote['lote']), 8, '0', STR_PAD_LEFT) : '';
+            $regional = isset($pacote['regional']) ? str_pad(preg_replace('/\D+/', '', (string)$pacote['regional']), 3, '0', STR_PAD_LEFT) : '';
+            $posto = isset($pacote['posto']) ? str_pad(preg_replace('/\D+/', '', (string)$pacote['posto']), 3, '0', STR_PAD_LEFT) : '';
+            $dataexp = isset($pacote['dataexp']) ? normalizarDataSqlPacote((string)$pacote['dataexp']) : '';
+            $qtd = isset($pacote['qtd']) ? (int)$pacote['qtd'] : 0;
+            $lacreI = isset($pacote['lacre_iipr']) ? preg_replace('/\D+/', '', (string)$pacote['lacre_iipr']) : '';
+            $grupoI = isset($pacote['grupo_iipr']) ? trim((string)$pacote['grupo_iipr']) : '';
+            $lacreC = isset($pacote['lacre_correios']) ? preg_replace('/\D+/', '', (string)$pacote['lacre_correios']) : '';
+            $grupoC = isset($pacote['grupo_correios']) ? trim((string)$pacote['grupo_correios']) : '';
+            $etiqueta = isset($pacote['etiqueta_correios']) ? trim((string)$pacote['etiqueta_correios']) : '';
+
+            if ($codbar === '' && $lote !== '' && $regional !== '' && $posto !== '' && $qtd > 0) {
+                $codbar = $lote . $regional . $posto . str_pad((string)$qtd, 5, '0', STR_PAD_LEFT);
+            }
+            if ($codbar === '' || $lote === '' || $posto === '' || $dataexp === '') {
+                continue;
+            }
+
+            $lacreIVal = ($lacreI === '' ? null : (int)$lacreI);
+            $lacreCVal = ($lacreC === '' ? null : (int)$lacreC);
+            $etiquetaVal = ($etiqueta === '' ? null : $etiqueta);
+
+            if ($lacreIVal === null && $lacreCVal === null && $etiquetaVal === null) {
+                $stmtDelete->execute(array($codbar));
+                $salvos++;
+                continue;
+            }
+
+            $stmtUpsert->execute(array(
+                $codbar,
+                $lote,
+                $regional,
+                $posto,
+                $dataexp,
+                $qtd,
+                $lacreIVal,
+                ($grupoI === '' ? null : $grupoI),
+                $lacreCVal,
+                ($grupoC === '' ? null : $grupoC),
+                $etiquetaVal,
+                $usuario_lacre
+            ));
+            $salvos++;
+        }
+
+        $stmtUpsert = null;
+        $stmtDelete = null;
+        $pdo = null;
+        die(json_encode(array('success' => true, 'salvos' => $salvos)));
     }
 
     // v9.23.2: Inserir pacotes não listados (ciPostosCsv + ciPostos)
@@ -524,13 +649,46 @@ try {
 
     // Handler AJAX excluir
     if (isset($_POST['excluir_lote_ajax'])) {
+        $datasFiltro = array();
+        if (isset($_POST['datas']) && trim((string)$_POST['datas']) !== '') {
+            $partesDatas = explode(',', (string)$_POST['datas']);
+            foreach ($partesDatas as $parteData) {
+                $dataNorm = normalizarDataSqlPacote($parteData);
+                if ($dataNorm !== '') {
+                    $datasFiltro[] = $dataNorm;
+                }
+            }
+        }
+
+        if (!empty($datasFiltro)) {
+            $datasFiltro = array_values(array_unique($datasFiltro));
+            $phDatas = implode(',', array_fill(0, count($datasFiltro), '?'));
+
+            $stmt = $pdo->prepare("DELETE FROM conferencia_pacotes WHERE DATE(dataexp) IN ($phDatas)");
+            $stmt->execute($datasFiltro);
+
+            $stmt = $pdo->prepare("DELETE FROM conferencia_pacotes_lacres WHERE dataexp IN ($phDatas)");
+            $stmt->execute($datasFiltro);
+
+            $stmt = null;
+            $pdo = null;
+            die(json_encode(array('success' => true)));
+        }
+
         $lote = trim($_POST['lote']);
         $regional = trim($_POST['regional']);
         $posto = trim($_POST['posto']);
-        
+
         $sql = "DELETE FROM conferencia_pacotes WHERE nlote = ? AND regional = ? AND nposto = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute(array($lote, $regional, $posto));
+
+        $codbar = isset($_POST['codbar']) ? preg_replace('/\D+/', '', (string)$_POST['codbar']) : '';
+        if ($codbar !== '') {
+            $stmt = $pdo->prepare("DELETE FROM conferencia_pacotes_lacres WHERE codbar = ?");
+            $stmt->execute(array($codbar));
+        }
+
         $stmt = null; // v8.17.4: Libera statement
         $pdo = null;  // v8.17.4: Fecha conexão
         die(json_encode(array('success' => true)));
@@ -735,6 +893,9 @@ try {
         $datas_expedicao[] = $row['data'];
     }
 
+    $atribuicoes_lacres_por_codigo = array();
+    $atribuicoes_lacres_por_chave = array();
+
     // Busca dados do ciPostosCsv (com LIMIT)
     $condicoes_data = array();
     $params_data = array();
@@ -751,6 +912,35 @@ try {
 
     if (!empty($condicoes_data)) {
         $whereData = "WHERE (" . implode(' OR ', $condicoes_data) . ")";
+
+        $sqlLacres = "SELECT codbar, lote, regional, posto, dataexp, qtd, lacre_iipr, grupo_iipr, lacre_correios, grupo_correios, etiqueta_correios, usuario_lacre, atualizado_em
+            FROM conferencia_pacotes_lacres
+            WHERE (" . implode(' OR ', array_map(function($condicao) {
+                return str_replace('DATE(dataCarga)', 'dataexp', $condicao);
+            }, $condicoes_data)) . ")";
+        $stmtLacres = $pdo->prepare($sqlLacres);
+        $stmtLacres->execute($params_data);
+        while ($rowLacre = $stmtLacres->fetch(PDO::FETCH_ASSOC)) {
+            $codbarLacre = preg_replace('/\D+/', '', (string)$rowLacre['codbar']);
+            $loteLacre = str_pad(preg_replace('/\D+/', '', (string)$rowLacre['lote']), 8, '0', STR_PAD_LEFT);
+            $postoLacre = str_pad(preg_replace('/\D+/', '', (string)$rowLacre['posto']), 3, '0', STR_PAD_LEFT);
+            $dataLacre = isset($rowLacre['dataexp']) ? trim((string)$rowLacre['dataexp']) : '';
+            $atrib = array(
+                'lacre_iipr' => isset($rowLacre['lacre_iipr']) && $rowLacre['lacre_iipr'] !== null ? (int)$rowLacre['lacre_iipr'] : 0,
+                'grupo_iipr' => isset($rowLacre['grupo_iipr']) ? (string)$rowLacre['grupo_iipr'] : '',
+                'lacre_correios' => isset($rowLacre['lacre_correios']) && $rowLacre['lacre_correios'] !== null ? (int)$rowLacre['lacre_correios'] : 0,
+                'grupo_correios' => isset($rowLacre['grupo_correios']) ? (string)$rowLacre['grupo_correios'] : '',
+                'etiqueta_correios' => isset($rowLacre['etiqueta_correios']) ? (string)$rowLacre['etiqueta_correios'] : '',
+                'usuario_lacre' => isset($rowLacre['usuario_lacre']) ? (string)$rowLacre['usuario_lacre'] : '',
+                'atualizado_em' => isset($rowLacre['atualizado_em']) ? (string)$rowLacre['atualizado_em'] : ''
+            );
+            if ($codbarLacre !== '') {
+                $atribuicoes_lacres_por_codigo[$codbarLacre] = $atrib;
+            }
+            $atribuicoes_lacres_por_chave[$postoLacre . '|' . $loteLacre . '|' . $dataLacre] = $atrib;
+            $atribuicoes_lacres_por_chave[$postoLacre . '|' . $loteLacre] = $atrib;
+        }
+
         $sql = "SELECT lote, posto, regional, quantidade, dataCarga, usuario 
                 FROM ciPostosCsv 
                 $whereData
@@ -773,6 +963,14 @@ try {
 
                 $codigo_barras = $lote . $regional_str . $posto . $quantidade;
                 $usuario_prod = isset($row['usuario']) ? trim((string)$row['usuario']) : '';
+                $atribuicao_lacre = null;
+                if (isset($atribuicoes_lacres_por_codigo[$codigo_barras])) {
+                    $atribuicao_lacre = $atribuicoes_lacres_por_codigo[$codigo_barras];
+                } elseif (isset($atribuicoes_lacres_por_chave[$posto . '|' . $lote . '|' . $data_sql_row])) {
+                    $atribuicao_lacre = $atribuicoes_lacres_por_chave[$posto . '|' . $lote . '|' . $data_sql_row];
+                } elseif (isset($atribuicoes_lacres_por_chave[$posto . '|' . $lote])) {
+                    $atribuicao_lacre = $atribuicoes_lacres_por_chave[$posto . '|' . $lote];
+                }
                 
                 // v9.0: Usa informações CORRETAS de ciRegionais
                 $regional_real = isset($postosInfo[$posto]) ? $postosInfo[$posto]['regional'] : $regional_csv;
@@ -839,6 +1037,13 @@ try {
                     'qtd' => ltrim($quantidade, '0'),
                     'codigo' => $codigo_barras,
                     'usuario_prod' => $usuario_prod,
+                    'lacre_iipr' => $atribuicao_lacre ? (int)$atribuicao_lacre['lacre_iipr'] : 0,
+                    'grupo_iipr' => $atribuicao_lacre ? (string)$atribuicao_lacre['grupo_iipr'] : '',
+                    'lacre_correios' => $atribuicao_lacre ? (int)$atribuicao_lacre['lacre_correios'] : 0,
+                    'grupo_correios' => $atribuicao_lacre ? (string)$atribuicao_lacre['grupo_correios'] : '',
+                    'etiqueta_correios' => $atribuicao_lacre ? (string)$atribuicao_lacre['etiqueta_correios'] : '',
+                    'usuario_lacre' => $atribuicao_lacre ? (string)$atribuicao_lacre['usuario_lacre'] : '',
+                    'atualizado_lacre_em' => $atribuicao_lacre ? (string)$atribuicao_lacre['atualizado_em'] : '',
                     'conferido_em' => $conferido_em,
                     'isPT' => $isPT,
                     'conf' => $conferido
@@ -1558,6 +1763,16 @@ try {
         .operacao-chip.sem-upload {
             border-style: dashed;
         }
+        .operacao-chip.tem-iipr {
+            box-shadow: inset 0 0 0 1px rgba(255,209,102,0.9);
+        }
+        .operacao-chip.tem-correios {
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 0 0 2px rgba(83,194,255,0.28);
+        }
+        .operacao-posto-row.selecionado-malote {
+            border-color: #7bdff2;
+            box-shadow: 0 0 0 2px rgba(123,223,242,0.18);
+        }
         .operacao-numero {
             text-align: center;
             font-size: 22px;
@@ -1606,6 +1821,149 @@ try {
             color: #fff;
             font-weight: 700;
             cursor: pointer;
+        }
+        .painel-malotes {
+            background: #ffffff;
+            border: 1px solid #d8e4ef;
+            border-radius: 14px;
+            padding: 16px;
+            margin: 12px 0 8px;
+            box-shadow: 0 8px 20px rgba(8,32,58,0.08);
+        }
+        .painel-malotes-topo {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+        .painel-malotes-topo h3 {
+            margin: 0;
+            color: #16324f;
+            font-size: 20px;
+        }
+        .painel-malotes-topo .sub {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #5b7188;
+        }
+        .painel-malotes-resumo {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .painel-malotes-badge {
+            min-width: 98px;
+            border-radius: 10px;
+            padding: 10px 12px;
+            background: linear-gradient(180deg, #eef6ff 0%, #dbeafe 100%);
+            color: #173a57;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .painel-malotes-badge strong {
+            display: block;
+            margin-top: 4px;
+            font-size: 22px;
+            color: #0b3b66;
+        }
+        .painel-malotes-grid {
+            display: grid;
+            grid-template-columns: minmax(320px, 1.2fr) minmax(280px, 0.8fr);
+            gap: 16px;
+        }
+        .painel-malotes-coluna {
+            border: 1px solid #e6edf5;
+            border-radius: 12px;
+            padding: 12px;
+            background: #f9fbfd;
+        }
+        .painel-malotes-coluna h4 {
+            margin: 0 0 8px;
+            color: #153754;
+            font-size: 14px;
+        }
+        .painel-malotes-vazio {
+            color: #60758b;
+            font-size: 12px;
+            background: #f2f6fa;
+            border: 1px dashed #c8d6e5;
+            border-radius: 10px;
+            padding: 14px;
+        }
+        .tabela-malotes {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            font-size: 12px;
+        }
+        .tabela-malotes th,
+        .tabela-malotes td {
+            border-bottom: 1px solid #e3ebf3;
+            padding: 8px 6px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .tabela-malotes th {
+            color: #5a7086;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .malote-status {
+            display: inline-flex;
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .malote-status.pendente { background: #fff4d6; color: #946200; }
+        .malote-status.iipr { background: #e8f2ff; color: #0f4d85; }
+        .malote-status.correios { background: #dbf8e5; color: #136c3a; }
+        .painel-malotes-form {
+            display: grid;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .painel-malotes-form label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: #51677c;
+            margin-bottom: 4px;
+        }
+        .painel-malotes-form input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 9px 10px;
+            border-radius: 8px;
+            border: 1px solid #c8d6e5;
+            background: #fff;
+            font-size: 13px;
+        }
+        .painel-malotes-acoes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .painel-malotes-acoes button {
+            border: none;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .btn-malote-iipr { background: #0d6efd; color: #fff; }
+        .btn-malote-correios { background: #198754; color: #fff; }
+        .btn-malote-limpar { background: #f1f3f5; color: #495057; }
+        .painel-malotes-ajuda {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #687b8d;
+            line-height: 1.5;
         }
         .painel-ultimas {
             background: #fff;
@@ -1864,12 +2222,15 @@ try {
             .operacao-pendentes { text-align: left; }
             .operacao-posto-row.subnivel { margin-left: 0; }
             #resetar { margin-left: 0; margin-top: 8px; width: 100%; }
+            .painel-malotes-grid { grid-template-columns: 1fr; }
+            .painel-malotes-resumo { width: 100%; }
+            .painel-malotes-badge { flex: 1 1 96px; }
         }
     </style>
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.8</div>
+    <div class="versao">v0.9.25.10</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -1914,7 +2275,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.8</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.10</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -2200,6 +2561,56 @@ try {
     </div>
 </div>
 
+<div class="painel-malotes" id="painelMalotesChips">
+    <div class="painel-malotes-topo">
+        <div>
+            <h3>Malotes por lote no modo chips</h3>
+            <div class="sub" id="painelMalotesSubtitulo">Selecione um chip ou continue a conferência para abrir o posto atual.</div>
+        </div>
+        <div class="painel-malotes-resumo">
+            <div class="painel-malotes-badge">Confirmados<strong id="malotesResumoConfirmados">0</strong></div>
+            <div class="painel-malotes-badge">Com IIPR<strong id="malotesResumoIipr">0</strong></div>
+            <div class="painel-malotes-badge">Com Correios<strong id="malotesResumoCorreios">0</strong></div>
+        </div>
+    </div>
+    <div class="painel-malotes-grid">
+        <div class="painel-malotes-coluna">
+            <h4>Lotes confirmados do posto</h4>
+            <div id="painelMalotesLotes" class="painel-malotes-vazio">Nenhum posto selecionado.</div>
+            <div class="painel-malotes-form">
+                <div>
+                    <label for="inputLacreIiprMalote">Lacre IIPR do malote selecionado</label>
+                    <input type="text" id="inputLacreIiprMalote" maxlength="12" placeholder="Ex.: 51115">
+                </div>
+                <div class="painel-malotes-acoes">
+                    <button type="button" class="btn-malote-iipr" id="btnSalvarMaloteIipr">Salvar Lacre IIPR nos lotes marcados</button>
+                    <button type="button" class="btn-malote-limpar" id="btnLimparMaloteLote">Limpar vínculo dos lotes marcados</button>
+                </div>
+            </div>
+        </div>
+        <div class="painel-malotes-coluna">
+            <h4>Malotes IIPR já fechados</h4>
+            <div id="painelMalotesIipr" class="painel-malotes-vazio">Os malotes IIPR aparecerão aqui depois do primeiro fechamento.</div>
+            <div class="painel-malotes-form">
+                <div>
+                    <label for="inputLacreCorreiosMalote">Lacre Correios do malote maior</label>
+                    <input type="text" id="inputLacreCorreiosMalote" maxlength="12" placeholder="Ex.: 51119">
+                </div>
+                <div>
+                    <label for="inputEtiquetaCorreiosMalote">Etiqueta dos Correios</label>
+                    <input type="text" id="inputEtiquetaCorreiosMalote" maxlength="35" placeholder="Ex.: 87051030441050000104648810000101292">
+                </div>
+                <div class="painel-malotes-acoes">
+                    <button type="button" class="btn-malote-correios" id="btnSalvarMaloteCorreios">Vincular malote Correios aos IIPR marcados</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="painel-malotes-ajuda">
+        Primeiro confirme os lotes em verde. Depois selecione os lotes que entraram no mesmo malote IIPR e grave o lacre IIPR. Quando souber o malote maior dos Correios, marque um ou mais malotes IIPR já fechados e aplique o mesmo lacre Correios e a mesma etiqueta.
+    </div>
+</div>
+
 </div>
 
     <script>
@@ -2478,7 +2889,7 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
         }
         $pendentes = max(0, $totalPacotes - $conferidos);
         $semUploadCount = isset($estanteSemUploadPorPosto[$postoKey]) ? (int)$estanteSemUploadPorPosto[$postoKey] : 0;
-        echo '<div class="operacao-posto-row" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '">';
+        echo '<div class="operacao-posto-row" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '" data-grupo="' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '">';
         echo '<div><span class="operacao-posicao">' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</span></div>';
         echo '<div class="operacao-posto-meta">';
         echo '<div class="operacao-posto-nome">Posto ' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</div>';
@@ -2493,6 +2904,12 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
             if (!empty($item['conf'])) {
                 $chipClasses .= ' confirmado';
             }
+            if (!empty($item['lacre_iipr'])) {
+                $chipClasses .= ' tem-iipr';
+            }
+            if (!empty($item['lacre_correios']) || !empty($item['etiqueta_correios'])) {
+                $chipClasses .= ' tem-correios';
+            }
             if ($semUploadCount > 0) {
                 $chipClasses .= ' sem-upload';
             }
@@ -2501,9 +2918,19 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
             echo ' data-lote="' . htmlspecialchars($item['lote'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-posto="' . htmlspecialchars($item['posto'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-regional="' . htmlspecialchars($item['regional_label'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-regional-codigo="' . htmlspecialchars($item['regional_grupo'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-qtd="' . htmlspecialchars($item['qtd'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-data="' . htmlspecialchars($item['data'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-data-sql="' . htmlspecialchars($item['data_sql'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-usuario="' . htmlspecialchars($item['usuario_prod'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-ispt="' . (!empty($item['isPT']) ? '1' : '0') . '"';
+            echo ' data-lacre-iipr="' . htmlspecialchars((string)$item['lacre_iipr'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-grupo-iipr="' . htmlspecialchars((string)$item['grupo_iipr'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-lacre-correios="' . htmlspecialchars((string)$item['lacre_correios'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-grupo-correios="' . htmlspecialchars((string)$item['grupo_correios'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-etiqueta-correios="' . htmlspecialchars((string)$item['etiqueta_correios'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-usuario-lacre="' . htmlspecialchars((string)$item['usuario_lacre'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-atualizado-lacre="' . htmlspecialchars((string)$item['atualizado_lacre_em'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-conferido-em="' . htmlspecialchars($item['conferido_em'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-conf="' . (!empty($item['conf']) ? '1' : '0') . '">';
             echo htmlspecialchars($item['lote'], ENT_QUOTES, 'UTF-8');
@@ -2586,6 +3013,13 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         echo 'data-data-sql="' . htmlspecialchars($data_sql_attr, ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-qtd="' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-usuario-prod="' . htmlspecialchars($posto['usuario_prod'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-lacre-iipr="' . htmlspecialchars((string)$posto['lacre_iipr'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-grupo-iipr="' . htmlspecialchars((string)$posto['grupo_iipr'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-lacre-correios="' . htmlspecialchars((string)$posto['lacre_correios'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-grupo-correios="' . htmlspecialchars((string)$posto['grupo_correios'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-etiqueta-correios="' . htmlspecialchars((string)$posto['etiqueta_correios'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-usuario-lacre="' . htmlspecialchars((string)$posto['usuario_lacre'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-atualizado-lacre="' . htmlspecialchars((string)$posto['atualizado_lacre_em'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-conferido-em="' . htmlspecialchars($posto['conferido_em'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-ispt="' . $posto['isPT'] . '" ';
         echo 'data-pt-group="' . htmlspecialchars($ptGroup, ENT_QUOTES, 'UTF-8') . '">';
@@ -2761,6 +3195,19 @@ function iniciarConferenciaPacotes() {
     var btnMostrarTradicional = document.getElementById('btnMostrarTradicional');
     var secaoClassificacao = document.getElementById('secaoClassificacao');
     var secaoTradicional = document.getElementById('secaoTradicional');
+    var painelMalotesChips = document.getElementById('painelMalotesChips');
+    var painelMalotesSubtitulo = document.getElementById('painelMalotesSubtitulo');
+    var painelMalotesLotes = document.getElementById('painelMalotesLotes');
+    var painelMalotesIipr = document.getElementById('painelMalotesIipr');
+    var malotesResumoConfirmados = document.getElementById('malotesResumoConfirmados');
+    var malotesResumoIipr = document.getElementById('malotesResumoIipr');
+    var malotesResumoCorreios = document.getElementById('malotesResumoCorreios');
+    var inputLacreIiprMalote = document.getElementById('inputLacreIiprMalote');
+    var inputLacreCorreiosMalote = document.getElementById('inputLacreCorreiosMalote');
+    var inputEtiquetaCorreiosMalote = document.getElementById('inputEtiquetaCorreiosMalote');
+    var btnSalvarMaloteIipr = document.getElementById('btnSalvarMaloteIipr');
+    var btnSalvarMaloteCorreios = document.getElementById('btnSalvarMaloteCorreios');
+    var btnLimparMaloteLote = document.getElementById('btnLimparMaloteLote');
     var pacoteCodbar = document.getElementById('pacote_codbar');
     var pacoteLote = document.getElementById('pacote_lote');
     var pacoteRegional = document.getElementById('pacote_regional');
@@ -2796,6 +3243,8 @@ function iniciarConferenciaPacotes() {
     var storageUsuarioKey = 'conferencia_responsavel';
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
+    var postoSelecionadoMalote = '';
+    var grupoSelecionadoMalote = '';
 
     function aplicarModoConsulta(ativo) {
         modoConsulta = !!ativo;
@@ -2858,6 +3307,422 @@ function iniciarConferenciaPacotes() {
         });
     }
 
+    function escapeHtml(texto) {
+        return String(texto || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function normalizarNumeroLacre(valor) {
+        return String(valor || '').replace(/\D+/g, '');
+    }
+
+    function obterChipsPosto(posto) {
+        if (!posto) return [];
+        return Array.prototype.slice.call(document.querySelectorAll('.operacao-chip[data-posto="' + posto + '"]'));
+    }
+
+    function obterLinhasPosto(posto) {
+        if (!posto) return [];
+        return Array.prototype.slice.call(document.querySelectorAll('tr[data-posto="' + posto + '"]'));
+    }
+
+    function obterDadosChipOperacao(chip) {
+        if (!chip) return null;
+        return {
+            codigo: chip.getAttribute('data-codigo') || '',
+            lote: chip.getAttribute('data-lote') || '',
+            posto: chip.getAttribute('data-posto') || '',
+            regional: chip.getAttribute('data-regional') || '',
+            regional_codigo: chip.getAttribute('data-regional-codigo') || '',
+            qtd: chip.getAttribute('data-qtd') || '',
+            data: chip.getAttribute('data-data') || '',
+            data_sql: chip.getAttribute('data-data-sql') || '',
+            isPT: chip.getAttribute('data-ispt') === '1',
+            conferido: chip.getAttribute('data-conf') === '1',
+            lacre_iipr: normalizarNumeroLacre(chip.getAttribute('data-lacre-iipr') || ''),
+            grupo_iipr: chip.getAttribute('data-grupo-iipr') || '',
+            lacre_correios: normalizarNumeroLacre(chip.getAttribute('data-lacre-correios') || ''),
+            grupo_correios: chip.getAttribute('data-grupo-correios') || '',
+            etiqueta_correios: String(chip.getAttribute('data-etiqueta-correios') || '').trim(),
+            usuario_lacre: chip.getAttribute('data-usuario-lacre') || '',
+            atualizado_lacre: chip.getAttribute('data-atualizado-lacre') || ''
+        };
+    }
+
+    function aplicarAtribuicaoNoChip(chip, dados) {
+        if (!chip) return;
+        var lacreIipr = dados && dados.lacre_iipr ? normalizarNumeroLacre(dados.lacre_iipr) : '';
+        var lacreCorreios = dados && dados.lacre_correios ? normalizarNumeroLacre(dados.lacre_correios) : '';
+        var etiquetaCorreios = dados && dados.etiqueta_correios ? String(dados.etiqueta_correios).trim() : '';
+        var usuarioLacre = dados && dados.usuario_lacre ? String(dados.usuario_lacre).trim() : '';
+        var atualizadoLacre = dados && dados.atualizado_lacre ? String(dados.atualizado_lacre).trim() : '';
+        chip.setAttribute('data-lacre-iipr', lacreIipr);
+        chip.setAttribute('data-grupo-iipr', dados && dados.grupo_iipr ? String(dados.grupo_iipr) : '');
+        chip.setAttribute('data-lacre-correios', lacreCorreios);
+        chip.setAttribute('data-grupo-correios', dados && dados.grupo_correios ? String(dados.grupo_correios) : '');
+        chip.setAttribute('data-etiqueta-correios', etiquetaCorreios);
+        chip.setAttribute('data-usuario-lacre', usuarioLacre);
+        chip.setAttribute('data-atualizado-lacre', atualizadoLacre);
+        chip.classList.toggle('tem-iipr', lacreIipr !== '');
+        chip.classList.toggle('tem-correios', lacreCorreios !== '' || etiquetaCorreios !== '');
+
+        var linhaTabela = document.querySelector('tr[data-codigo="' + chip.getAttribute('data-codigo') + '"]');
+        if (linhaTabela) {
+            linhaTabela.setAttribute('data-lacre-iipr', lacreIipr);
+            linhaTabela.setAttribute('data-grupo-iipr', dados && dados.grupo_iipr ? String(dados.grupo_iipr) : '');
+            linhaTabela.setAttribute('data-lacre-correios', lacreCorreios);
+            linhaTabela.setAttribute('data-grupo-correios', dados && dados.grupo_correios ? String(dados.grupo_correios) : '');
+            linhaTabela.setAttribute('data-etiqueta-correios', etiquetaCorreios);
+            linhaTabela.setAttribute('data-usuario-lacre', usuarioLacre);
+            linhaTabela.setAttribute('data-atualizado-lacre', atualizadoLacre);
+        }
+    }
+
+    function selecionarPostoMalote(posto, grupo) {
+        postoSelecionadoMalote = posto || '';
+        grupoSelecionadoMalote = grupo || '';
+
+        var linhas = document.querySelectorAll('.operacao-posto-row.selecionado-malote');
+        for (var i = 0; i < linhas.length; i++) {
+            linhas[i].classList.remove('selecionado-malote');
+        }
+        if (postoSelecionadoMalote) {
+            var linhaSelecionada = document.querySelector('.operacao-posto-row[data-posto="' + postoSelecionadoMalote + '"]');
+            if (linhaSelecionada) {
+                linhaSelecionada.classList.add('selecionado-malote');
+            }
+        }
+        renderizarPainelMalotes();
+    }
+
+    function montarPacoteParaPersistencia(chip, sobrescritas) {
+        var dados = obterDadosChipOperacao(chip);
+        if (!dados) return null;
+        var payload = {
+            codbar: dados.codigo,
+            lote: dados.lote,
+            regional: normalizarRegionalValor(dados.regional_codigo || dados.regional),
+            posto: dados.posto,
+            dataexp: dados.data_sql || dados.data,
+            qtd: dados.qtd,
+            lacre_iipr: dados.lacre_iipr,
+            grupo_iipr: dados.grupo_iipr,
+            lacre_correios: dados.lacre_correios,
+            grupo_correios: dados.grupo_correios,
+            etiqueta_correios: dados.etiqueta_correios
+        };
+        if (sobrescritas) {
+            for (var chave in sobrescritas) {
+                if (Object.prototype.hasOwnProperty.call(sobrescritas, chave)) {
+                    payload[chave] = sobrescritas[chave];
+                }
+            }
+        }
+        return payload;
+    }
+
+    function persistirAtribuicoesLote(pacotes, callback) {
+        if (!pacotes || !pacotes.length) {
+            alert('Selecione pelo menos um lote.');
+            return;
+        }
+        if (!usuarioAtual) {
+            alert('Informe o responsável da conferência antes de salvar os malotes.');
+            return;
+        }
+        var formData = new FormData();
+        formData.append('salvar_atribuicao_lacres_ajax', '1');
+        formData.append('pacotes', JSON.stringify(pacotes));
+        formData.append('usuario', usuarioAtual);
+
+        fetch(window.location.href, { method: 'POST', body: formData })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (!data || !data.success) {
+                    alert((data && data.erro) ? data.erro : 'Não foi possível salvar a atribuição.');
+                    return;
+                }
+                if (callback) callback();
+                renderizarPainelMalotes();
+                mostrarConfirmacao('Vínculos de malote salvos com sucesso.', true);
+            })
+            .catch(function() {
+                alert('Erro ao salvar a atribuição dos malotes.');
+            });
+    }
+
+    function renderizarPainelMalotes() {
+        if (!painelMalotesChips || !painelMalotesLotes || !painelMalotesIipr) return;
+
+        if (!postoSelecionadoMalote) {
+            if (painelMalotesSubtitulo) painelMalotesSubtitulo.textContent = 'Selecione um chip ou continue a conferência para abrir o posto atual.';
+            if (painelMalotesLotes) painelMalotesLotes.className = 'painel-malotes-vazio';
+            if (painelMalotesLotes) painelMalotesLotes.innerHTML = 'Nenhum posto selecionado.';
+            if (painelMalotesIipr) painelMalotesIipr.className = 'painel-malotes-vazio';
+            if (painelMalotesIipr) painelMalotesIipr.innerHTML = 'Os malotes IIPR aparecerão aqui depois do primeiro fechamento.';
+            if (malotesResumoConfirmados) malotesResumoConfirmados.textContent = '0';
+            if (malotesResumoIipr) malotesResumoIipr.textContent = '0';
+            if (malotesResumoCorreios) malotesResumoCorreios.textContent = '0';
+            return;
+        }
+
+        var chips = obterChipsPosto(postoSelecionadoMalote);
+        if (!chips.length) {
+            if (painelMalotesLotes) painelMalotesLotes.className = 'painel-malotes-vazio';
+            if (painelMalotesLotes) painelMalotesLotes.innerHTML = 'Nenhum pacote localizado para este posto no painel de chips.';
+            return;
+        }
+
+        var primeiro = obterDadosChipOperacao(chips[0]);
+        if (primeiro && primeiro.isPT) {
+            if (painelMalotesSubtitulo) painelMalotesSubtitulo.textContent = 'Posto ' + postoSelecionadoMalote + ' pertence ao Poupa Tempo. O painel de malotes vale apenas para Correios.';
+            if (painelMalotesLotes) painelMalotesLotes.className = 'painel-malotes-vazio';
+            if (painelMalotesLotes) painelMalotesLotes.innerHTML = 'Selecione um posto dos Correios para atribuir malotes.';
+            if (painelMalotesIipr) painelMalotesIipr.className = 'painel-malotes-vazio';
+            if (painelMalotesIipr) painelMalotesIipr.innerHTML = 'Sem uso para o fluxo Poupa Tempo.';
+            if (malotesResumoConfirmados) malotesResumoConfirmados.textContent = '0';
+            if (malotesResumoIipr) malotesResumoIipr.textContent = '0';
+            if (malotesResumoCorreios) malotesResumoCorreios.textContent = '0';
+            return;
+        }
+
+        var confirmados = [];
+        var comIipr = 0;
+        var comCorreios = 0;
+        var gruposIipr = {};
+        var linhasHtml = [];
+
+        for (var i = 0; i < chips.length; i++) {
+            var dados = obterDadosChipOperacao(chips[i]);
+            if (!dados) continue;
+            if (!dados.conferido) continue;
+            confirmados.push({ chip: chips[i], dados: dados });
+            if (dados.lacre_iipr) comIipr++;
+            if (dados.lacre_correios || dados.etiqueta_correios) comCorreios++;
+            if (dados.lacre_iipr) {
+                var chaveGrupoIipr = dados.grupo_iipr || ('LACRE_' + dados.lacre_iipr);
+                if (!gruposIipr[chaveGrupoIipr]) {
+                    gruposIipr[chaveGrupoIipr] = { chave: chaveGrupoIipr, lacre_iipr: dados.lacre_iipr, chips: [], lacre_correios: '', etiqueta_correios: '' };
+                }
+                gruposIipr[chaveGrupoIipr].chips.push(chips[i]);
+                if (!gruposIipr[chaveGrupoIipr].lacre_correios && dados.lacre_correios) {
+                    gruposIipr[chaveGrupoIipr].lacre_correios = dados.lacre_correios;
+                }
+                if (!gruposIipr[chaveGrupoIipr].etiqueta_correios && dados.etiqueta_correios) {
+                    gruposIipr[chaveGrupoIipr].etiqueta_correios = dados.etiqueta_correios;
+                }
+            }
+            linhasHtml.push(
+                '<tr>' +
+                    '<td><input type="checkbox" class="check-malote-lote" data-codigo="' + escapeHtml(dados.codigo) + '"></td>' +
+                    '<td>' + escapeHtml(dados.lote) + '</td>' +
+                    '<td>' + escapeHtml(dados.qtd) + '</td>' +
+                    '<td>' + escapeHtml(dados.lacre_iipr || '-') + '</td>' +
+                    '<td>' + escapeHtml(dados.lacre_correios || '-') + '</td>' +
+                    '<td style="word-break:break-all;">' + escapeHtml(dados.etiqueta_correios || '-') + '</td>' +
+                    '<td><span class="malote-status ' + (dados.lacre_correios || dados.etiqueta_correios ? 'correios' : (dados.lacre_iipr ? 'iipr' : 'pendente')) + '">' +
+                        (dados.lacre_correios || dados.etiqueta_correios ? 'Fechado Correios' : (dados.lacre_iipr ? 'Fechado IIPR' : 'Sem lacre')) +
+                    '</span></td>' +
+                '</tr>'
+            );
+        }
+
+        if (painelMalotesSubtitulo) {
+            painelMalotesSubtitulo.textContent = 'Posto ' + postoSelecionadoMalote + ' • ' + (grupoSelecionadoMalote || primeiro.regional || 'Correios');
+        }
+        if (malotesResumoConfirmados) malotesResumoConfirmados.textContent = String(confirmados.length);
+        if (malotesResumoIipr) malotesResumoIipr.textContent = String(comIipr);
+        if (malotesResumoCorreios) malotesResumoCorreios.textContent = String(comCorreios);
+
+        if (!confirmados.length) {
+            painelMalotesLotes.className = 'painel-malotes-vazio';
+            painelMalotesLotes.innerHTML = 'Este posto ainda não possui lotes confirmados em verde.';
+        } else {
+            painelMalotesLotes.className = '';
+            painelMalotesLotes.innerHTML = '<table class="tabela-malotes"><thead><tr><th></th><th>Lote</th><th>Qtd</th><th>Lacre IIPR</th><th>Lacre Correios</th><th>Etiqueta Correios</th><th>Status</th></tr></thead><tbody>' + linhasHtml.join('') + '</tbody></table>';
+        }
+
+        var htmlGrupos = [];
+        for (var lacre in gruposIipr) {
+            if (!Object.prototype.hasOwnProperty.call(gruposIipr, lacre)) continue;
+            var grupo = gruposIipr[lacre];
+            var lotesAgrupados = [];
+            for (var j = 0; j < grupo.chips.length; j++) {
+                lotesAgrupados.push(grupo.chips[j].getAttribute('data-lote') || '');
+            }
+            htmlGrupos.push(
+                '<tr>' +
+                    '<td><input type="checkbox" class="check-malote-iipr" data-lacre-iipr="' + escapeHtml(grupo.lacre_iipr) + '" data-grupo-iipr="' + escapeHtml(grupo.chave) + '"></td>' +
+                    '<td>' + escapeHtml(grupo.lacre_iipr) + '</td>' +
+                    '<td>' + escapeHtml(lotesAgrupados.join(', ')) + '</td>' +
+                    '<td>' + escapeHtml(grupo.lacre_correios || '-') + '</td>' +
+                    '<td style="word-break:break-all;">' + escapeHtml(grupo.etiqueta_correios || '-') + '</td>' +
+                '</tr>'
+            );
+        }
+
+        if (!htmlGrupos.length) {
+            painelMalotesIipr.className = 'painel-malotes-vazio';
+            painelMalotesIipr.innerHTML = 'Os malotes IIPR aparecerão aqui depois do primeiro fechamento.';
+        } else {
+            painelMalotesIipr.className = '';
+            painelMalotesIipr.innerHTML = '<table class="tabela-malotes"><thead><tr><th></th><th>Lacre IIPR</th><th>Lotes</th><th>Lacre Correios</th><th>Etiqueta Correios</th></tr></thead><tbody>' + htmlGrupos.join('') + '</tbody></table>';
+        }
+    }
+
+    function obterChipsMarcadosNoPainel() {
+        var checks = painelMalotesLotes ? painelMalotesLotes.querySelectorAll('.check-malote-lote:checked') : [];
+        var chips = [];
+        for (var i = 0; i < checks.length; i++) {
+            var codigo = checks[i].getAttribute('data-codigo') || '';
+            var chip = codigo ? document.querySelector('.operacao-chip[data-codigo="' + codigo + '"]') : null;
+            if (chip) chips.push(chip);
+        }
+        return chips;
+    }
+
+    function obterChipsDosIiprMarcados() {
+        var checks = painelMalotesIipr ? painelMalotesIipr.querySelectorAll('.check-malote-iipr:checked') : [];
+        var chips = [];
+        var vistos = {};
+        for (var i = 0; i < checks.length; i++) {
+            var grupoIipr = checks[i].getAttribute('data-grupo-iipr') || '';
+            if (!grupoIipr) continue;
+            var chipsMesmoLacre = document.querySelectorAll('.operacao-chip[data-posto="' + postoSelecionadoMalote + '"][data-grupo-iipr="' + grupoIipr + '"]');
+            for (var j = 0; j < chipsMesmoLacre.length; j++) {
+                var codigo = chipsMesmoLacre[j].getAttribute('data-codigo') || '';
+                if (!vistos[codigo]) {
+                    vistos[codigo] = true;
+                    chips.push(chipsMesmoLacre[j]);
+                }
+            }
+        }
+        return chips;
+    }
+
+    if (btnSalvarMaloteIipr) {
+        btnSalvarMaloteIipr.addEventListener('click', function() {
+            var lacreIipr = normalizarNumeroLacre(inputLacreIiprMalote ? inputLacreIiprMalote.value : '');
+            var grupoIipr = 'GI_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+            var chips = obterChipsMarcadosNoPainel();
+            if (!lacreIipr) {
+                alert('Informe o lacre IIPR.');
+                if (inputLacreIiprMalote) inputLacreIiprMalote.focus();
+                return;
+            }
+            if (!chips.length) {
+                alert('Selecione os lotes que entraram no mesmo malote IIPR.');
+                return;
+            }
+
+            var pacotes = [];
+            for (var i = 0; i < chips.length; i++) {
+                var payload = montarPacoteParaPersistencia(chips[i], { lacre_iipr: lacreIipr });
+                if (payload) payload.grupo_iipr = grupoIipr;
+                if (payload) pacotes.push(payload);
+            }
+            persistirAtribuicoesLote(pacotes, function() {
+                var agora = formatarDataHoraAtual();
+                for (var j = 0; j < chips.length; j++) {
+                    var dadosAtuais = obterDadosChipOperacao(chips[j]);
+                    aplicarAtribuicaoNoChip(chips[j], {
+                        lacre_iipr: lacreIipr,
+                        grupo_iipr: grupoIipr,
+                        lacre_correios: dadosAtuais ? dadosAtuais.lacre_correios : '',
+                        grupo_correios: dadosAtuais ? dadosAtuais.grupo_correios : '',
+                        etiqueta_correios: dadosAtuais ? dadosAtuais.etiqueta_correios : '',
+                        usuario_lacre: usuarioAtual,
+                        atualizado_lacre: agora
+                    });
+                }
+                if (inputLacreIiprMalote) inputLacreIiprMalote.value = '';
+            });
+        });
+    }
+
+    if (btnSalvarMaloteCorreios) {
+        btnSalvarMaloteCorreios.addEventListener('click', function() {
+            var lacreCorreios = normalizarNumeroLacre(inputLacreCorreiosMalote ? inputLacreCorreiosMalote.value : '');
+            var grupoCorreios = 'GC_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+            var etiquetaCorreios = inputEtiquetaCorreiosMalote ? String(inputEtiquetaCorreiosMalote.value || '').trim() : '';
+            var chips = obterChipsDosIiprMarcados();
+            if (!chips.length) {
+                alert('Selecione um ou mais malotes IIPR já fechados.');
+                return;
+            }
+            if (!lacreCorreios && !etiquetaCorreios) {
+                alert('Informe ao menos o lacre Correios ou a etiqueta Correios.');
+                if (inputLacreCorreiosMalote) inputLacreCorreiosMalote.focus();
+                return;
+            }
+
+            var pacotes = [];
+            for (var i = 0; i < chips.length; i++) {
+                var payload = montarPacoteParaPersistencia(chips[i], {
+                    lacre_correios: lacreCorreios,
+                    grupo_correios: grupoCorreios,
+                    etiqueta_correios: etiquetaCorreios
+                });
+                if (payload) pacotes.push(payload);
+            }
+            persistirAtribuicoesLote(pacotes, function() {
+                var agora = formatarDataHoraAtual();
+                for (var j = 0; j < chips.length; j++) {
+                    var dadosAtuais = obterDadosChipOperacao(chips[j]);
+                    aplicarAtribuicaoNoChip(chips[j], {
+                        lacre_iipr: dadosAtuais ? dadosAtuais.lacre_iipr : '',
+                        grupo_iipr: dadosAtuais ? dadosAtuais.grupo_iipr : '',
+                        lacre_correios: lacreCorreios,
+                        grupo_correios: grupoCorreios,
+                        etiqueta_correios: etiquetaCorreios,
+                        usuario_lacre: usuarioAtual,
+                        atualizado_lacre: agora
+                    });
+                }
+                if (inputLacreCorreiosMalote) inputLacreCorreiosMalote.value = '';
+                if (inputEtiquetaCorreiosMalote) inputEtiquetaCorreiosMalote.value = '';
+            });
+        });
+    }
+
+    if (btnLimparMaloteLote) {
+        btnLimparMaloteLote.addEventListener('click', function() {
+            var chips = obterChipsMarcadosNoPainel();
+            if (!chips.length) {
+                alert('Selecione os lotes que terão os vínculos apagados.');
+                return;
+            }
+            var pacotes = [];
+            for (var i = 0; i < chips.length; i++) {
+                var payload = montarPacoteParaPersistencia(chips[i], {
+                    lacre_iipr: '',
+                    grupo_iipr: '',
+                    lacre_correios: '',
+                    grupo_correios: '',
+                    etiqueta_correios: ''
+                });
+                if (payload) pacotes.push(payload);
+            }
+            persistirAtribuicoesLote(pacotes, function() {
+                for (var j = 0; j < chips.length; j++) {
+                    aplicarAtribuicaoNoChip(chips[j], {
+                        lacre_iipr: '',
+                        grupo_iipr: '',
+                        lacre_correios: '',
+                        grupo_correios: '',
+                        etiqueta_correios: '',
+                        usuario_lacre: '',
+                        atualizado_lacre: ''
+                    });
+                }
+            });
+        });
+    }
+
     if (modalChipDetalhe) {
         modalChipDetalhe.addEventListener('click', function(e) {
             if (e.target === modalChipDetalhe) {
@@ -2868,9 +3733,16 @@ function iniciarConferenciaPacotes() {
 
     document.addEventListener('click', function(e) {
         var chip = e.target && e.target.closest ? e.target.closest('.operacao-chip') : null;
-        if (!chip) return;
-        destacarChipOperacao(chip.getAttribute('data-codigo') || '');
-        abrirModalChipDetalhe(chip);
+        if (chip) {
+            selecionarPostoMalote(chip.getAttribute('data-posto') || '', chip.getAttribute('data-regional') || '');
+            destacarChipOperacao(chip.getAttribute('data-codigo') || '');
+            abrirModalChipDetalhe(chip);
+            return;
+        }
+        var linhaPosto = e.target && e.target.closest ? e.target.closest('.operacao-posto-row') : null;
+        if (linhaPosto) {
+            selecionarPostoMalote(linhaPosto.getAttribute('data-posto') || '', linhaPosto.getAttribute('data-grupo') || '');
+        }
     });
 
     function alternarModoVisualizacao(modo) {
@@ -3056,6 +3928,7 @@ function iniciarConferenciaPacotes() {
         var chip = document.querySelector('.operacao-chip[data-codigo="' + codigo + '"]');
         if (!chip) return;
         chip.classList.add('ativo');
+        selecionarPostoMalote(chip.getAttribute('data-posto') || '', chip.getAttribute('data-regional') || '');
         var linha = chip.closest('.operacao-posto-row');
         if (linha) {
             linha.classList.add('ativo');
@@ -3080,6 +3953,7 @@ function iniciarConferenciaPacotes() {
             }
             atualizarLinhaOperacao(chip.closest('.operacao-posto-row'));
         }
+        renderizarPainelMalotes();
     }
 
     function abrirModalChipDetalhe(chip) {
@@ -3091,6 +3965,11 @@ function iniciarConferenciaPacotes() {
             ['Quantidade', chip.getAttribute('data-qtd') || ''],
             ['Data', formatarDataExibicao(chip.getAttribute('data-data') || '')],
             ['Responsável produção', chip.getAttribute('data-usuario') || ''],
+            ['Lacre IIPR', chip.getAttribute('data-lacre-iipr') || 'Pendente'],
+            ['Grupo IIPR', chip.getAttribute('data-grupo-iipr') || 'Pendente'],
+            ['Lacre Correios', chip.getAttribute('data-lacre-correios') || 'Pendente'],
+            ['Grupo Correios', chip.getAttribute('data-grupo-correios') || 'Pendente'],
+            ['Etiqueta Correios', chip.getAttribute('data-etiqueta-correios') || 'Pendente'],
             ['Código de barras', chip.getAttribute('data-codigo') || ''],
             ['Conferido em', formatarDataExibicao(chip.getAttribute('data-conferido-em') || '') || 'Pendente']
         ];
@@ -4097,17 +4976,31 @@ function iniciarConferenciaPacotes() {
     btnResetar.addEventListener("click", function() {
         if (confirm("Tem certeza que deseja reiniciar a conferência? Isso irá APAGAR todos os dados conferidos do banco!")) {
             // Obter datas filtradas
-            var checkboxes = document.querySelectorAll('.filtro-datas input[type="checkbox"]:checked');
             var datas = [];
-            
-            for (var i = 0; i < checkboxes.length; i++) {
-                datas.push(checkboxes[i].value);
+
+            for (var i = 0; i < datasFiltroSql.length; i++) {
+                if (datasFiltroSql[i]) {
+                    datas.push(datasFiltroSql[i]);
+                }
             }
             
             // Resetar visualmente
             var trsConfirmados = document.querySelectorAll("tr.confirmado");
             for (var j = 0; j < trsConfirmados.length; j++) {
                 trsConfirmados[j].classList.remove("confirmado");
+            }
+            var chipsAtribuidos = document.querySelectorAll('.operacao-chip');
+            for (var c = 0; c < chipsAtribuidos.length; c++) {
+                chipsAtribuidos[c].setAttribute('data-conf', '0');
+                aplicarAtribuicaoNoChip(chipsAtribuidos[c], {
+                    lacre_iipr: '',
+                    grupo_iipr: '',
+                    lacre_correios: '',
+                    grupo_correios: '',
+                    etiqueta_correios: '',
+                    usuario_lacre: '',
+                    atualizado_lacre: ''
+                });
             }
             atualizarResumoTodasTabelas();
             sincronizarPainelOperacao();
@@ -4117,6 +5010,9 @@ function iniciarConferenciaPacotes() {
             primeiroConferido = false; // v9.2: Reseta flag
             input.value = "";
             input.focus();
+            postoSelecionadoMalote = '';
+            grupoSelecionadoMalote = '';
+            renderizarPainelMalotes();
             
             // Excluir do banco via AJAX
             if (datas.length > 0) {

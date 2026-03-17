@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — Versão 9.24.4
+/* lacres_novo.php — Versão 9.25.10
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v9.25.10 (17/03/2026):
+ * - [NOVO] Resumo consolidado do ofício por grupos de malote
+ * - [NOVO] Grupos de malote IIPR e Correios persistidos em ciDespachoLotes
+ * - [NOVO] Separação de linhas repetidas do mesmo posto no resumo do ofício
  *
  * CHANGELOG v9.24.4 (20/02/2026):
  * - [AJUSTE] Botao "Adicionar linha abaixo" visivel ao lado de Excluir/Excluir Regional
@@ -432,6 +437,42 @@
 // Conexões com os bancos de dados
 $pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
 $pdo_controle->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo_controle->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_lacres (
+    id INT NOT NULL AUTO_INCREMENT,
+    codbar VARCHAR(25) NOT NULL,
+    lote VARCHAR(8) NOT NULL,
+    regional VARCHAR(3) NOT NULL,
+    posto VARCHAR(10) NOT NULL,
+    dataexp DATE NOT NULL,
+    qtd INT(5) NOT NULL DEFAULT 0,
+    lacre_iipr INT(11) DEFAULT NULL,
+    grupo_iipr VARCHAR(40) DEFAULT NULL,
+    lacre_correios INT(11) DEFAULT NULL,
+    grupo_correios VARCHAR(40) DEFAULT NULL,
+    etiqueta_correios VARCHAR(35) DEFAULT NULL,
+    usuario_lacre VARCHAR(120) DEFAULT NULL,
+    atualizado_em DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uniq_codbar (codbar),
+    KEY idx_periodo (dataexp),
+    KEY idx_posto_lote (posto, lote)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+$colsGrupoIiprAux = $pdo_controle->query("SHOW COLUMNS FROM conferencia_pacotes_lacres LIKE 'grupo_iipr'")->fetchAll();
+if (count($colsGrupoIiprAux) === 0) {
+    $pdo_controle->exec("ALTER TABLE conferencia_pacotes_lacres ADD COLUMN grupo_iipr VARCHAR(40) DEFAULT NULL AFTER lacre_iipr");
+}
+$colsGrupoCorreiosAux = $pdo_controle->query("SHOW COLUMNS FROM conferencia_pacotes_lacres LIKE 'grupo_correios'")->fetchAll();
+if (count($colsGrupoCorreiosAux) === 0) {
+    $pdo_controle->exec("ALTER TABLE conferencia_pacotes_lacres ADD COLUMN grupo_correios VARCHAR(40) DEFAULT NULL AFTER lacre_correios");
+}
+$colsGrupoIiprDesp = $pdo_controle->query("SHOW COLUMNS FROM ciDespachoLotes LIKE 'grupo_iipr'")->fetchAll();
+if (count($colsGrupoIiprDesp) === 0) {
+    $pdo_controle->exec("ALTER TABLE ciDespachoLotes ADD COLUMN grupo_iipr VARCHAR(40) DEFAULT NULL AFTER etiquetaiipr");
+}
+$colsGrupoCorreiosDesp = $pdo_controle->query("SHOW COLUMNS FROM ciDespachoLotes LIKE 'grupo_correios'")->fetchAll();
+if (count($colsGrupoCorreiosDesp) === 0) {
+    $pdo_controle->exec("ALTER TABLE ciDespachoLotes ADD COLUMN grupo_correios VARCHAR(40) DEFAULT NULL AFTER etiquetacorreios");
+}
 
 $pdo_servico = new PDO("mysql:host=10.15.61.169;dbname=servico;charset=utf8mb4", "controle_mat", "375256");
 $pdo_servico->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -1057,6 +1098,30 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         $stmtLotes = $pdo_controle->prepare($sqlLotes);
         $stmtLotes->execute($datasSql);
 
+        $mapaLacresPorLote = array();
+        try {
+            $stmtLacresLote = $pdo_controle->prepare("SELECT codbar, lote, regional, posto, dataexp, lacre_iipr, grupo_iipr, lacre_correios, grupo_correios, etiqueta_correios
+                FROM conferencia_pacotes_lacres
+                WHERE dataexp IN ($placeholders)");
+            $stmtLacresLote->execute($datasSql);
+            while ($rowLoteLacre = $stmtLacresLote->fetch(PDO::FETCH_ASSOC)) {
+                $loteMap = str_pad(preg_replace('/\D+/', '', (string)$rowLoteLacre['lote']), 8, '0', STR_PAD_LEFT);
+                $postoMap = str_pad(preg_replace('/\D+/', '', (string)$rowLoteLacre['posto']), 3, '0', STR_PAD_LEFT);
+                $dataMap = isset($rowLoteLacre['dataexp']) ? trim((string)$rowLoteLacre['dataexp']) : '';
+                $registroMap = array(
+                    'lacre_iipr' => isset($rowLoteLacre['lacre_iipr']) && $rowLoteLacre['lacre_iipr'] !== null ? (int)$rowLoteLacre['lacre_iipr'] : 0,
+                    'grupo_iipr' => isset($rowLoteLacre['grupo_iipr']) ? trim((string)$rowLoteLacre['grupo_iipr']) : '',
+                    'lacre_correios' => isset($rowLoteLacre['lacre_correios']) && $rowLoteLacre['lacre_correios'] !== null ? (int)$rowLoteLacre['lacre_correios'] : 0,
+                    'grupo_correios' => isset($rowLoteLacre['grupo_correios']) ? trim((string)$rowLoteLacre['grupo_correios']) : '',
+                    'etiqueta_correios' => isset($rowLoteLacre['etiqueta_correios']) ? trim((string)$rowLoteLacre['etiqueta_correios']) : ''
+                );
+                $mapaLacresPorLote[$postoMap . '|' . $loteMap . '|' . $dataMap] = $registroMap;
+                $mapaLacresPorLote[$postoMap . '|' . $loteMap] = $registroMap;
+            }
+        } catch (Exception $e) {
+            $mapaLacresPorLote = array();
+        }
+
         // v8.13: USAR SNAPSHOT JSON COMO FONTE ÚNICA DE VERDADE
         // O snapshot contém o estado exato da grade no momento do salvamento
         $snapshot = array();
@@ -1297,8 +1362,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
 
         // v8.6: Atualizar SQL do INSERT para incluir campos de lacres
         $stInsLote = $pdo_controle->prepare("
-            INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis, etiquetaiipr, etiquetacorreios, etiqueta_correios)
-            VALUES (?,?,?,?,?,?,?,?,?)
+            INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis, etiquetaiipr, grupo_iipr, etiquetacorreios, grupo_correios, etiqueta_correios)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
         ");
 
         // VERSAO 6: Debug MELHORADO - registrar etiquetas recebidas
@@ -1369,7 +1434,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             // 3º: REGIONAIS (expande todos os postos da regional, usa lacres do snapshot)
             // CRÍTICO: lacre_iipr e lacre_correios DEVEM ser valores distintos e corretos
             $lacreIIPR_lote = 0;
+            $grupoIIPR_lote = null;
             $lacreCorreios_lote = 0;
+            $grupoCorreios_lote = null;
             $etiquetaCorreios_lote = null;
 
             $aplicar_mapa = false;
@@ -1414,6 +1481,34 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 if ($lacreIIPR_lote > 0 || $lacreCorreios_lote > 0 || !empty($etiquetaCorreios_lote)) {
                     $aplicar_mapa = true;
                     $origem_lacre = 'SESSAO:' . $posto_lote;
+                }
+            }
+
+            $chaveLacreLoteData = $posto_lote . '|' . (string)$l['lote'] . '|' . $l['data_carga'];
+            $chaveLacreLote = $posto_lote . '|' . (string)$l['lote'];
+            $lacreDetalhado = null;
+            if (isset($mapaLacresPorLote[$chaveLacreLoteData])) {
+                $lacreDetalhado = $mapaLacresPorLote[$chaveLacreLoteData];
+            } elseif (isset($mapaLacresPorLote[$chaveLacreLote])) {
+                $lacreDetalhado = $mapaLacresPorLote[$chaveLacreLote];
+            }
+            if (is_array($lacreDetalhado)) {
+                if (isset($lacreDetalhado['lacre_iipr']) && (int)$lacreDetalhado['lacre_iipr'] > 0) {
+                    $lacreIIPR_lote = (int)$lacreDetalhado['lacre_iipr'];
+                    $grupoIIPR_lote = isset($lacreDetalhado['grupo_iipr']) ? trim((string)$lacreDetalhado['grupo_iipr']) : null;
+                    $aplicar_mapa = true;
+                    $origem_lacre = 'CHIPS:IIPR';
+                }
+                if (isset($lacreDetalhado['lacre_correios']) && (int)$lacreDetalhado['lacre_correios'] > 0) {
+                    $lacreCorreios_lote = (int)$lacreDetalhado['lacre_correios'];
+                    $grupoCorreios_lote = isset($lacreDetalhado['grupo_correios']) ? trim((string)$lacreDetalhado['grupo_correios']) : null;
+                    $aplicar_mapa = true;
+                    $origem_lacre = 'CHIPS:CORREIOS';
+                }
+                if (isset($lacreDetalhado['etiqueta_correios']) && trim((string)$lacreDetalhado['etiqueta_correios']) !== '') {
+                    $etiquetaCorreios_lote = trim((string)$lacreDetalhado['etiqueta_correios']);
+                    $aplicar_mapa = true;
+                    $origem_lacre = 'CHIPS:ETIQUETA';
                 }
             }
             
@@ -1461,7 +1556,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 'regional_lote_norm'   => $regional_lote,
                 'origem_lacre'         => $origem_lacre,
                 'lacreIIPR_lote'       => $lacreIIPR_lote,
+                'grupoIIPR_lote'       => $grupoIIPR_lote,
                 'lacreCorreios_lote'   => $lacreCorreios_lote,
+                'grupoCorreios_lote'   => $grupoCorreios_lote,
                 'etiquetaCorreios_lote' => $etiquetaCorreios_lote,
                 'existe_em_mapaCapital'  => isset($mapaCapital[$posto_lote]),
                 'existe_em_mapaCentral'  => isset($mapaCentral[$posto_lote]),
@@ -1479,7 +1576,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $l['data_carga'],
                 $l['responsaveis'],
                 (int)$lacreIIPR_lote,          // etiquetaiipr (INT)
+                $grupoIIPR_lote,
                 (int)$lacreCorreios_lote,      // etiquetacorreios (INT) - NUNCA igual a lacre_iipr quando deveria ser diferente
+                $grupoCorreios_lote,
                 $etiquetaCorreios_lote         // etiqueta_correios (VARCHAR 35 dígitos)
             ));
             // v8.3: Registra dados do lote gravado para contar postos distintos
@@ -1515,7 +1614,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                     $data_manual,
                     $usuario,
                     $lacreI,
+                    null,
                     $lacreC,
+                    null,
                     $etiqM
                 ));
 
@@ -3565,6 +3666,111 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
     // v8.15.7: Novo padrão SEM #: ID_tipo_dd-mm-yyyy.pdf (ex: 26_correios_10-12-2025.pdf)
     $nome_pdf_titulo = $id_despacho_atual . "_" . $grupo_atual . "_" . $data_atual;
 }
+
+function compactarSequenciaLacres($valores) {
+    if (!is_array($valores) || empty($valores)) {
+        return '';
+    }
+    $nums = array();
+    foreach ($valores as $valor) {
+        $v = (int)$valor;
+        if ($v > 0) {
+            $nums[$v] = $v;
+        }
+    }
+    if (empty($nums)) {
+        return '';
+    }
+    ksort($nums);
+    $nums = array_values($nums);
+    $partes = array();
+    $inicio = $nums[0];
+    $anterior = $nums[0];
+    $total = count($nums);
+    for ($i = 1; $i < $total; $i++) {
+        $atual = $nums[$i];
+        if ($atual === ($anterior + 1)) {
+            $anterior = $atual;
+            continue;
+        }
+        $partes[] = ($inicio === $anterior) ? (string)$inicio : ($inicio . '-' . $anterior);
+        $inicio = $atual;
+        $anterior = $atual;
+    }
+    $partes[] = ($inicio === $anterior) ? (string)$inicio : ($inicio . '-' . $anterior);
+    return implode(', ', $partes);
+}
+
+$resumo_oficio_correios = array();
+if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
+    try {
+        $mapaNomesPostoResumo = array();
+        foreach ($dados as $grupoResumo => $itensResumo) {
+            foreach ($itensResumo as $itemResumo) {
+                $mapaNomesPostoResumo[$itemResumo['posto_codigo']] = $itemResumo['posto_nome'];
+            }
+        }
+
+        $stmtResumoOficio = $pdo_controle->prepare("SELECT posto, lote, etiquetaiipr, grupo_iipr, etiquetacorreios, grupo_correios, etiqueta_correios
+            FROM ciDespachoLotes
+            WHERE id_despacho = ?
+            ORDER BY posto, lote");
+        $stmtResumoOficio->execute(array($id_despacho_atual));
+        $gruposResumo = array();
+
+        while ($rowResumo = $stmtResumoOficio->fetch(PDO::FETCH_ASSOC)) {
+            $postoResumo = (string)$rowResumo['posto'];
+            $postoResumoPad = preg_match('/^M/i', $postoResumo) ? $postoResumo : str_pad($postoResumo, 3, '0', STR_PAD_LEFT);
+            $grupoCorreiosResumo = trim((string)$rowResumo['grupo_correios']);
+            $grupoIiprResumo = trim((string)$rowResumo['grupo_iipr']);
+            $lacreIiprResumo = isset($rowResumo['etiquetaiipr']) ? (int)$rowResumo['etiquetaiipr'] : 0;
+            $lacreCorreiosResumo = isset($rowResumo['etiquetacorreios']) ? (int)$rowResumo['etiquetacorreios'] : 0;
+            $etiquetaResumo = trim((string)$rowResumo['etiqueta_correios']);
+            $fallback = $lacreCorreiosResumo . '|' . $etiquetaResumo . '|' . ($grupoIiprResumo !== '' ? $grupoIiprResumo : $lacreIiprResumo);
+            $chaveResumo = $postoResumoPad . '|' . ($grupoCorreiosResumo !== '' ? $grupoCorreiosResumo : $fallback);
+
+            if (!isset($gruposResumo[$chaveResumo])) {
+                $gruposResumo[$chaveResumo] = array(
+                    'posto_codigo' => $postoResumoPad,
+                    'posto_nome' => isset($mapaNomesPostoResumo[$postoResumoPad]) ? $mapaNomesPostoResumo[$postoResumoPad] : $postoResumoPad,
+                    'lacres_iipr' => array(),
+                    'lacres_correios' => array(),
+                    'etiqueta_correios' => '',
+                    'ordem' => count($gruposResumo)
+                );
+            }
+            if ($lacreIiprResumo > 0) {
+                $gruposResumo[$chaveResumo]['lacres_iipr'][$lacreIiprResumo] = $lacreIiprResumo;
+            }
+            if ($lacreCorreiosResumo > 0) {
+                $gruposResumo[$chaveResumo]['lacres_correios'][$lacreCorreiosResumo] = $lacreCorreiosResumo;
+            }
+            if ($etiquetaResumo !== '') {
+                $gruposResumo[$chaveResumo]['etiqueta_correios'] = $etiquetaResumo;
+            }
+        }
+
+        foreach ($gruposResumo as $itemResumo) {
+            $resumo_oficio_correios[] = array(
+                'posto_codigo' => $itemResumo['posto_codigo'],
+                'posto_nome' => $itemResumo['posto_nome'],
+                'lacre_iipr' => compactarSequenciaLacres($itemResumo['lacres_iipr']),
+                'lacre_correios' => compactarSequenciaLacres($itemResumo['lacres_correios']),
+                'etiqueta_correios' => $itemResumo['etiqueta_correios'],
+                'ordem' => $itemResumo['ordem']
+            );
+        }
+
+        usort($resumo_oficio_correios, function($a, $b) {
+            if ($a['posto_codigo'] === $b['posto_codigo']) {
+                return $a['ordem'] - $b['ordem'];
+            }
+            return strcmp($a['posto_codigo'], $b['posto_codigo']);
+        });
+    } catch (Exception $e) {
+        $resumo_oficio_correios = array();
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -4230,6 +4436,39 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
             padding: 3px 6px;
             border-radius: 3px;
         }
+        .quadro-resumo-oficio {
+            margin: 16px 0;
+            padding: 14px;
+            background: #fff;
+            border: 1px solid #d7e4f0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .quadro-resumo-oficio h3 {
+            margin: 0 0 10px;
+            color: #16324f;
+        }
+        .quadro-resumo-oficio .subtitulo {
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #60758b;
+        }
+        .quadro-resumo-oficio table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .quadro-resumo-oficio th,
+        .quadro-resumo-oficio td {
+            border: 1px solid #8f9cab;
+            padding: 8px 6px;
+            font-size: 12px;
+            word-break: break-word;
+        }
+        .quadro-resumo-oficio th:nth-child(1), .quadro-resumo-oficio td:nth-child(1) { width: 34%; }
+        .quadro-resumo-oficio th:nth-child(2), .quadro-resumo-oficio td:nth-child(2) { width: 12%; }
+        .quadro-resumo-oficio th:nth-child(3), .quadro-resumo-oficio td:nth-child(3) { width: 12%; }
+        .quadro-resumo-oficio th:nth-child(4), .quadro-resumo-oficio td:nth-child(4) { width: 32%; }
         
         /* Debug info */
         .debug-info {
@@ -4856,7 +5095,7 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 0.9.25.0</div>
+<div class="version-info">Versão 0.9.25.10</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5298,6 +5537,33 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
     <?php endif; ?>
 </div>
 
+<?php if (!empty($resumo_oficio_correios)): ?>
+<div class="quadro-resumo-oficio">
+    <h3>Ofício Correios consolidado por malote</h3>
+    <div class="subtitulo">Quando o mesmo posto usa mais de um conjunto de malotes, ele aparece em linhas separadas conforme os grupos fechados na conferência por chips.</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Regionais</th>
+                <th>Lacre IIPR</th>
+                <th>Lacre Correios</th>
+                <th>Etiqueta Correios</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($resumo_oficio_correios as $linha_resumo): ?>
+            <tr>
+                <td><?php echo htmlspecialchars($linha_resumo['posto_nome'], ENT_QUOTES, 'UTF-8'); ?></td>
+                <td><?php echo htmlspecialchars($linha_resumo['lacre_iipr'] !== '' ? $linha_resumo['lacre_iipr'] : '-', ENT_QUOTES, 'UTF-8'); ?></td>
+                <td><?php echo htmlspecialchars($linha_resumo['lacre_correios'] !== '' ? $linha_resumo['lacre_correios'] : '-', ENT_QUOTES, 'UTF-8'); ?></td>
+                <td><?php echo htmlspecialchars($linha_resumo['etiqueta_correios'] !== '' ? $linha_resumo['etiqueta_correios'] : '-', ENT_QUOTES, 'UTF-8'); ?></td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<?php endif; ?>
+
 <div class="quadro quadro-adicionar">
     <h3>Adicionar Posto Manualmente</h3>
     <form method="post" class="form-adicionar">
@@ -5320,7 +5586,7 @@ if ($id_despacho_atual > 0 && $grupo_atual !== '') {
 </div>
 
 <?php foreach ($dados as $grupo => $itens): if (empty($itens)) continue; ?>
-    <table id="tabela-<?php echo strtolower(str_replace(' ', '-', $grupo)) ?>" data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>">
+    <table id="tabela-<?php echo strtolower(str_replace(' ', '-', $grupo)) ?>" data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>" class="<?php echo !empty($resumo_oficio_correios) ? 'nao-imprimir' : ''; ?>">
         <thead>
             <tr>
                 <th><?php echo $grupo ?></th>
