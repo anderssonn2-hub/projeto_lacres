@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.11
+/* conferencia_pacotes.php — v0.9.25.12
+ * CHANGELOG v9.25.12:
+ * - [NOVO] Controle remoto por celular com comandos de malote sincronizados via servidor
+ * - [NOVO] Canal remoto para operar lacres e etiqueta sem depender de voz no navegador
+ *
  * CHANGELOG v9.25.11:
  * - [NOVO] Comandos de voz para armar e preencher lacres/etiqueta no painel de malotes
  * - [NOVO] Prévia dinâmica do ofício em segunda tela via sincronização local do navegador
@@ -161,6 +165,10 @@ $conferencias_lote = array();
 $dias_com_conferencia = array();
 $dias_sem_conferencia = array();
 $metadados_dias = array();
+$controle_canal = isset($_GET['canal_controle']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$_GET['canal_controle']) : 'principal';
+if ($controle_canal === '') {
+    $controle_canal = 'principal';
+}
 
 function e($s) {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
@@ -332,6 +340,127 @@ try {
     $colsGrupoCorreios = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes_lacres LIKE 'grupo_correios'")->fetchAll();
     if (count($colsGrupoCorreios) === 0) {
         $pdo->exec("ALTER TABLE conferencia_pacotes_lacres ADD COLUMN grupo_correios VARCHAR(40) DEFAULT NULL AFTER lacre_correios");
+    }
+
+    // v9.25.12: Comandos remotos para o painel de malotes
+    $pdo->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_controle (
+        id INT NOT NULL AUTO_INCREMENT,
+        canal VARCHAR(40) NOT NULL,
+        comando VARCHAR(40) NOT NULL,
+        valor VARCHAR(120) DEFAULT NULL,
+        valor_aux VARCHAR(120) DEFAULT NULL,
+        usuario VARCHAR(120) DEFAULT NULL,
+        criado_em DATETIME NOT NULL,
+        processado_em DATETIME DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_canal_processado (canal, processado_em, id)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_controle_estado (
+        canal VARCHAR(40) NOT NULL,
+        usuario VARCHAR(120) DEFAULT NULL,
+        posto VARCHAR(10) DEFAULT NULL,
+        regional VARCHAR(120) DEFAULT NULL,
+        resumo VARCHAR(255) DEFAULT NULL,
+        lacre_iipr VARCHAR(20) DEFAULT NULL,
+        lacre_correios VARCHAR(20) DEFAULT NULL,
+        etiqueta_correios VARCHAR(35) DEFAULT NULL,
+        atualizado_em DATETIME NOT NULL,
+        PRIMARY KEY (canal)
+    ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    if (isset($_POST['enviar_comando_remoto_ajax'])) {
+        $canal = isset($_POST['canal']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$_POST['canal']) : 'principal';
+        $comando = isset($_POST['comando']) ? preg_replace('/[^a-z_]/', '', strtolower((string)$_POST['comando'])) : '';
+        $valor = isset($_POST['valor']) ? substr(trim((string)$_POST['valor']), 0, 120) : '';
+        $valorAux = isset($_POST['valor_aux']) ? substr(trim((string)$_POST['valor_aux']), 0, 120) : '';
+        $usuario = isset($_POST['usuario']) ? substr(trim((string)$_POST['usuario']), 0, 120) : '';
+        if ($canal === '') {
+            $canal = 'principal';
+        }
+        if ($comando === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Comando obrigatorio')));
+        }
+        $stmt = $pdo->prepare("INSERT INTO conferencia_pacotes_controle (canal, comando, valor, valor_aux, usuario, criado_em) VALUES (?, ?, ?, ?, ?, NOW())");
+        $stmt->execute(array($canal, $comando, ($valor === '' ? null : $valor), ($valorAux === '' ? null : $valorAux), ($usuario === '' ? null : $usuario)));
+        $id = (int)$pdo->lastInsertId();
+        $stmt = null;
+        $pdo = null;
+        die(json_encode(array('success' => true, 'id' => $id)));
+    }
+
+    if (isset($_GET['buscar_comandos_remoto_ajax'])) {
+        $canal = isset($_GET['canal']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$_GET['canal']) : 'principal';
+        if ($canal === '') {
+            $canal = 'principal';
+        }
+        $stmt = $pdo->prepare("SELECT id, comando, valor, valor_aux, usuario, criado_em FROM conferencia_pacotes_controle WHERE canal = ? AND processado_em IS NULL ORDER BY id ASC LIMIT 30");
+        $stmt->execute(array($canal));
+        $comandos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $ids = array();
+        foreach ($comandos as $cmd) {
+            $ids[] = (int)$cmd['id'];
+        }
+        if (!empty($ids)) {
+            $ph = implode(',', array_fill(0, count($ids), '?'));
+            $stmtUpd = $pdo->prepare("UPDATE conferencia_pacotes_controle SET processado_em = NOW() WHERE id IN ($ph)");
+            $stmtUpd->execute($ids);
+            $stmtUpd = null;
+        }
+        $stmt = null;
+        $pdo = null;
+        die(json_encode(array('success' => true, 'comandos' => $comandos)));
+    }
+
+    if (isset($_POST['atualizar_estado_remoto_ajax'])) {
+        $canal = isset($_POST['canal']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$_POST['canal']) : 'principal';
+        if ($canal === '') {
+            $canal = 'principal';
+        }
+        $usuario = isset($_POST['usuario']) ? substr(trim((string)$_POST['usuario']), 0, 120) : '';
+        $posto = isset($_POST['posto']) ? substr(trim((string)$_POST['posto']), 0, 10) : '';
+        $regional = isset($_POST['regional']) ? substr(trim((string)$_POST['regional']), 0, 120) : '';
+        $resumo = isset($_POST['resumo']) ? substr(trim((string)$_POST['resumo']), 0, 255) : '';
+        $lacreIipr = isset($_POST['lacre_iipr']) ? substr(trim((string)$_POST['lacre_iipr']), 0, 20) : '';
+        $lacreCorreios = isset($_POST['lacre_correios']) ? substr(trim((string)$_POST['lacre_correios']), 0, 20) : '';
+        $etiquetaCorreios = isset($_POST['etiqueta_correios']) ? substr(trim((string)$_POST['etiqueta_correios']), 0, 35) : '';
+        $stmt = $pdo->prepare("INSERT INTO conferencia_pacotes_controle_estado (canal, usuario, posto, regional, resumo, lacre_iipr, lacre_correios, etiqueta_correios, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+                usuario = VALUES(usuario),
+                posto = VALUES(posto),
+                regional = VALUES(regional),
+                resumo = VALUES(resumo),
+                lacre_iipr = VALUES(lacre_iipr),
+                lacre_correios = VALUES(lacre_correios),
+                etiqueta_correios = VALUES(etiqueta_correios),
+                atualizado_em = NOW()");
+        $stmt->execute(array(
+            $canal,
+            ($usuario === '' ? null : $usuario),
+            ($posto === '' ? null : $posto),
+            ($regional === '' ? null : $regional),
+            ($resumo === '' ? null : $resumo),
+            ($lacreIipr === '' ? null : $lacreIipr),
+            ($lacreCorreios === '' ? null : $lacreCorreios),
+            ($etiquetaCorreios === '' ? null : $etiquetaCorreios)
+        ));
+        $stmt = null;
+        $pdo = null;
+        die(json_encode(array('success' => true)));
+    }
+
+    if (isset($_GET['ler_estado_remoto_ajax'])) {
+        $canal = isset($_GET['canal']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$_GET['canal']) : 'principal';
+        if ($canal === '') {
+            $canal = 'principal';
+        }
+        $stmt = $pdo->prepare("SELECT canal, usuario, posto, regional, resumo, lacre_iipr, lacre_correios, etiqueta_correios, atualizado_em FROM conferencia_pacotes_controle_estado WHERE canal = ? LIMIT 1");
+        $stmt->execute(array($canal));
+        $estado = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt = null;
+        $pdo = null;
+        die(json_encode(array('success' => true, 'estado' => $estado ? $estado : null)));
     }
 
     // Handler AJAX salvar
@@ -1971,11 +2100,12 @@ try {
         }
         .painel-malotes-utilitarios {
             display: grid;
-            grid-template-columns: minmax(320px, 1.2fr) minmax(240px, 0.8fr);
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 14px;
             margin-bottom: 14px;
         }
         .painel-voz,
+        .painel-controle-remoto,
         .painel-previsao-malotes {
             border: 1px solid #e6edf5;
             border-radius: 12px;
@@ -1983,6 +2113,7 @@ try {
             background: #f9fbfd;
         }
         .painel-voz-topo,
+        .painel-controle-topo,
         .painel-previsao-topo {
             display: flex;
             justify-content: space-between;
@@ -1991,18 +2122,21 @@ try {
             flex-wrap: wrap;
         }
         .painel-voz h4,
+        .painel-controle-remoto h4,
         .painel-previsao-malotes h4 {
             margin: 0;
             color: #153754;
             font-size: 14px;
         }
         .painel-voz-sub,
+        .painel-controle-sub,
         .painel-previsao-sub {
             margin-top: 4px;
             font-size: 12px;
             color: #5b7188;
         }
         .btn-voz-toggle,
+        .btn-controle-remoto,
         .btn-previsao-malotes {
             border: none;
             border-radius: 8px;
@@ -2020,6 +2154,23 @@ try {
         .btn-previsao-malotes {
             background: #0f766e;
             color: #fff;
+        }
+        .btn-controle-remoto {
+            background: #7c3aed;
+            color: #fff;
+        }
+        .controle-canal-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            background: #efe7ff;
+            color: #5b21b6;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
         }
         .voz-status-pill {
             display: inline-flex;
@@ -2047,6 +2198,7 @@ try {
             color: #946200;
         }
         .painel-voz-dicas,
+        .painel-controle-dicas,
         .painel-previsao-dicas {
             margin-top: 10px;
             font-size: 11px;
@@ -2399,7 +2551,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.11</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.12</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -2712,6 +2864,17 @@ try {
                 <strong>Diagnóstico de voz</strong>
                 Clique em Ativar microfone para testar a compatibilidade deste navegador.
             </div>
+        </div>
+        <div class="painel-controle-remoto" id="painelControleRemoto">
+            <div class="painel-controle-topo">
+                <div>
+                    <h4>Controle remoto por celular</h4>
+                    <div class="painel-controle-sub" id="statusControleRemoto">Use o celular como painel de comandos para lacres e etiqueta.</div>
+                </div>
+                <button type="button" class="btn-controle-remoto" id="btnAbrirControleRemoto">Abrir controle</button>
+            </div>
+            <div class="controle-canal-badge">Canal: <?php echo e($controle_canal); ?></div>
+            <div class="painel-controle-dicas">Abra a página de controle remoto no celular com o mesmo canal. Nela você toca três vezes nos botões para enviar ações como salvar malote IIPR, salvar malote Correios e limpar vínculos.</div>
         </div>
         <div class="painel-previsao-malotes" id="painelPrevisaoMalotes">
             <div class="painel-previsao-topo">
@@ -3363,6 +3526,8 @@ function iniciarConferenciaPacotes() {
     var statusVozComando = document.getElementById('statusVozComando');
     var vozCampoAtual = document.getElementById('vozCampoAtual');
     var painelDiagnosticoVoz = document.getElementById('painelDiagnosticoVoz');
+    var btnAbrirControleRemoto = document.getElementById('btnAbrirControleRemoto');
+    var statusControleRemoto = document.getElementById('statusControleRemoto');
     var btnAbrirPreviaMalotes = document.getElementById('btnAbrirPreviaMalotes');
     var statusPreviaMalotes = document.getElementById('statusPreviaMalotes');
     var pacoteCodbar = document.getElementById('pacote_codbar');
@@ -3401,6 +3566,7 @@ function iniciarConferenciaPacotes() {
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
     var previewStorageKey = 'conferencia_previa_malotes_v1';
+    var controleCanal = <?php echo json_encode($controle_canal); ?>;
     var postoSelecionadoMalote = '';
     var grupoSelecionadoMalote = '';
     var previewChannel = null;
@@ -3409,6 +3575,7 @@ function iniciarConferenciaPacotes() {
     var vozEscutaAtiva = false;
     var vozModoAtual = '';
     var vozReinicioManual = false;
+    var pollingRemotoAtivo = false;
 
     if (window.BroadcastChannel) {
         try {
@@ -3729,6 +3896,18 @@ function iniciarConferenciaPacotes() {
         }
     }
 
+    function abrirControleRemoto() {
+        var alvo = 'conferencia_pacotes_controle.php?canal_controle=' + encodeURIComponent(controleCanal || 'principal');
+        var janela = window.open(alvo, '_blank');
+        if (janela) {
+            if (statusControleRemoto) {
+                statusControleRemoto.textContent = 'Controle remoto aberto. Use o mesmo canal no celular.';
+            }
+        } else if (statusControleRemoto) {
+            statusControleRemoto.textContent = 'O navegador bloqueou a abertura do controle remoto.';
+        }
+    }
+
     function montarResumoPreviaMalotes() {
         var chips = document.querySelectorAll('.operacao-chip');
         var grupos = {};
@@ -3838,6 +4017,85 @@ function iniciarConferenciaPacotes() {
         if (statusPreviaMalotes) {
             statusPreviaMalotes.textContent = 'Última atualização: ' + snapshot.gerado_em + ' • linhas prontas: ' + snapshot.total_fechados;
         }
+        publicarEstadoControleRemoto();
+    }
+
+    function publicarEstadoControleRemoto() {
+        if (!controleCanal) return;
+        var resumo = montarResumoPreviaMalotes();
+        var primeiro = resumo && resumo.resumo && resumo.resumo.length ? resumo.resumo[0] : null;
+        var formData = new FormData();
+        formData.append('atualizar_estado_remoto_ajax', '1');
+        formData.append('canal', controleCanal);
+        formData.append('usuario', usuarioAtual || '');
+        formData.append('posto', postoSelecionadoMalote || '');
+        formData.append('regional', grupoSelecionadoMalote || '');
+        formData.append('resumo', resumo.total_confirmados + ' confirmados / ' + resumo.total_fechados + ' linhas prontas');
+        formData.append('lacre_iipr', inputLacreIiprMalote ? String(inputLacreIiprMalote.value || '').trim() : '');
+        formData.append('lacre_correios', inputLacreCorreiosMalote ? String(inputLacreCorreiosMalote.value || '').trim() : '');
+        formData.append('etiqueta_correios', inputEtiquetaCorreiosMalote ? String(inputEtiquetaCorreiosMalote.value || '').trim() : '');
+        fetch('conferencia_pacotes.php', { method: 'POST', body: formData }).catch(function() {});
+        if (statusControleRemoto) {
+            statusControleRemoto.textContent = 'Canal ' + controleCanal + ' ativo. Posto atual: ' + (postoSelecionadoMalote || 'nenhum');
+        }
+    }
+
+    function aplicarComandoRemoto(comando) {
+        if (!comando || !comando.comando) return;
+        var nome = String(comando.comando || '').toLowerCase();
+        var valor = String(comando.valor || '').trim();
+        var valorAux = String(comando.valor_aux || '').trim();
+
+        if (nome === 'armar_iipr') {
+            definirModoVoz('iipr', 'Aguardando lacre IIPR');
+        } else if (nome === 'salvar_iipr') {
+            if (inputLacreIiprMalote && valor) inputLacreIiprMalote.value = normalizarNumeroLacre(valor);
+            if (btnSalvarMaloteIipr) btnSalvarMaloteIipr.click();
+        } else if (nome === 'armar_correios') {
+            definirModoVoz('correios_lacre', 'Aguardando lacre Correios');
+        } else if (nome === 'preencher_correios') {
+            if (inputLacreCorreiosMalote) inputLacreCorreiosMalote.value = normalizarNumeroLacre(valor);
+            if (inputLacreCorreiosMalote) inputLacreCorreiosMalote.focus();
+        } else if (nome === 'armar_etiqueta') {
+            definirModoVoz('correios_etiqueta', 'Aguardando etiqueta Correios');
+        } else if (nome === 'preencher_etiqueta') {
+            if (inputEtiquetaCorreiosMalote) inputEtiquetaCorreiosMalote.value = String(valor || '').trim();
+            if (inputEtiquetaCorreiosMalote) inputEtiquetaCorreiosMalote.focus();
+        } else if (nome === 'salvar_correios') {
+            if (inputLacreCorreiosMalote && valor) inputLacreCorreiosMalote.value = normalizarNumeroLacre(valor);
+            if (inputEtiquetaCorreiosMalote && valorAux) inputEtiquetaCorreiosMalote.value = String(valorAux || '').trim();
+            if (btnSalvarMaloteCorreios) btnSalvarMaloteCorreios.click();
+        } else if (nome === 'limpar_lotes') {
+            if (btnLimparMaloteLote) btnLimparMaloteLote.click();
+        }
+
+        if (statusControleRemoto) {
+            statusControleRemoto.textContent = 'Comando remoto aplicado: ' + nome.replace(/_/g, ' ');
+        }
+        publicarEstadoControleRemoto();
+    }
+
+    function iniciarPollingControleRemoto() {
+        if (pollingRemotoAtivo || !controleCanal) return;
+        pollingRemotoAtivo = true;
+
+        function ciclo() {
+            fetch('conferencia_pacotes.php?buscar_comandos_remoto_ajax=1&canal=' + encodeURIComponent(controleCanal), { cache: 'no-store' })
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    if (data && data.success && data.comandos && data.comandos.length) {
+                        for (var i = 0; i < data.comandos.length; i++) {
+                            aplicarComandoRemoto(data.comandos[i]);
+                        }
+                    }
+                })
+                .catch(function() {})
+                .then(function() {
+                    window.setTimeout(ciclo, 1200);
+                });
+        }
+
+        ciclo();
     }
 
     function interpretarComandoVoz(transcricao) {
@@ -4368,6 +4626,12 @@ function iniciarConferenciaPacotes() {
     if (btnAbrirPreviaMalotes) {
         btnAbrirPreviaMalotes.addEventListener('click', function() {
             abrirPreviaMalotes();
+        });
+    }
+
+    if (btnAbrirControleRemoto) {
+        btnAbrirControleRemoto.addEventListener('click', function() {
+            abrirControleRemoto();
         });
     }
 
@@ -5219,6 +5483,7 @@ function iniciarConferenciaPacotes() {
     sincronizarPainelOperacao();
     renderizarDiagnosticoVoz();
     publicarResumoPrevia();
+    iniciarPollingControleRemoto();
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
