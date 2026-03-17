@@ -2053,6 +2053,41 @@ try {
             color: #687b8d;
             line-height: 1.5;
         }
+        .painel-voz-diagnostico {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #d6e2ee;
+            background: #fff;
+            font-size: 11px;
+            color: #4e657d;
+            line-height: 1.55;
+        }
+        .painel-voz-diagnostico strong {
+            display: block;
+            margin-bottom: 6px;
+            color: #173a57;
+            font-size: 12px;
+        }
+        .painel-voz-diagnostico ul {
+            margin: 8px 0 0;
+            padding-left: 18px;
+        }
+        .painel-voz-diagnostico li {
+            margin: 4px 0;
+        }
+        .painel-voz-diagnostico .ok {
+            color: #136c3a;
+            font-weight: 700;
+        }
+        .painel-voz-diagnostico .erro {
+            color: #b42318;
+            font-weight: 700;
+        }
+        .painel-voz-diagnostico .aviso {
+            color: #946200;
+            font-weight: 700;
+        }
         .painel-ultimas {
             background: #fff;
             border-radius: 8px;
@@ -2673,6 +2708,10 @@ try {
             </div>
             <div class="voz-status-pill" id="vozCampoAtual">Nenhum campo armado.</div>
             <div class="painel-voz-dicas">Diga frases como fechar malote IIPR, fechar malote Correios, etiqueta Correios, salvar malote IIPR, salvar malote Correios ou cancelar comando.</div>
+            <div class="painel-voz-diagnostico" id="painelDiagnosticoVoz">
+                <strong>Diagnóstico de voz</strong>
+                Clique em Ativar microfone para testar a compatibilidade deste navegador.
+            </div>
         </div>
         <div class="painel-previsao-malotes" id="painelPrevisaoMalotes">
             <div class="painel-previsao-topo">
@@ -3323,6 +3362,7 @@ function iniciarConferenciaPacotes() {
     var btnAlternarVozMalotes = document.getElementById('btnAlternarVozMalotes');
     var statusVozComando = document.getElementById('statusVozComando');
     var vozCampoAtual = document.getElementById('vozCampoAtual');
+    var painelDiagnosticoVoz = document.getElementById('painelDiagnosticoVoz');
     var btnAbrirPreviaMalotes = document.getElementById('btnAbrirPreviaMalotes');
     var statusPreviaMalotes = document.getElementById('statusPreviaMalotes');
     var pacoteCodbar = document.getElementById('pacote_codbar');
@@ -3515,6 +3555,77 @@ function iniciarConferenciaPacotes() {
         if (tipo) {
             vozCampoAtual.classList.add(tipo);
         }
+    }
+
+    function obterDiagnosticoVoz() {
+        var SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+        var protocolo = window.location && window.location.protocol ? window.location.protocol : '';
+        var host = window.location && window.location.host ? window.location.host : '';
+        var hostname = window.location && window.location.hostname ? window.location.hostname : '';
+        var secure = !!window.isSecureContext;
+        var localhost = hostname === 'localhost' || hostname === '127.0.0.1';
+        var mediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        var userAgent = navigator.userAgent || '';
+        var navegador = 'Navegador não identificado';
+
+        if (/Edg\//.test(userAgent)) {
+            navegador = 'Microsoft Edge';
+        } else if (/Chrome\//.test(userAgent) && !/Edg\//.test(userAgent)) {
+            navegador = 'Google Chrome';
+        } else if (/Firefox\//.test(userAgent)) {
+            navegador = 'Mozilla Firefox';
+        } else if (/Safari\//.test(userAgent) && !/Chrome\//.test(userAgent)) {
+            navegador = 'Safari';
+        } else if (/OPR\//.test(userAgent)) {
+            navegador = 'Opera';
+        }
+
+        var causas = [];
+        if (!SpeechRecognitionApi) {
+            causas.push('A API SpeechRecognition não existe neste navegador.');
+        }
+        if (!secure && !localhost) {
+            causas.push('A página não está em HTTPS nem em localhost.');
+        }
+        if (/Firefox\//.test(userAgent)) {
+            causas.push('Firefox normalmente não expõe a API usada nesta implementação.');
+        }
+        if (/OPR\//.test(userAgent)) {
+            causas.push('Opera pode esconder essa API mesmo com microfone liberado.');
+        }
+        if (!mediaDevices) {
+            causas.push('O navegador não expõe getUserMedia para testes de microfone.');
+        }
+
+        return {
+            speech: !!SpeechRecognitionApi,
+            media: mediaDevices,
+            secure: secure,
+            localhost: localhost,
+            protocolo: protocolo,
+            host: host,
+            navegador: navegador,
+            userAgent: userAgent,
+            causas: causas
+        };
+    }
+
+    function renderizarDiagnosticoVoz() {
+        if (!painelDiagnosticoVoz) return;
+        var diag = obterDiagnosticoVoz();
+        var linhas = [];
+        linhas.push('<li><span class="' + (diag.speech ? 'ok' : 'erro') + '">SpeechRecognition:</span> ' + (diag.speech ? 'disponível' : 'indisponível') + '</li>');
+        linhas.push('<li><span class="' + (diag.media ? 'ok' : 'erro') + '">Microfone do navegador:</span> ' + (diag.media ? 'API disponível' : 'API indisponível') + '</li>');
+        linhas.push('<li><span class="' + ((diag.secure || diag.localhost) ? 'ok' : 'aviso') + '">Origem da página:</span> ' + (diag.protocolo || '-') + '//' + (diag.host || '-') + '</li>');
+        linhas.push('<li><span class="ok">Navegador detectado:</span> ' + diag.navegador + '</li>');
+
+        if (diag.causas.length) {
+            linhas.push('<li><span class="erro">Causa provável:</span> ' + diag.causas.join(' ')+ '</li>');
+        } else {
+            linhas.push('<li><span class="ok">Compatibilidade:</span> o navegador parece apto para reconhecimento de voz.</li>');
+        }
+
+        painelDiagnosticoVoz.innerHTML = '<strong>Diagnóstico de voz</strong><ul>' + linhas.join('') + '</ul>';
     }
 
     function obterInputPorModoVoz(modo) {
@@ -3776,7 +3887,8 @@ function iniciarConferenciaPacotes() {
         if (reconhecimentoVoz) return reconhecimentoVoz;
         var SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognitionApi) {
-            atualizarStatusVoz('Este navegador não oferece reconhecimento de voz.', 'erro');
+            renderizarDiagnosticoVoz();
+            atualizarStatusVoz('Reconhecimento de voz indisponível neste navegador ou nesta origem da página.', 'erro');
             if (btnAlternarVozMalotes) btnAlternarVozMalotes.disabled = true;
             return null;
         }
@@ -3787,6 +3899,7 @@ function iniciarConferenciaPacotes() {
 
         reconhecimentoVoz.onstart = function() {
             vozEscutaAtiva = true;
+            renderizarDiagnosticoVoz();
             atualizarStatusVoz('Microfone ativo. Aguardando comando.', 'escutando');
         };
         reconhecimentoVoz.onresult = function(event) {
@@ -3797,6 +3910,7 @@ function iniciarConferenciaPacotes() {
             }
         };
         reconhecimentoVoz.onerror = function(event) {
+            renderizarDiagnosticoVoz();
             atualizarStatusVoz('Falha no reconhecimento de voz: ' + (event && event.error ? event.error : 'erro desconhecido'), 'erro');
         };
         reconhecimentoVoz.onend = function() {
@@ -3808,6 +3922,7 @@ function iniciarConferenciaPacotes() {
             }
             vozEscutaAtiva = false;
             vozReinicioManual = false;
+            renderizarDiagnosticoVoz();
             atualizarStatusVoz('Microfone desligado.', '');
         };
         return reconhecimentoVoz;
@@ -5102,6 +5217,7 @@ function iniciarConferenciaPacotes() {
     aplicarFiltroTipoVisual(obterTipoInicioSelecionado());
     atualizarResumoTodasTabelas();
     sincronizarPainelOperacao();
+    renderizarDiagnosticoVoz();
     publicarResumoPrevia();
     
     // Função para salvar conferência via AJAX
