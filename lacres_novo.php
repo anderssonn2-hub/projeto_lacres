@@ -495,6 +495,126 @@ if (!isset($_SESSION['excluir_regionais_manual'])) $_SESSION['excluir_regionais_
 
 if (!isset($_SESSION['id_despacho_poupa_tempo'])) $_SESSION['id_despacho_poupa_tempo'] = 0;
 
+if (isset($_GET['ajax_sync_lacres']) && $_GET['ajax_sync_lacres'] === '1') {
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+
+    $datasEntrada = array();
+    if (isset($_GET['datas']) && trim((string)$_GET['datas']) !== '') {
+        $tmpDatas = explode(',', (string)$_GET['datas']);
+        foreach ($tmpDatas as $d) {
+            $d = trim((string)$d);
+            if ($d !== '') $datasEntrada[] = $d;
+        }
+    } elseif (!empty($_SESSION['datas_filtro']) && is_array($_SESSION['datas_filtro'])) {
+        $datasEntrada = $_SESSION['datas_filtro'];
+    }
+
+    $datasSqlSync = array();
+    foreach ($datasEntrada as $d) {
+        $d = trim((string)$d);
+        if ($d === '') continue;
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+            $datasSqlSync[] = $d;
+            continue;
+        }
+        if (preg_match('/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/', $d, $m)) {
+            $datasSqlSync[] = $m[3] . '-' . $m[2] . '-' . $m[1];
+        }
+    }
+    $datasSqlSync = array_values(array_unique($datasSqlSync));
+
+    if (empty($datasSqlSync)) {
+        echo json_encode(array('success' => true, 'by_posto' => array(), 'hash' => '')); 
+        exit;
+    }
+
+    $compactar = function($csv) {
+        $nums = array();
+        $partesCsv = explode(',', (string)$csv);
+        foreach ($partesCsv as $parte) {
+            $n = (int)trim((string)$parte);
+            if ($n > 0) $nums[$n] = $n;
+        }
+        if (empty($nums)) return '';
+        ksort($nums);
+        $nums = array_values($nums);
+        $partes = array();
+        $inicio = $nums[0];
+        $anterior = $nums[0];
+        $total = count($nums);
+        for ($i = 1; $i < $total; $i++) {
+            $atual = $nums[$i];
+            if ($atual === ($anterior + 1)) {
+                $anterior = $atual;
+                continue;
+            }
+            $partes[] = ($inicio === $anterior) ? (string)$inicio : ($inicio . '-' . $anterior);
+            $inicio = $atual;
+            $anterior = $atual;
+        }
+        $partes[] = ($inicio === $anterior) ? (string)$inicio : ($inicio . '-' . $anterior);
+        return implode(', ', $partes);
+    };
+
+    try {
+        $phSync = implode(',', array_fill(0, count($datasSqlSync), '?'));
+        $sqlSync = "
+            SELECT
+                LPAD(posto, 3, '0') AS posto,
+                GROUP_CONCAT(DISTINCT CASE WHEN lacre_iipr IS NOT NULL AND lacre_iipr > 0 THEN lacre_iipr END ORDER BY CAST(lacre_iipr AS UNSIGNED) SEPARATOR ',') AS lacres_iipr_csv,
+                GROUP_CONCAT(DISTINCT CASE WHEN lacre_correios IS NOT NULL AND lacre_correios > 0 THEN lacre_correios END ORDER BY CAST(lacre_correios AS UNSIGNED) SEPARATOR ',') AS lacres_correios_csv,
+                GROUP_CONCAT(DISTINCT CASE WHEN etiqueta_correios IS NOT NULL AND etiqueta_correios <> '' THEN etiqueta_correios END SEPARATOR '|') AS etiquetas_csv,
+                MAX(atualizado_em) AS atualizado_em
+            FROM conferencia_pacotes_lacres
+            WHERE dataexp IN ($phSync)
+              AND (
+                    (lacre_iipr IS NOT NULL AND lacre_iipr > 0)
+                 OR (lacre_correios IS NOT NULL AND lacre_correios > 0)
+                 OR (etiqueta_correios IS NOT NULL AND etiqueta_correios <> '')
+              )
+            GROUP BY LPAD(posto, 3, '0')
+        ";
+        $stSync = $pdo_controle->prepare($sqlSync);
+        $stSync->execute($datasSqlSync);
+
+        $byPosto = array();
+        while ($r = $stSync->fetch(PDO::FETCH_ASSOC)) {
+            $posto = isset($r['posto']) ? trim((string)$r['posto']) : '';
+            if ($posto === '') continue;
+
+            $etiquetas = array();
+            if (isset($r['etiquetas_csv']) && trim((string)$r['etiquetas_csv']) !== '') {
+                $tmpEtiquetas = explode('|', (string)$r['etiquetas_csv']);
+                foreach ($tmpEtiquetas as $e) {
+                    $e = trim((string)$e);
+                    if ($e !== '') $etiquetas[$e] = $e;
+                }
+            }
+            $etiquetas = array_values($etiquetas);
+
+            $byPosto[$posto] = array(
+                'lacre_iipr' => $compactar(isset($r['lacres_iipr_csv']) ? $r['lacres_iipr_csv'] : ''),
+                'lacre_correios' => $compactar(isset($r['lacres_correios_csv']) ? $r['lacres_correios_csv'] : ''),
+                'etiqueta_correios' => count($etiquetas) === 1 ? $etiquetas[0] : '',
+                'etiqueta_multipla' => count($etiquetas) > 1 ? 1 : 0,
+                'atualizado_em' => isset($r['atualizado_em']) ? (string)$r['atualizado_em'] : ''
+            );
+        }
+
+        echo json_encode(array(
+            'success' => true,
+            'by_posto' => $byPosto,
+            'hash' => sha1(json_encode($byPosto))
+        ));
+        exit;
+    } catch (Exception $e) {
+        echo json_encode(array('success' => false, 'erro' => $e->getMessage()));
+        exit;
+    }
+}
+
 // Snapshot de lacres enviado pelos formularios auxiliares
 if (isset($_POST['snapshot_lacres']) && $_POST['snapshot_lacres'] !== '') {
     $tmp = json_decode($_POST['snapshot_lacres'], true);
@@ -8703,6 +8823,140 @@ try {
 </script>
 
 <!-- COSEP: end endereco payload enrichment -->
+
+<script>
+// v0.9.25.13: Sincronização leve de lacres a partir da conferência
+// - Polling com intervalo controlado
+// - Sem requisições concorrentes
+// - Aba oculta usa espera maior
+(function() {
+    var inFlight = false;
+    var timerId = null;
+    var delayAtivo = 15000;   // 15s em aba visível
+    var delayOculto = 45000;  // 45s em aba oculta
+    var lastHash = '';
+
+    function obterDatasSync() {
+        var hiddenDatas = document.querySelector('input[name="correios_datas"]');
+        if (hiddenDatas && hiddenDatas.value) {
+            return String(hiddenDatas.value).trim();
+        }
+        var datas = [];
+        var checks = document.querySelectorAll('input[name="datas[]"]');
+        for (var i = 0; i < checks.length; i++) {
+            var v = String(checks[i].value || '').trim();
+            if (v) datas.push(v);
+        }
+        return datas.join(',');
+    }
+
+    function podeAtualizarCampo(inp) {
+        if (!inp) return false;
+        if (document.activeElement === inp) return false;
+        return true;
+    }
+
+    function aplicarValor(inp, novoValor) {
+        if (!podeAtualizarCampo(inp)) return;
+        novoValor = String(novoValor || '').trim();
+        var atual = String(inp.value || '').trim();
+        var ultimoAuto = String(inp.getAttribute('data-last-sync') || '').trim();
+        var autoFlag = inp.getAttribute('data-auto-sync') === '1';
+
+        // Só sobrescreve quando vazio, quando já era valor auto, ou quando não houve edição manual.
+        if (atual === '' || autoFlag || atual === ultimoAuto) {
+            if (atual !== novoValor) {
+                inp.value = novoValor;
+            }
+            inp.setAttribute('data-auto-sync', '1');
+            inp.setAttribute('data-last-sync', novoValor);
+        }
+    }
+
+    function aplicarSync(byPosto) {
+        var rows = document.querySelectorAll('tr[data-posto-codigo]');
+        for (var i = 0; i < rows.length; i++) {
+            var tr = rows[i];
+            var posto = String(tr.getAttribute('data-posto-codigo') || '').trim();
+            if (!posto) continue;
+            var item = byPosto && byPosto[posto] ? byPosto[posto] : null;
+            if (!item) continue;
+
+            var inpIipr = tr.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+            var inpCorr = tr.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
+            var inpEtiq = tr.querySelector('input[name^="etiqueta_correios"], input.etiqueta-barras');
+
+            if (inpIipr && item.lacre_iipr) {
+                aplicarValor(inpIipr, item.lacre_iipr);
+            }
+            if (inpCorr && item.lacre_correios) {
+                aplicarValor(inpCorr, item.lacre_correios);
+            }
+            if (inpEtiq && item.etiqueta_correios && !item.etiqueta_multipla) {
+                aplicarValor(inpEtiq, item.etiqueta_correios);
+            }
+        }
+    }
+
+    function agendarProximo(ms) {
+        if (timerId) {
+            clearTimeout(timerId);
+            timerId = null;
+        }
+        timerId = setTimeout(executarSync, ms);
+    }
+
+    function executarSync() {
+        if (inFlight) {
+            agendarProximo(document.hidden ? delayOculto : delayAtivo);
+            return;
+        }
+
+        var datas = obterDatasSync();
+        if (!datas) {
+            agendarProximo(delayOculto);
+            return;
+        }
+
+        inFlight = true;
+        var url = window.location.pathname + '?ajax_sync_lacres=1&datas=' + encodeURIComponent(datas) + '&_ts=' + Date.now();
+
+        fetch(url, { method: 'GET', cache: 'no-store', credentials: 'same-origin' })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (!data || !data.success) {
+                    agendarProximo(delayOculto);
+                    return;
+                }
+                if (data.hash && data.hash === lastHash) {
+                    agendarProximo(document.hidden ? delayOculto : delayAtivo);
+                    return;
+                }
+                lastHash = data.hash || '';
+                aplicarSync(data.by_posto || {});
+                agendarProximo(document.hidden ? delayOculto : delayAtivo);
+            })
+            .catch(function() {
+                agendarProximo(delayOculto);
+            })
+            .then(function() {
+                inFlight = false;
+            });
+    }
+
+    document.addEventListener('visibilitychange', function() {
+        agendarProximo(document.hidden ? delayOculto : 2000);
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            agendarProximo(2000);
+        });
+    } else {
+        agendarProximo(2000);
+    }
+})();
+</script>
 
 <?php
 // v8.14.2: Auto-impressão após salvar e recarregar

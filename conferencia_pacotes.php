@@ -4544,6 +4544,20 @@ function iniciarConferenciaPacotes() {
         return chips;
     }
 
+    function obterChipsConfirmadosSemIiprDoPostoAtual() {
+        if (!postoSelecionadoMalote) return [];
+        var chipsPosto = obterChipsPorPosto(postoSelecionadoMalote);
+        var chips = [];
+        for (var i = 0; i < chipsPosto.length; i++) {
+            var dados = obterDadosChipOperacao(chipsPosto[i]);
+            if (!dados) continue;
+            if (!dados.conferido) continue;
+            if (dados.lacre_iipr) continue;
+            chips.push(chipsPosto[i]);
+        }
+        return chips;
+    }
+
     function obterChipsDosIiprMarcados() {
         var checks = painelMalotesIipr ? painelMalotesIipr.querySelectorAll('.check-malote-iipr:checked') : [];
         var chips = [];
@@ -4563,18 +4577,36 @@ function iniciarConferenciaPacotes() {
         return chips;
     }
 
+    function obterChipsIiprSemCorreiosDoPostoAtual() {
+        if (!postoSelecionadoMalote) return [];
+        var chipsPosto = obterChipsPorPosto(postoSelecionadoMalote);
+        var chips = [];
+        for (var i = 0; i < chipsPosto.length; i++) {
+            var dados = obterDadosChipOperacao(chipsPosto[i]);
+            if (!dados) continue;
+            if (!dados.conferido) continue;
+            if (!dados.lacre_iipr) continue;
+            if (dados.lacre_correios || dados.etiqueta_correios) continue;
+            chips.push(chipsPosto[i]);
+        }
+        return chips;
+    }
+
     if (btnSalvarMaloteIipr) {
         btnSalvarMaloteIipr.addEventListener('click', function() {
             var lacreIipr = normalizarNumeroLacre(inputLacreIiprMalote ? inputLacreIiprMalote.value : '');
             var grupoIipr = 'GI_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
             var chips = obterChipsMarcadosNoPainel();
+            if (!chips.length) {
+                chips = obterChipsConfirmadosSemIiprDoPostoAtual();
+            }
             if (!lacreIipr) {
                 alert('Informe o lacre IIPR.');
                 if (inputLacreIiprMalote) inputLacreIiprMalote.focus();
                 return;
             }
             if (!chips.length) {
-                alert('Selecione os lotes que entraram no mesmo malote IIPR.');
+                alert('Não há lotes conferidos sem lacre IIPR no posto atual.');
                 return;
             }
 
@@ -4611,7 +4643,10 @@ function iniciarConferenciaPacotes() {
             var etiquetaCorreios = inputEtiquetaCorreiosMalote ? String(inputEtiquetaCorreiosMalote.value || '').trim() : '';
             var chips = obterChipsDosIiprMarcados();
             if (!chips.length) {
-                alert('Selecione um ou mais malotes IIPR já fechados.');
+                chips = obterChipsIiprSemCorreiosDoPostoAtual();
+            }
+            if (!chips.length) {
+                alert('Não há lotes IIPR pendentes de vínculo Correios no posto atual.');
                 return;
             }
             if (!lacreCorreios && !etiquetaCorreios) {
@@ -5618,7 +5653,9 @@ function iniciarConferenciaPacotes() {
             return;
         }
         if (valor.length > 19) {
-            valor = valor.substr(0, 19);
+            // Resíduos de leitura anterior podem ficar no início do campo.
+            // Priorizamos os últimos 19 dígitos, que normalmente são da leitura atual.
+            valor = valor.substr(valor.length - 19, 19);
         }
         if (valor.length !== 19) {
             input.value = '';
@@ -5731,18 +5768,7 @@ function iniciarConferenciaPacotes() {
         var somAlerta = null;
         var podeConferir = true;
 
-        if (podeConferir && tipoPacote === 'correios' && tipoAtual === 'correios') {
-            var regionalAtualNormCheck = normalizarRegionalValor(regionalAtual);
-            if (regionalAtualNormCheck && regionalDoPacoteNorm && regionalDoPacoteNorm !== regionalAtualNormCheck) {
-                somAlerta = pacoteOutraRegional;
-                podeConferir = false;
-            }
-        }
-
-        if (ultimaRegionalLida && ultimoTipoLido === tipoPacote && tipoPacote === 'correios' && regionalDoPacoteNorm && regionalDoPacoteNorm !== ultimaRegionalLida) {
-            somAlerta = pacoteOutraRegional;
-            podeConferir = false;
-        }
+        // v0.9.25.13: Correios pode alternar regional sem bloquear a conferência.
 
         if (podeConferir && !primeiroConferido) {
             tipoAtual = tipoSelecionado;
@@ -5770,9 +5796,6 @@ function iniciarConferenciaPacotes() {
                 mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
             }
             falarTexto('posto dos correios');
-        } else if (!modoTodos && podeConferir && regionalDoPacoteNorm && regionalDoPacoteNorm !== normalizarRegionalValor(regionalAtual) && tipoPacote === tipoAtual) {
-            somAlerta = pacoteOutraRegional;
-            podeConferir = false;
         }
 
         if (podeConferir && tipoPacote === 'poupatempo') {
@@ -5851,23 +5874,13 @@ function iniciarConferenciaPacotes() {
                 }
             }
         } else {
-            var regionalAtualNorm = normalizarRegionalValor(regionalAtual || regionalDoPacoteNorm);
-            if (regionalAtualNorm === '000' || regionalAtualNorm === '999' || regionalAtualNorm === '001') {
-                grupoAtual = linha.getAttribute('data-posto');
-                for (var i2 = 0; i2 < todasLinhas.length; i2++) {
-                    if (obterRegionalLinha(todasLinhas[i2]) === regionalAtualNorm &&
-                        todasLinhas[i2].getAttribute('data-ispt') !== '1' &&
-                        todasLinhas[i2].getAttribute('data-posto') === grupoAtual) {
-                        linhasDoGrupo.push(todasLinhas[i2]);
-                    }
-                }
-            } else {
-                grupoAtual = regionalAtualNorm;
-                for (var i3 = 0; i3 < todasLinhas.length; i3++) {
-                    if (obterRegionalLinha(todasLinhas[i3]) === regionalAtualNorm &&
-                        todasLinhas[i3].getAttribute('data-ispt') !== '1') {
-                        linhasDoGrupo.push(todasLinhas[i3]);
-                    }
+            // v0.9.25.13: Para Correios, o grupo de conclusão é o posto.
+            // Assim o áudio "concluído" dispara quando terminar o posto, mesmo com 1 pacote.
+            grupoAtual = linha.getAttribute('data-posto');
+            for (var i2 = 0; i2 < todasLinhas.length; i2++) {
+                if (todasLinhas[i2].getAttribute('data-ispt') !== '1' &&
+                    todasLinhas[i2].getAttribute('data-posto') === grupoAtual) {
+                    linhasDoGrupo.push(todasLinhas[i2]);
                 }
             }
         }
