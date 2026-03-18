@@ -1,6 +1,9 @@
 <?php
-/* lacres_novo.php — Versão 9.25.10
+/* lacres_novo.php — Versão 0.9.25.13
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v0.9.25.13 (18/03/2026):
+ * - [AJUSTE] Versão sincronizada com conferência remota e controle de malotes
  *
  * CHANGELOG v9.25.10 (17/03/2026):
  * - [NOVO] Resumo consolidado do ofício por grupos de malote
@@ -5095,7 +5098,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 0.9.25.10</div>
+<div class="version-info">Versão 0.9.25.13</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">

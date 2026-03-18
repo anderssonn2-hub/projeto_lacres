@@ -8,7 +8,7 @@ if ($controle_canal === '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Controle Remoto dos Malotes</title>
+    <title>Controle Remoto dos Malotes v0.9.25.13</title>
     <style>
         :root {
             --bg: #eff4fa;
@@ -181,6 +181,7 @@ if ($controle_canal === '') {
     <div class="wrap">
         <section class="card">
             <h1>Controle remoto dos malotes</h1>
+            <div class="sub" style="margin-top:4px;">Versão 0.9.25.13</div>
             <div class="sub">Use esta página no celular para enviar comandos para a conferência aberta no PC. Os botões exigem 3 toques seguidos para evitar disparos acidentais.</div>
             <div style="margin-top:12px;"><span class="badge">Canal: <span id="canalAtual"><?php echo htmlspecialchars($controle_canal, ENT_QUOTES, 'UTF-8'); ?></span></span></div>
             <div class="status" id="statusEnvio">Aguardando comandos.</div>

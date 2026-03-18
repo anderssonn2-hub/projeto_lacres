@@ -1,5 +1,10 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.12
+/* conferencia_pacotes.php — v0.9.25.13
+ * CHANGELOG v9.25.13:
+ * - [NOVO] Coluna de associação de malote no modo tradicional (IIPR/Correios)
+ * - [NOVO] Atualização visual dinâmica da associação por lote após fechamento remoto/local
+ * - [AJUSTE] Versão sincronizada para 0.9.25.13
+ *
  * CHANGELOG v9.25.12:
  * - [NOVO] Controle remoto por celular com comandos de malote sincronizados via servidor
  * - [NOVO] Canal remoto para operar lacres e etiqueta sem depender de voz no navegador
@@ -342,7 +347,7 @@ try {
         $pdo->exec("ALTER TABLE conferencia_pacotes_lacres ADD COLUMN grupo_correios VARCHAR(40) DEFAULT NULL AFTER lacre_correios");
     }
 
-    // v9.25.12: Comandos remotos para o painel de malotes
+    // v9.25.13: Comandos remotos para o painel de malotes
     $pdo->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_controle (
         id INT NOT NULL AUTO_INCREMENT,
         canal VARCHAR(40) NOT NULL,
@@ -1457,7 +1462,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.8</title>
+    <title>Conferência de Pacotes v0.9.25.13</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2506,7 +2511,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.10</div>
+    <div class="versao">v0.9.25.13</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -2551,7 +2556,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.12</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.13</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -3310,6 +3315,7 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     echo '<th>Responsável Produção</th>';
     echo '<th>Código de Barras</th>';
     echo '<th>Conferido em</th>';
+    echo '<th>Malote / Lacre</th>';
     echo '</tr></thead>';
     echo '<tbody>';
     
@@ -3351,6 +3357,7 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         echo '<td>' . htmlspecialchars($posto['usuario_prod'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td class="col-conferido-em">' . htmlspecialchars($conferido_em_fmt, ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td class="col-malote-vinculo"></td>';
         echo '</tr>';
     }
     
@@ -4265,6 +4272,67 @@ function iniciarConferenciaPacotes() {
             linhaTabela.setAttribute('data-etiqueta-correios', etiquetaCorreios);
             linhaTabela.setAttribute('data-usuario-lacre', usuarioLacre);
             linhaTabela.setAttribute('data-atualizado-lacre', atualizadoLacre);
+            atualizarColunaMaloteLinha(linhaTabela);
+        }
+    }
+
+    function obterIndiceGrupoNoPosto(posto, atributoGrupo, grupoValor) {
+        if (!posto || !atributoGrupo || !grupoValor) return 0;
+        var linhasPosto = document.querySelectorAll('tr[data-posto="' + posto + '"]');
+        var grupos = [];
+        var vistos = {};
+        for (var i = 0; i < linhasPosto.length; i++) {
+            var valor = String(linhasPosto[i].getAttribute(atributoGrupo) || '').trim();
+            if (!valor || vistos[valor]) continue;
+            vistos[valor] = true;
+            grupos.push(valor);
+        }
+        for (var j = 0; j < grupos.length; j++) {
+            if (grupos[j] === grupoValor) {
+                return j + 1;
+            }
+        }
+        return 0;
+    }
+
+    function montarTextoMaloteLinha(linha) {
+        if (!linha) return '-';
+        var posto = String(linha.getAttribute('data-posto') || '').trim();
+        var lacreIipr = normalizarNumeroLacre(linha.getAttribute('data-lacre-iipr') || '');
+        var grupoIipr = String(linha.getAttribute('data-grupo-iipr') || '').trim();
+        var lacreCorreios = normalizarNumeroLacre(linha.getAttribute('data-lacre-correios') || '');
+        var grupoCorreios = String(linha.getAttribute('data-grupo-correios') || '').trim();
+        var etiquetaCorreios = String(linha.getAttribute('data-etiqueta-correios') || '').trim();
+
+        var partes = [];
+        if (lacreIipr) {
+            var idxIipr = obterIndiceGrupoNoPosto(posto, 'data-grupo-iipr', grupoIipr);
+            var tituloIipr = idxIipr > 0 ? ('Malote IIPR ' + idxIipr) : 'Malote IIPR';
+            partes.push(tituloIipr + ' - Lacre ' + lacreIipr);
+        }
+        if (lacreCorreios || etiquetaCorreios) {
+            var idxCorreios = obterIndiceGrupoNoPosto(posto, 'data-grupo-correios', grupoCorreios);
+            var tituloCorreios = idxCorreios > 0 ? ('Malote Correios ' + idxCorreios) : 'Malote Correios';
+            var sufixo = lacreCorreios ? (' - Lacre ' + lacreCorreios) : '';
+            if (etiquetaCorreios) {
+                sufixo += (sufixo ? ' | ' : ' - ') + 'Etiqueta ' + etiquetaCorreios;
+            }
+            partes.push(tituloCorreios + sufixo);
+        }
+        return partes.length ? partes.join(' | ') : '-';
+    }
+
+    function atualizarColunaMaloteLinha(linha) {
+        if (!linha) return;
+        var td = linha.querySelector('.col-malote-vinculo');
+        if (!td) return;
+        td.textContent = montarTextoMaloteLinha(linha);
+    }
+
+    function atualizarColunaMaloteTradicional() {
+        var linhas = document.querySelectorAll('tr.linha-conferencia');
+        for (var i = 0; i < linhas.length; i++) {
+            atualizarColunaMaloteLinha(linhas[i]);
         }
     }
 
@@ -5481,6 +5549,7 @@ function iniciarConferenciaPacotes() {
     aplicarFiltroTipoVisual(obterTipoInicioSelecionado());
     atualizarResumoTodasTabelas();
     sincronizarPainelOperacao();
+    atualizarColunaMaloteTradicional();
     renderizarDiagnosticoVoz();
     publicarResumoPrevia();
     iniciarPollingControleRemoto();
