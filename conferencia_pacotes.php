@@ -4056,6 +4056,11 @@ function iniciarConferenciaPacotes() {
         if (nome === 'armar_iipr') {
             definirModoVoz('iipr', 'Aguardando lacre IIPR');
         } else if (nome === 'salvar_iipr') {
+            // v0.9.25.13+: Se controle enviou o posto (valorAux) e PC não tem posto selecionado,
+            // auto-selecionar antes de salvar para que chips do posto sejam encontrados
+            if (!postoSelecionadoMalote && valorAux && valorAux !== '-') {
+                selecionarPostoMalote(valorAux);
+            }
             if (inputLacreIiprMalote && valor) inputLacreIiprMalote.value = normalizarNumeroLacre(valor);
             if (btnSalvarMaloteIipr) btnSalvarMaloteIipr.click();
         } else if (nome === 'armar_correios') {
@@ -5650,6 +5655,12 @@ function iniciarConferenciaPacotes() {
         var valor = (valorBruto || '').trim();
         valor = valor.replace(/\D+/g, '');
         if (valor.length < 19) {
+            // Resíduo comum de scanner: um dígito sobrando logo após leitura válida.
+            // Limpa automaticamente para não contaminar a próxima leitura.
+            var deltaUltimaLeitura = Date.now() - ultimaLeituraProcessadaEm;
+            if (valor.length > 0 && valor.length <= 3 && deltaUltimaLeitura >= 0 && deltaUltimaLeitura <= 1200) {
+                input.value = '';
+            }
             return;
         }
         if (valor.length > 19) {
@@ -5894,6 +5905,11 @@ function iniciarConferenciaPacotes() {
 
         if (conferidosDoGrupo === linhasDoGrupo.length && linhasDoGrupo.length > 0) {
             enfileirarSom(concluido);
+            // v0.9.25.13+: Para Correios, auto-seleciona posto no painel de malotes
+            // assim salvar_iipr remoto já encontra o posto sem precisar de seleção manual no PC
+            if (tipoAtual !== 'poupatempo' && grupoAtual) {
+                selecionarPostoMalote(grupoAtual);
+            }
             regionalAtual = null;
             tipoAtual = null;
             primeiroConferido = false;

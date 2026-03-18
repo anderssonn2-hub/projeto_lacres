@@ -283,6 +283,9 @@ if ($controle_canal === '') {
             var valorAux = '';
             if (comando === 'salvar_iipr') {
                 valor = normalizarNumero(inputLacreIiprRemoto ? inputLacreIiprRemoto.value : '', 12);
+                // v0.9.25.13+: envia o posto exibido no controle para o PC auto-selecionar
+                valorAux = (estadoPosto && estadoPosto.textContent && estadoPosto.textContent.trim() !== '-')
+                    ? estadoPosto.textContent.trim() : '';
             } else if (comando === 'preencher_correios') {
                 valor = normalizarNumero(inputLacreCorreiosRemoto ? inputLacreCorreiosRemoto.value : '', 12);
             } else if (comando === 'preencher_etiqueta') {

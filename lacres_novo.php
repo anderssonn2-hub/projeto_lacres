@@ -8832,8 +8832,8 @@ try {
 (function() {
     var inFlight = false;
     var timerId = null;
-    var delayAtivo = 15000;   // 15s em aba visível
-    var delayOculto = 45000;  // 45s em aba oculta
+    var delayAtivo = 4000;    // 4s em aba visível
+    var delayOculto = 30000;  // 30s em aba oculta
     var lastHash = '';
 
     function obterDatasSync() {
