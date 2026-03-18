@@ -209,10 +209,6 @@
 
         <div class="grid">
             <section class="card">
-                <div class="pill">Ofício consolidado por malote</div>
-                <div id="areaTabela"></div>
-            </section>
-            <section class="card">
                 <div class="pill warn">Pendências sem lacre IIPR</div>
                 <div id="areaPendencias"></div>
             </section>
@@ -230,7 +226,7 @@
         var statConfirmados = document.getElementById('statConfirmados');
         var statLinhas = document.getElementById('statLinhas');
         var statPendencias = document.getElementById('statPendencias');
-        var areaTabela = document.getElementById('areaTabela');
+
         var areaPendencias = document.getElementById('areaPendencias');
 
         function escapeHtml(valor) {
@@ -260,7 +256,7 @@
                 statConfirmados.textContent = '0';
                 statLinhas.textContent = '0';
                 statPendencias.textContent = '0';
-                areaTabela.innerHTML = '<div class="empty">Abra a tela de conferência, entre no modo chips e feche ao menos um malote IIPR para começar a montar a prévia.</div>';
+
                 areaPendencias.innerHTML = '<div class="empty">Nenhuma pendência recebida.</div>';
                 return;
             }
@@ -274,27 +270,6 @@
             statConfirmados.textContent = String(snapshot.total_confirmados || 0);
             statLinhas.textContent = String(snapshot.total_fechados || 0);
             statPendencias.textContent = String((snapshot.pendentes || []).length);
-
-            if (snapshot.resumo && snapshot.resumo.length) {
-                var linhas = [];
-                for (var i = 0; i < snapshot.resumo.length; i++) {
-                    var item = snapshot.resumo[i];
-                    linhas.push(
-                        '<tr>' +
-                            '<td>' + escapeHtml(item.regional || '-') + '</td>' +
-                            '<td>' + escapeHtml(item.posto || '-') + '</td>' +
-                            '<td>' + escapeHtml((item.lotes || []).join(', ')) + '</td>' +
-                            '<td>' + escapeHtml(item.lacre_iipr || '-') + '</td>' +
-                            '<td>' + escapeHtml(item.lacre_correios || '-') + '</td>' +
-                            '<td style="word-break:break-all;">' + escapeHtml(item.etiqueta_correios || '-') + '</td>' +
-                            '<td>' + escapeHtml(String(item.qtd_total || 0)) + '</td>' +
-                        '</tr>'
-                    );
-                }
-                areaTabela.innerHTML = '<table><thead><tr><th>Regional</th><th>Posto</th><th>Lotes</th><th>Lacre IIPR</th><th>Lacre Correios</th><th>Etiqueta Correios</th><th>Qtd</th></tr></thead><tbody>' + linhas.join('') + '</tbody></table>';
-            } else {
-                areaTabela.innerHTML = '<div class="empty">Ainda não há linhas consolidadas. Feche o primeiro malote IIPR para iniciar a montagem.</div>';
-            }
 
             if (snapshot.pendentes && snapshot.pendentes.length) {
                 var cards = [];
