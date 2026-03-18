@@ -5629,19 +5629,19 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                             data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
                             data-posicao="abaixo"
                             onclick="abrirModalInserir(this);">
-                        Adicionar linha abaixo
+                        + Abaixo
                     </button>
                     <?php elseif ($grupo === 'REGIONAIS'): ?>
                     <button type="button" class="btn-excluir-regional"
                             onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
-                        Excluir Regional
+                        Excluir
                     </button>
                     <button type="button" class="btn-add-below"
                             data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
                             data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
                             data-posicao="abaixo"
                             onclick="abrirModalInserir(this);">
-                        Adicionar linha abaixo
+                        + Abaixo
                     </button>
                     <?php else: ?>
                     <button type="button" class="btn-excluir"
@@ -5653,7 +5653,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                             data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
                             data-posicao="abaixo"
                             onclick="abrirModalInserir(this);">
-                        Adicionar linha abaixo
+                        + Abaixo
                     </button>
                     <?php endif; ?>
                 </td>
