@@ -3663,7 +3663,12 @@ function iniciarConferenciaPacotes() {
     }
 
     function normalizarNumeroLacre(valor) {
-        return String(valor || '').replace(/\D+/g, '');
+        var digitos = String(valor || '').replace(/\D+/g, '');
+        // Tratar "0" (ou "0000") como sem lacre para não bloquear novos salvamentos
+        if (!digitos || /^0+$/.test(digitos)) {
+            return '';
+        }
+        return digitos;
     }
 
     function normalizarTextoVoz(texto) {
