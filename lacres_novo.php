@@ -6919,6 +6919,13 @@ function inicializarMonitoramentoAlteracoes() {
         } catch (e) { /* ignore */ }
     }
 
+    // Restaurar todos os inputs do localStorage ao carregar página
+    try {
+        if (typeof restaurarSeNecessario === 'function') {
+            restaurarSeNecessario();
+        }
+    } catch (eRestore) { /* ignore */ }
+
     try {
         var formCadastro = document.querySelector('.form-cadastro');
         if (formCadastro) {
@@ -7109,6 +7116,9 @@ function sincronizarValoresSplit() {
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
+    // Restaurar inputs dos Correios antes de qualquer operacao visual
+    try { if (typeof restaurarEstadoEtiquetasCorreios === 'function') { restaurarEstadoEtiquetasCorreios(); } } catch (e) { /* ignore */ }
+    
     // Configuracao do zoom
     var body = document.body;
     var zoomInBtn = document.getElementById('zoom-in');

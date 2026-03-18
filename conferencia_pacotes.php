@@ -5884,6 +5884,7 @@ function iniciarConferenciaPacotes() {
         if (scanBuffer.length >= 19) {
             processarLeituraCodigo(scanBuffer);
             scanBuffer = '';
+            if (input) input.value = ''; // Limpar input visual para evitar resíduos
         }
     });
     
