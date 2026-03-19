@@ -15,7 +15,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prévia do Ofício dos Correios</title>
+    <title>Prévia do Ofício dos Correios v0.9.25.14</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -109,7 +109,7 @@ try {
     <div class="wrap">
         <div class="topo">
             <div>
-                <div class="titulo">Prévia do Ofício dos Correios</div>
+                <div class="titulo">Prévia do Ofício dos Correios v0.9.25.14</div>
                 <div class="meta" id="metaDatas">Aguardando conferência</div>
             </div>
             <div class="meta" id="metaAtualizacao">Última atualização: -</div>

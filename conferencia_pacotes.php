@@ -1,9 +1,10 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.13
- * CHANGELOG v9.25.13:
- * - [NOVO] Coluna de associação de malote no modo tradicional (IIPR/Correios)
- * - [NOVO] Atualização visual dinâmica da associação por lote após fechamento remoto/local
- * - [AJUSTE] Versão sincronizada para 0.9.25.13
+/* conferencia_pacotes.php — v0.9.25.14
+ * CHANGELOG v9.25.14:
+ * - [AJUSTE] Áudio concluído por regional no fluxo Correios
+ * - [NOVO] Créditos finais estilo filme com trilha final_conferencia.mp3
+ * - [NOVO] Opção para desativar créditos finais na tela inicial
+ * - [AJUSTE] Versão sincronizada para 0.9.25.14
  *
  * CHANGELOG v9.25.12:
  * - [NOVO] Controle remoto por celular com comandos de malote sincronizados via servidor
@@ -1462,7 +1463,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.13</title>
+    <title>Conferência de Pacotes v0.9.25.14</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1572,7 +1573,96 @@ try {
             cursor: pointer;
         }
         .modo-consulta #btnAtivarConferencia { display: inline-flex; }
-        
+        .controle-creditos {
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .controle-creditos input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .creditos-overlay {
+            position: fixed;
+            z-index: 6000;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000;
+            color: #fff;
+            display: none;
+            overflow: hidden;
+        }
+        .creditos-overlay.ativo {
+            display: block;
+        }
+        .creditos-fade {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 26vh;
+            background: linear-gradient(180deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.22) 100%);
+            pointer-events: none;
+        }
+        .creditos-trilha {
+            position: absolute;
+            left: 50%;
+            width: min(900px, 88vw);
+            transform: translateX(-50%);
+            bottom: -100%;
+            text-align: center;
+            animation: subirCreditos 60s linear forwards;
+            font-family: "Trebuchet MS", Verdana, sans-serif;
+            letter-spacing: 0.5px;
+            line-height: 1.6;
+        }
+        .creditos-overlay.pausado .creditos-trilha {
+            animation-play-state: paused;
+        }
+        .creditos-titulo {
+            font-size: 34px;
+            font-weight: 800;
+            margin-bottom: 18px;
+            text-transform: uppercase;
+        }
+        .creditos-bloco {
+            margin: 24px 0;
+            font-size: 20px;
+        }
+        .creditos-sub {
+            font-size: 14px;
+            opacity: 0.88;
+            margin-top: 6px;
+        }
+        .creditos-end {
+            margin-top: 36px;
+            font-size: 42px;
+            font-weight: 900;
+            letter-spacing: 3px;
+        }
+        .creditos-dica {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            color: #c8c8c8;
+            opacity: 0.9;
+            text-align: center;
+        }
+        @keyframes subirCreditos {
+            0% { bottom: -100%; }
+            100% { bottom: 120%; }
+        }
+
         .filtro-datas { 
             background: white;
             padding: 20px;
@@ -2511,7 +2601,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.13</div>
+    <div class="versao">v0.9.25.14</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -2556,7 +2646,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.13</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.14</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -2616,6 +2706,10 @@ try {
                 <span class="slider"></span>
             </span>
             Silenciar
+        </label>
+        <label class="controle-creditos">
+            <input type="checkbox" id="desativarCreditosFinais">
+            Desativar animação final (créditos)
         </label>
     </div>
 </div>
@@ -3451,6 +3545,13 @@ if (empty($regionais_data)) {
 <audio id="posto_poupatempo" src="posto_poupatempo.mp3" preload="auto"></audio>
 <audio id="pertence_correios" src="pertence_aos_correios.mp3" preload="auto"></audio>
 <audio id="pacote_nao_encontrado" src="pacote_nao_foi_encontrado.mp3" preload="auto"></audio>
+<audio id="final_conferencia" src="final_conferencia.mp3" preload="auto"></audio>
+
+<div class="creditos-overlay" id="creditosOverlay" aria-hidden="true">
+    <div class="creditos-dica">Mova o mouse, pressione uma tecla ou toque na tela para parar os créditos</div>
+    <div class="creditos-fade"></div>
+    <div class="creditos-trilha" id="creditosTrilha"></div>
+</div>
 
 <script>
 // ========================================
@@ -3492,7 +3593,9 @@ function iniciarConferenciaPacotes() {
     var postoPoupaTempo = document.getElementById("posto_poupatempo");
     var pertenceCorreios = document.getElementById("pertence_correios");
     var pacoteNaoEncontradoAudio = document.getElementById("pacote_nao_encontrado");
+    var musicaFinalConferencia = document.getElementById("final_conferencia");
     var muteBeep = document.getElementById("muteBeep");
+    var desativarCreditosFinais = document.getElementById("desativarCreditosFinais");
     var btnResetar = document.getElementById("resetar");
     var usuarioBadge = document.getElementById("usuarioBadge");
     var overlayUsuario = document.getElementById("overlayUsuario");
@@ -3537,6 +3640,8 @@ function iniciarConferenciaPacotes() {
     var statusControleRemoto = document.getElementById('statusControleRemoto');
     var btnAbrirPreviaMalotes = document.getElementById('btnAbrirPreviaMalotes');
     var statusPreviaMalotes = document.getElementById('statusPreviaMalotes');
+    var creditosOverlay = document.getElementById('creditosOverlay');
+    var creditosTrilha = document.getElementById('creditosTrilha');
     var pacoteCodbar = document.getElementById('pacote_codbar');
     var pacoteLote = document.getElementById('pacote_lote');
     var pacoteRegional = document.getElementById('pacote_regional');
@@ -3572,6 +3677,7 @@ function iniciarConferenciaPacotes() {
     var storageUsuarioKey = 'conferencia_responsavel';
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
+    var storageCreditosKey = 'conferencia_desativar_creditos_finais';
     var previewStorageKey = 'conferencia_previa_malotes_v1';
     var controleCanal = <?php echo json_encode($controle_canal); ?>;
     var postoSelecionadoMalote = '';
@@ -3579,6 +3685,9 @@ function iniciarConferenciaPacotes() {
     var previewChannel = null;
     var previewWindowRef = null;
     var reconhecimentoVoz = null;
+    var creditosJaExibidos = false;
+    var creditosAtivos = false;
+    var timerInicioCreditos = null;
     var vozEscutaAtiva = false;
     var vozModoAtual = '';
     var vozReinicioManual = false;
@@ -3589,6 +3698,161 @@ function iniciarConferenciaPacotes() {
             previewChannel = new BroadcastChannel('conferencia_previa_malotes');
         } catch (e0) {
             previewChannel = null;
+        }
+    }
+
+    function creditosDesativados() {
+        return !!(desativarCreditosFinais && desativarCreditosFinais.checked);
+    }
+
+    function carregarPreferenciaCreditos() {
+        var desativado = false;
+        try {
+            desativado = localStorage.getItem(storageCreditosKey) === '1';
+        } catch (e) {
+            desativado = false;
+        }
+        if (desativarCreditosFinais) {
+            desativarCreditosFinais.checked = desativado;
+        }
+    }
+
+    function salvarPreferenciaCreditos() {
+        try {
+            localStorage.setItem(storageCreditosKey, creditosDesativados() ? '1' : '0');
+        } catch (e) {}
+    }
+
+    function todosCorreiosConferidos() {
+        var linhas = document.querySelectorAll('tbody tr[data-ispt!="1"]');
+        if (!linhas || !linhas.length) return false;
+        for (var i = 0; i < linhas.length; i++) {
+            if (!linhas[i].classList.contains('confirmado')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function montarResumoFinalConferencia() {
+        var linhas = document.querySelectorAll('tbody tr[data-ispt!="1"]');
+        var totalPacotes = linhas.length;
+        var postos = {};
+        var regionais = {};
+
+        for (var i = 0; i < linhas.length; i++) {
+            var posto = String(linhas[i].getAttribute('data-posto') || '').trim();
+            var regional = String(linhas[i].getAttribute('data-regional-real') || linhas[i].getAttribute('data-regional') || '').trim();
+            if (posto) postos[posto] = true;
+            if (regional) regionais[regional] = true;
+        }
+
+        var totalPostos = Object.keys(postos).length;
+        var totalRegionais = Object.keys(regionais).length;
+        var resumo = montarResumoPreviaMalotes();
+        var totalMalotes = resumo && resumo.total_fechados ? resumo.total_fechados : 0;
+        var pendencias = resumo && resumo.pendentes ? resumo.pendentes.length : 0;
+
+        return {
+            totalPacotes: totalPacotes,
+            totalPostos: totalPostos,
+            totalRegionais: totalRegionais,
+            totalMalotes: totalMalotes,
+            pendencias: pendencias,
+            usuario: usuarioAtual || 'Equipe de Conferência',
+            geradoEm: formatarDataHoraAtual(),
+            datas: (datasFiltroSql && datasFiltroSql.length) ? datasFiltroSql.join(', ') : 'N/A'
+        };
+    }
+
+    function renderizarCreditosFinais() {
+        if (!creditosTrilha) return;
+        var r = montarResumoFinalConferencia();
+        creditosTrilha.innerHTML = '' +
+            '<div class="creditos-titulo">Encerramento da Conferência</div>' +
+            '<div class="creditos-bloco">Missão concluída com sucesso<div class="creditos-sub">Todos os lotes dos Correios foram conferidos.</div></div>' +
+            '<div class="creditos-bloco">Estatísticas Gerais<div class="creditos-sub">Pacotes conferidos: ' + r.totalPacotes + ' | Postos atendidos: ' + r.totalPostos + ' | Regionais fechadas: ' + r.totalRegionais + '</div><div class="creditos-sub">Malotes consolidados: ' + r.totalMalotes + ' | Pendências: ' + r.pendencias + '</div></div>' +
+            '<div class="creditos-bloco">Datas da operação<div class="creditos-sub">' + escapeHtml(r.datas) + '</div></div>' +
+            '<div class="creditos-bloco">Atores participantes da produção<div class="creditos-sub">' + escapeHtml(r.usuario) + ' - Coordenação da conferência</div><div class="creditos-sub">Andre Agra - Impressor chefe</div><div class="creditos-sub">Equipe Correios - Operação e fechamento de malotes</div></div>' +
+            '<div class="creditos-bloco">Créditos finais<div class="creditos-sub">Sistema de Conferência de Pacotes v0.9.25.14</div><div class="creditos-sub">Encerrado em ' + escapeHtml(r.geradoEm) + '</div></div>' +
+            '<div class="creditos-end">THE END</div>';
+
+        creditosTrilha.style.animation = 'none';
+        void creditosTrilha.offsetHeight;
+        creditosTrilha.style.animation = 'subirCreditos 60s linear forwards';
+    }
+
+    function pararCreditosFinais() {
+        if (!creditosAtivos) return;
+        creditosAtivos = false;
+        if (creditosOverlay) {
+            creditosOverlay.classList.remove('ativo');
+            creditosOverlay.classList.add('pausado');
+        }
+        if (musicaFinalConferencia) {
+            try {
+                musicaFinalConferencia.pause();
+                musicaFinalConferencia.currentTime = 0;
+            } catch (e) {}
+        }
+    }
+
+    function iniciarCreditosFinais() {
+        if (creditosAtivos || creditosJaExibidos || creditosDesativados()) return;
+        creditosJaExibidos = true;
+        creditosAtivos = true;
+        renderizarCreditosFinais();
+
+        if (creditosOverlay) {
+            creditosOverlay.classList.remove('pausado');
+            creditosOverlay.classList.add('ativo');
+        }
+        if (musicaFinalConferencia) {
+            try {
+                musicaFinalConferencia.currentTime = 0;
+                musicaFinalConferencia.play();
+            } catch (e) {}
+        }
+    }
+
+    function aguardarFilaSonsLivre(callback, tentativa) {
+        var t = tentativa || 0;
+        if (!tocando && filaSons.length === 0) {
+            callback();
+            return;
+        }
+        if (t > 60) {
+            callback();
+            return;
+        }
+        setTimeout(function() {
+            aguardarFilaSonsLivre(callback, t + 1);
+        }, 250);
+    }
+
+    function verificarConclusaoFinalCorreios() {
+        if (!todosCorreiosConferidos()) {
+            if (timerInicioCreditos) {
+                clearTimeout(timerInicioCreditos);
+                timerInicioCreditos = null;
+            }
+            creditosJaExibidos = false;
+            return;
+        }
+        if (creditosDesativados() || creditosAtivos || creditosJaExibidos || timerInicioCreditos) return;
+
+        timerInicioCreditos = setTimeout(function() {
+            timerInicioCreditos = null;
+            if (!todosCorreiosConferidos()) return;
+            aguardarFilaSonsLivre(function() {
+                iniciarCreditosFinais();
+            }, 0);
+        }, 1000);
+    }
+
+    function aplicarInterrupcaoCreditos() {
+        if (creditosAtivos) {
+            pararCreditosFinais();
         }
     }
 
@@ -4064,7 +4328,7 @@ function iniciarConferenciaPacotes() {
         if (nome === 'armar_iipr') {
             definirModoVoz('iipr', 'Aguardando lacre IIPR');
         } else if (nome === 'salvar_iipr') {
-            // v0.9.25.13+: Se controle enviou o posto (valorAux) e PC não tem posto selecionado,
+            // v0.9.25.14+: Se controle enviou o posto (valorAux) e PC não tem posto selecionado,
             // auto-selecionar antes de salvar para que chips do posto sejam encontrados
             if (!postoSelecionadoMalote && valorAux && valorAux !== '-') {
                 selecionarPostoMalote(valorAux);
@@ -4599,7 +4863,7 @@ function iniciarConferenciaPacotes() {
             if (!dados) continue;
             if (!dados.conferido) continue;
             if (!dados.lacre_iipr) continue;
-            // v0.9.25.13+: Correios pode ser fechado em duas etapas:
+            // v0.9.25.14+: Correios pode ser fechado em duas etapas:
             // 1) salvar lacre do malote
             // 2) depois salvar a etiqueta do mesmo malote
             // Então só ignora quando o chip já tiver ambos os campos preenchidos.
@@ -5191,6 +5455,22 @@ function iniciarConferenciaPacotes() {
                 }
             }
         }
+
+        if (musicaFinalConferencia) {
+            try {
+                musicaFinalConferencia.volume = 0;
+                var pf = musicaFinalConferencia.play();
+                if (pf && pf.then) {
+                    pf.then(function() {
+                        musicaFinalConferencia.pause();
+                        musicaFinalConferencia.currentTime = 0;
+                        musicaFinalConferencia.volume = 1;
+                    }).catch(function() {
+                        musicaFinalConferencia.volume = 1;
+                    });
+                }
+            } catch (e3) {}
+        }
     }
 
     if (input) {
@@ -5548,6 +5828,20 @@ function iniciarConferenciaPacotes() {
         });
     }
 
+    if (desativarCreditosFinais) {
+        desativarCreditosFinais.addEventListener('change', function() {
+            salvarPreferenciaCreditos();
+            if (creditosDesativados()) {
+                pararCreditosFinais();
+            }
+        });
+    }
+
+    document.addEventListener('mousemove', aplicarInterrupcaoCreditos);
+    document.addEventListener('keydown', aplicarInterrupcaoCreditos);
+    document.addEventListener('touchstart', aplicarInterrupcaoCreditos, { passive: true });
+    document.addEventListener('click', aplicarInterrupcaoCreditos);
+
     if (overlayTipo) {
         overlayTipo.addEventListener('click', function(e) {
             var target = e.target;
@@ -5603,6 +5897,7 @@ function iniciarConferenciaPacotes() {
         }
     } catch (e3) {}
 
+    carregarPreferenciaCreditos();
     aplicarFiltroTipoVisual(obterTipoInicioSelecionado());
     atualizarResumoTodasTabelas();
     sincronizarPainelOperacao();
@@ -5796,7 +6091,7 @@ function iniciarConferenciaPacotes() {
         var somAlerta = null;
         var podeConferir = true;
 
-        // v0.9.25.13: Correios pode alternar regional sem bloquear a conferência.
+        // v0.9.25.14: Correios pode alternar regional sem bloquear a conferência.
 
         if (podeConferir && !primeiroConferido) {
             tipoAtual = tipoSelecionado;
@@ -5902,12 +6197,11 @@ function iniciarConferenciaPacotes() {
                 }
             }
         } else {
-            // v0.9.25.13: Para Correios, o grupo de conclusão é o posto.
-            // Assim o áudio "concluído" dispara quando terminar o posto, mesmo com 1 pacote.
-            grupoAtual = linha.getAttribute('data-posto');
+            // v0.9.25.14: Para Correios, concluído dispara somente quando terminar TODA a regional.
+            grupoAtual = linha.getAttribute('data-regional-real') || linha.getAttribute('data-regional-codigo') || linha.getAttribute('data-regional');
             for (var i2 = 0; i2 < todasLinhas.length; i2++) {
-                if (todasLinhas[i2].getAttribute('data-ispt') !== '1' &&
-                    todasLinhas[i2].getAttribute('data-posto') === grupoAtual) {
+                var regLinha = todasLinhas[i2].getAttribute('data-regional-real') || todasLinhas[i2].getAttribute('data-regional-codigo') || todasLinhas[i2].getAttribute('data-regional');
+                if (todasLinhas[i2].getAttribute('data-ispt') !== '1' && regLinha === grupoAtual) {
                     linhasDoGrupo.push(todasLinhas[i2]);
                 }
             }
@@ -5922,16 +6216,17 @@ function iniciarConferenciaPacotes() {
 
         if (conferidosDoGrupo === linhasDoGrupo.length && linhasDoGrupo.length > 0) {
             enfileirarSom(concluido);
-            // v0.9.25.13+: Para Correios, auto-seleciona posto no painel de malotes
+            // v0.9.25.14+: Para Correios, auto-seleciona posto no painel de malotes
             // assim salvar_iipr remoto já encontra o posto sem precisar de seleção manual no PC
             if (tipoAtual !== 'poupatempo' && grupoAtual) {
-                selecionarPostoMalote(grupoAtual);
+                selecionarPostoMalote(linha.getAttribute('data-posto') || '');
             }
             regionalAtual = null;
             tipoAtual = null;
             primeiroConferido = false;
         }
 
+        verificarConclusaoFinalCorreios();
         finalizarProcessamento(true);
     }
 

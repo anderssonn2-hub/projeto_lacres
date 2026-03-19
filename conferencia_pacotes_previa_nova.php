@@ -1,6 +1,6 @@
 <?php
 /**
- * Prévia Simplificada de Lacres - v0.9.25.13+
+ * Prévia Simplificada de Lacres - v0.9.25.14+
  * 
  * Réplica minimalista de lacres_novo.php mostrando APENAS a tabela de lacres
  * com polling automático para sincronização em tempo real.
@@ -136,7 +136,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prévia de Lacres - v0.9.25.13+</title>
+    <title>Prévia de Lacres - v0.9.25.14+</title>
     <style>
         :root {
             --bg: #f9fbfe;
@@ -239,7 +239,7 @@ try {
 <div class="wrap">
     <h1>Prévia de Lacres - Ofício Correios</h1>
     <div class="sub-title">
-        v0.9.25.13+ • ID Ofício: <?php echo $ultimoOficioId > 0 ? $ultimoOficioId : 'Nenhum'; ?> 
+        v0.9.25.14+ • ID Ofício: <?php echo $ultimoOficioId > 0 ? $ultimoOficioId : 'Nenhum'; ?> 
         • Data: <?php echo date('d/m/Y H:i'); ?>
     </div>
 
@@ -341,7 +341,7 @@ try {
 </div>
 
 <script>
-// v0.9.25.13+: Polling automático de sincronização
+// v0.9.25.14+: Polling automático de sincronização
 (function() {
     var lastHash = '';
     var timerId = null;
