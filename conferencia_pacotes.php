@@ -2712,6 +2712,16 @@ try {
             Desativar animação final (créditos)
         </label>
     </div>
+    <div class="radio-box">
+        <div style="color:#fff; font-weight:600; margin-bottom:8px;">🕐 Turno de operação</div>
+        <select id="turnoAtualSelect" style="padding:6px 10px; border-radius:6px; border:none; font-size:13px; font-weight:600; cursor:pointer; background:#fff; color:#333; width:100%; max-width:200px;">
+            <option value="Madrugada">🌙 Madrugada</option>
+            <option value="Manhã" selected>🌅 Manhã</option>
+            <option value="Tarde">☀️ Tarde</option>
+            <option value="Noite">🌆 Noite</option>
+        </select>
+        <div style="font-size:11px; color:rgba(255,255,255,.75); margin-top:6px;" id="turnoOrigemBadge">Carregando preferência…</div>
+    </div>
 </div>
 <input type="checkbox" id="autoSalvar" checked style="display:none;">
 
@@ -3087,6 +3097,9 @@ try {
                 }
                 if (window.processarLeituraCodigo) {
                     window.processarLeituraCodigo(digits);
+                    // Garantia adicional: mesmo que o handler principal rejeite por duplicidade,
+                    // o campo visual deve sempre voltar vazio para a próxima leitura.
+                    input.value = '';
                     return;
                 }
 
@@ -3659,6 +3672,7 @@ function iniciarConferenciaPacotes() {
     var resumoPacotesPendentes = document.getElementById('resumoPacotesPendentes');
     var autorSalvamentoPacotes = document.getElementById('autor_salvamento_pacotes');
     var turnoSalvamentoPacotes = document.getElementById('turno_salvamento_pacotes');
+    var turnoAtualSelect       = document.getElementById('turnoAtualSelect');
     var criadoSalvamentoPacotes = document.getElementById('criado_salvamento_pacotes');
     var consolidarSalvamentoPacotes = document.getElementById('consolidar_salvamento_pacotes');
     var pacotesPendentes = [];
@@ -3678,7 +3692,9 @@ function iniciarConferenciaPacotes() {
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
     var storageCreditosKey = 'conferencia_desativar_creditos_finais';
-    var previewStorageKey = 'conferencia_previa_malotes_v1';
+    var storageTurnoKey    = 'projeto_lacres_turno';
+    var turnoAtual         = '';
+    var previewStorageKey  = 'conferencia_previa_malotes_v1';
     var controleCanal = <?php echo json_encode($controle_canal); ?>;
     var postoSelecionadoMalote = '';
     var grupoSelecionadoMalote = '';
@@ -3722,9 +3738,62 @@ function iniciarConferenciaPacotes() {
             localStorage.setItem(storageCreditosKey, creditosDesativados() ? '1' : '0');
         } catch (e) {}
     }
+    function salvarPreferenciaCreditos() {
+        try {
+            localStorage.setItem(storageCreditosKey, creditosDesativados() ? '1' : '0');
+        } catch (e) {}
+    }
+
+    function detectarTurnoAutomatico() {
+        var h = new Date().getHours();
+        if (h < 6)  return 'Madrugada';
+        if (h < 12) return 'Manhã';
+        if (h < 18) return 'Tarde';
+        return 'Noite';
+    }
+
+    function aplicarTurno(turno) {
+        if (!turno) return;
+        turnoAtual = turno;
+        if (turnoAtualSelect) turnoAtualSelect.value = turno;
+        if (turnoSalvamentoPacotes) turnoSalvamentoPacotes.value = turno;
+    }
+
+    function carregarTurnoSalvo() {
+        var turnoSalvo = '';
+        try { turnoSalvo = localStorage.getItem(storageTurnoKey) || ''; } catch(e) {}
+        var turno = turnoSalvo || detectarTurnoAutomatico();
+        aplicarTurno(turno);
+        var origemEl = document.getElementById('turnoOrigemBadge');
+        if (origemEl) {
+            origemEl.textContent = turnoSalvo
+                ? 'Preferência salva: ' + turno
+                : 'Auto-detectado por horário: ' + turno;
+        }
+    }
+
+    if (turnoAtualSelect) {
+        turnoAtualSelect.addEventListener('change', function() {
+            var novoTurno = this.value;
+            try { localStorage.setItem(storageTurnoKey, novoTurno); } catch(e) {}
+            aplicarTurno(novoTurno);
+            var origemEl = document.getElementById('turnoOrigemBadge');
+            if (origemEl) origemEl.textContent = 'Turno selecionado: ' + novoTurno;
+        });
+    }
+
+    if (turnoSalvamentoPacotes) {
+        turnoSalvamentoPacotes.addEventListener('change', function() {
+            var novoTurno = this.value;
+            try { localStorage.setItem(storageTurnoKey, novoTurno); } catch(e) {}
+            aplicarTurno(novoTurno);
+        });
+    }
 
     function todosCorreiosConferidos() {
-        var linhas = document.querySelectorAll('tbody tr[data-ispt!="1"]');
+        // Considera apenas linhas reais de pacote.
+        // Linhas auxiliares/placeholder em tbody (sem data-codigo) não devem bloquear os créditos.
+        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
         if (!linhas || !linhas.length) return false;
         for (var i = 0; i < linhas.length; i++) {
             if (!linhas[i].classList.contains('confirmado')) {
@@ -3735,7 +3804,7 @@ function iniciarConferenciaPacotes() {
     }
 
     function montarResumoFinalConferencia() {
-        var linhas = document.querySelectorAll('tbody tr[data-ispt!="1"]');
+        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
         var totalPacotes = linhas.length;
         var postos = {};
         var regionais = {};
@@ -5898,6 +5967,7 @@ function iniciarConferenciaPacotes() {
     } catch (e3) {}
 
     carregarPreferenciaCreditos();
+    carregarTurnoSalvo();
     aplicarFiltroTipoVisual(obterTipoInicioSelecionado());
     atualizarResumoTodasTabelas();
     sincronizarPainelOperacao();
@@ -5987,9 +6057,11 @@ function iniciarConferenciaPacotes() {
 
         var agoraLeitura = Date.now();
         if (codigosEmProcessamento[valor]) {
+            input.value = '';
             return;
         }
         if (ultimoCodigoProcessado === valor && (agoraLeitura - ultimaLeituraProcessadaEm) < 700) {
+            input.value = '';
             return;
         }
         codigosEmProcessamento[valor] = true;
@@ -6091,7 +6163,8 @@ function iniciarConferenciaPacotes() {
         var somAlerta = null;
         var podeConferir = true;
 
-        // v0.9.25.14: Correios pode alternar regional sem bloquear a conferência.
+        // Regra operacional: não alterna regional de Correios sem aviso + confirmação.
+        // Se ainda há regional em andamento, tocar alerta e exigir confirmação explícita.
 
         if (podeConferir && !primeiroConferido) {
             tipoAtual = tipoSelecionado;
@@ -6104,6 +6177,38 @@ function iniciarConferenciaPacotes() {
             }
             if (podeConferir) {
                 primeiroConferido = true;
+            }
+        } else if (podeConferir && tipoAtual === 'correios' && tipoPacote === 'correios') {
+            var regionalAtualNorm = normalizarRegionalValor(regionalAtual);
+            var regionalNovaNorm = regionalDoPacoteNorm || normalizarRegionalValor(regionalDoPacote);
+            if (regionalAtualNorm && regionalNovaNorm && regionalAtualNorm !== regionalNovaNorm) {
+                if (mensagemLeitura) {
+                    mensagemLeitura.innerHTML = '<strong>Pacote de outra regional:</strong> regional atual ' + escapeHtml(regionalAtualNorm) + ', pacote da regional ' + escapeHtml(regionalNovaNorm) + '.';
+                }
+                somAlerta = pacoteOutraRegional;
+                enfileirarSom(somAlerta);
+                somAlerta = null;
+                falarTexto('pacote de outra regional');
+
+                var desejaTrocarRegional = window.confirm(
+                    'ATENÇÃO: pacote de outra regional.\n\n' +
+                    'Regional em conferência: ' + regionalAtualNorm + '\n' +
+                    'Regional do pacote lido: ' + regionalNovaNorm + '\n\n' +
+                    'OK = Trocar para a regional ' + regionalNovaNorm + ' e continuar.\n' +
+                    'Cancelar = Manter regional ' + regionalAtualNorm + ' (pacote não será conferido).'
+                );
+
+                if (desejaTrocarRegional) {
+                    regionalAtual = regionalNovaNorm;
+                    if (mensagemLeitura) {
+                        mensagemLeitura.innerHTML = '<strong>Troca confirmada:</strong> conferência alterada para regional ' + escapeHtml(regionalNovaNorm) + '.';
+                    }
+                } else {
+                    podeConferir = false;
+                    if (mensagemLeitura) {
+                        mensagemLeitura.innerHTML = '<strong>Troca cancelada:</strong> regional ' + escapeHtml(regionalAtualNorm) + ' mantida. Pacote da regional ' + escapeHtml(regionalNovaNorm) + ' não foi conferido.';
+                    }
+                }
             }
         } else if (!modoTodos && podeConferir && tipoAtual === 'correios' && tipoPacote === 'poupatempo') {
             somAlerta = postoPoupaTempo;
