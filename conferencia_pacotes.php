@@ -3097,9 +3097,11 @@ try {
                 }
                 if (window.processarLeituraCodigo) {
                     window.processarLeituraCodigo(digits);
-                    // Garantia adicional: mesmo que o handler principal rejeite por duplicidade,
-                    // o campo visual deve sempre voltar vazio para a próxima leitura.
-                    input.value = '';
+                    // Garantia: limpa input após delegação ao handler principal.
+                    // O handler pode levar tempo para processar (AJAX, etc), mas o field deve estar vazio para scanner ler próximo.
+                    setTimeout(function() {
+                        if (input) input.value = '';
+                    }, 50);
                     return;
                 }
 
@@ -3200,7 +3202,10 @@ try {
                     formData.append('usuario', usuario);
                     fetch(window.location.href, { method: 'POST', body: formData }).catch(function(){});
                 }
-                input.value = '';
+                // IMPORTANTE: sempre limpa o input por último, após AJAX disparado, para garantir que o scanner possa ler novamente.
+                setTimeout(function() {
+                    input.value = '';
+                }, 100);
             }
 
             input.addEventListener('input', handle);
@@ -6378,6 +6383,18 @@ function iniciarConferenciaPacotes() {
                 ultimoCodLido = '';
             }
         }, 300);
+
+        // Segurança extra: limpa input residual (ex: scanner que deixou dígitos a mais).
+        // Se houver menos de 19 dígitos após processamento, limpa para evitar travamento.
+        setInterval(function() {
+            if (!input) return;
+            var val = (input.value || '').trim();
+            if (val && val.length > 0 && val.length < 19) {
+                // Código incompleto ou resíduo → limpa.
+                input.value = '';
+                ultimoCodLido = '';
+            }
+        }, 500);
     }
 
     var scanBuffer = '';
