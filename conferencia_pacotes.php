@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.14
+/* conferencia_pacotes.php — v0.9.25.15
  * CHANGELOG v9.25.14:
  * - [AJUSTE] Áudio concluído por regional no fluxo Correios
  * - [NOVO] Créditos finais estilo filme com trilha final_conferencia.mp3
@@ -1491,7 +1491,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.14</title>
+    <title>Conferência de Pacotes v0.9.25.15</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -1627,33 +1627,41 @@ try {
             color: #fff;
             display: none;
             overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.45s ease;
         }
         .creditos-overlay.ativo {
             display: block;
+            opacity: 1;
+            pointer-events: auto;
         }
         .creditos-fade {
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
-            height: 26vh;
-            background: linear-gradient(180deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.22) 100%);
+            height: 30vh;
+            background: linear-gradient(180deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.38) 62%, rgba(0,0,0,0) 100%);
             pointer-events: none;
         }
         .creditos-trilha {
             position: absolute;
             left: 50%;
             width: min(900px, 88vw);
-            transform: translateX(-50%);
-            bottom: -100%;
+            top: 100vh;
+            transform: translate(-50%, 0);
             text-align: center;
-            animation: subirCreditos 60s linear forwards;
             font-family: "Trebuchet MS", Verdana, sans-serif;
             letter-spacing: 0.5px;
             line-height: 1.6;
+            will-change: transform, opacity;
+            opacity: 1;
+            transition: opacity 0.8s ease;
         }
-        .creditos-overlay.pausado .creditos-trilha {
-            animation-play-state: paused;
+        .creditos-overlay.final .creditos-trilha,
+        .creditos-overlay.final .creditos-fade {
+            opacity: 0;
         }
         .creditos-titulo {
             font-size: 34px;
@@ -1670,25 +1678,38 @@ try {
             opacity: 0.88;
             margin-top: 6px;
         }
-        .creditos-end {
-            margin-top: 36px;
-            font-size: 42px;
-            font-weight: 900;
-            letter-spacing: 3px;
-        }
         .creditos-dica {
             position: absolute;
-            top: 12px;
+            bottom: 24px;
             left: 50%;
             transform: translateX(-50%);
             font-size: 12px;
             color: #c8c8c8;
-            opacity: 0.9;
+            opacity: 0;
+            text-align: center;
+            transition: opacity 0.4s ease;
+        }
+        .creditos-overlay.final .creditos-dica {
+            opacity: 0.92;
+        }
+        .creditos-end-screen {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(54px, 10vw, 120px);
+            font-weight: 900;
+            letter-spacing: 0.34em;
+            text-indent: 0.34em;
+            color: #fff;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.9s ease;
             text-align: center;
         }
-        @keyframes subirCreditos {
-            0% { bottom: -100%; }
-            100% { bottom: 120%; }
+        .creditos-overlay.final .creditos-end-screen {
+            opacity: 1;
         }
 
         .filtro-datas { 
@@ -2629,7 +2650,7 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.14</div>
+    <div class="versao">v0.9.25.15</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -2674,7 +2695,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.14</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.15</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -3395,9 +3416,10 @@ if (empty($regionais_data)) {
 <audio id="final_conferencia" src="final_conferencia.mp3" preload="auto"></audio>
 
 <div class="creditos-overlay" id="creditosOverlay" aria-hidden="true">
-    <div class="creditos-dica">Mova o mouse, pressione uma tecla ou toque na tela para parar os créditos</div>
+    <div class="creditos-dica">Ao aparecer THE END, mova o mouse, pressione uma tecla ou toque na tela para fechar</div>
     <div class="creditos-fade"></div>
     <div class="creditos-trilha" id="creditosTrilha"></div>
+    <div class="creditos-end-screen" id="creditosEndScreen">THE END</div>
 </div>
 
 <script>
@@ -3489,6 +3511,7 @@ function iniciarConferenciaPacotes() {
     var statusPreviaMalotes = document.getElementById('statusPreviaMalotes');
     var creditosOverlay = document.getElementById('creditosOverlay');
     var creditosTrilha = document.getElementById('creditosTrilha');
+    var creditosEndScreen = document.getElementById('creditosEndScreen');
     var pacoteCodbar = document.getElementById('pacote_codbar');
     var pacoteLote = document.getElementById('pacote_lote');
     var pacoteRegional = document.getElementById('pacote_regional');
@@ -3536,6 +3559,8 @@ function iniciarConferenciaPacotes() {
     var creditosAtivos = false;
     var timerInicioCreditos = null;
     var creditosIniciadoEm = 0;
+    var creditosAnimando = false;
+    var timerFinalCreditos = null;
     var vozEscutaAtiva = false;
     var vozModoAtual = '';
     var vozReinicioManual = false;
@@ -3587,9 +3612,8 @@ function iniciarConferenciaPacotes() {
 
 
     function todosCorreiosConferidos() {
-        // Considera apenas linhas reais de pacote.
-        // Linhas auxiliares/placeholder em tbody (sem data-codigo) não devem bloquear os créditos.
-        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
+        // Créditos finais só entram quando todos os lotes visíveis da operação foram conferidos.
+        var linhas = document.querySelectorAll('tbody tr[data-codigo]');
         if (!linhas || !linhas.length) return false;
         for (var i = 0; i < linhas.length; i++) {
             if (!linhas[i].classList.contains('confirmado')) {
@@ -3600,7 +3624,7 @@ function iniciarConferenciaPacotes() {
     }
 
     function montarResumoFinalConferencia() {
-        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
+        var linhas = document.querySelectorAll('tbody tr[data-codigo]');
         var totalPacotes = linhas.length;
         var postos = {};
         var regionais = {};
@@ -3630,30 +3654,50 @@ function iniciarConferenciaPacotes() {
         };
     }
 
+    function resetarVisualCreditos() {
+        if (timerFinalCreditos) {
+            clearTimeout(timerFinalCreditos);
+            timerFinalCreditos = null;
+        }
+        if (creditosTrilha) {
+            creditosTrilha.style.transition = 'none';
+            creditosTrilha.style.transform = 'translate(-50%, 0)';
+            creditosTrilha.style.opacity = '1';
+        }
+        if (creditosOverlay) {
+            creditosOverlay.classList.remove('ativo');
+            creditosOverlay.classList.remove('final');
+            creditosOverlay.setAttribute('aria-hidden', 'true');
+        }
+        if (creditosEndScreen) {
+            creditosEndScreen.style.opacity = '';
+        }
+    }
+
     function renderizarCreditosFinais() {
         if (!creditosTrilha) return;
         var r = montarResumoFinalConferencia();
         creditosTrilha.innerHTML = '' +
             '<div class="creditos-titulo">Encerramento da Conferência</div>' +
-            '<div class="creditos-bloco">Missão concluída com sucesso<div class="creditos-sub">Todos os lotes dos Correios foram conferidos.</div></div>' +
+            '<div class="creditos-bloco">Missão concluída com sucesso<div class="creditos-sub">Todos os lotes da operação foram conferidos com sucesso.</div></div>' +
             '<div class="creditos-bloco">Estatísticas Gerais<div class="creditos-sub">Pacotes conferidos: ' + r.totalPacotes + ' | Postos atendidos: ' + r.totalPostos + ' | Regionais fechadas: ' + r.totalRegionais + '</div><div class="creditos-sub">Malotes consolidados: ' + r.totalMalotes + ' | Pendências: ' + r.pendencias + '</div></div>' +
             '<div class="creditos-bloco">Datas da operação<div class="creditos-sub">' + escapeHtml(r.datas) + '</div></div>' +
-            '<div class="creditos-bloco">Atores participantes da produção<div class="creditos-sub">' + escapeHtml(r.usuario) + ' - Coordenação da conferência</div><div class="creditos-sub">Andre Agra - Impressor chefe</div><div class="creditos-sub">Equipe Correios - Operação e fechamento de malotes</div></div>' +
-            '<div class="creditos-bloco">Créditos finais<div class="creditos-sub">Sistema de Conferência de Pacotes v0.9.25.14</div><div class="creditos-sub">Encerrado em ' + escapeHtml(r.geradoEm) + '</div></div>' +
-            '<div class="creditos-end">THE END</div>';
-
-        creditosTrilha.style.animation = 'none';
-        void creditosTrilha.offsetHeight;
-        creditosTrilha.style.animation = 'subirCreditos 60s linear forwards';
+            '<div class="creditos-bloco">Créditos da expedição<div class="creditos-sub">' + escapeHtml(r.usuario) + ' - Conferência e coordenação da operação</div><div class="creditos-sub">Andre Agra - Impressão e apoio operacional</div><div class="creditos-sub">Equipe de Expedição - Fechamento, conferência e despacho</div><div class="creditos-sub">Equipe de Tecnologia - Sistema de conferência e melhorias contínuas</div></div>' +
+            '<div class="creditos-bloco">Versão atual<div class="creditos-sub">Sistema de Conferência de Pacotes v0.9.25.15</div><div class="creditos-sub">Encerrado em ' + escapeHtml(r.geradoEm) + '</div></div>';
     }
 
-    function pararCreditosFinais() {
+    function concluirCreditosComTheEnd() {
+        if (!creditosAtivos || !creditosOverlay) return;
+        creditosAnimando = false;
+        creditosOverlay.classList.add('final');
+    }
+
+    function pararCreditosFinais(forcar) {
         if (!creditosAtivos) return;
+        if (!forcar && creditosAnimando) return;
         creditosAtivos = false;
-        if (creditosOverlay) {
-            creditosOverlay.classList.remove('ativo');
-            creditosOverlay.classList.add('pausado');
-        }
+        creditosAnimando = false;
+        resetarVisualCreditos();
         if (musicaFinalConferencia) {
             try {
                 musicaFinalConferencia.pause();
@@ -3666,12 +3710,31 @@ function iniciarConferenciaPacotes() {
         if (creditosAtivos || creditosJaExibidos || creditosDesativados()) return;
         creditosJaExibidos = true;
         creditosAtivos = true;
+        creditosAnimando = true;
         creditosIniciadoEm = Date.now();
         renderizarCreditosFinais();
 
         if (creditosOverlay) {
-            creditosOverlay.classList.remove('pausado');
             creditosOverlay.classList.add('ativo');
+            creditosOverlay.classList.remove('final');
+            creditosOverlay.setAttribute('aria-hidden', 'false');
+        }
+        if (creditosTrilha) {
+            creditosTrilha.style.transition = 'none';
+            creditosTrilha.style.transform = 'translate(-50%, 0)';
+            creditosTrilha.style.opacity = '1';
+            void creditosTrilha.offsetHeight;
+            var deslocamento = window.innerHeight + creditosTrilha.scrollHeight + 220;
+            var duracaoMs = Math.max(26000, Math.min(80000, deslocamento * 22));
+            creditosTrilha.style.transition = 'transform ' + duracaoMs + 'ms linear';
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    creditosTrilha.style.transform = 'translate(-50%, -' + deslocamento + 'px)';
+                });
+            });
+            timerFinalCreditos = setTimeout(function() {
+                concluirCreditosComTheEnd();
+            }, duracaoMs + 250);
         }
         if (musicaFinalConferencia) {
             try {
@@ -3702,6 +3765,9 @@ function iniciarConferenciaPacotes() {
                 clearTimeout(timerInicioCreditos);
                 timerInicioCreditos = null;
             }
+            if (creditosAtivos) {
+                pararCreditosFinais(true);
+            }
             creditosJaExibidos = false;
             return;
         }
@@ -3726,9 +3792,9 @@ function iniciarConferenciaPacotes() {
 
     function aplicarInterrupcaoCreditos() {
         if (!creditosAtivos) return;
-        // Evita fechar os créditos imediatamente por evento residual do scanner/teclado.
-        if ((Date.now() - creditosIniciadoEm) < 1500) return;
-        pararCreditosFinais();
+        if (creditosAnimando) return;
+        if ((Date.now() - creditosIniciadoEm) < 1200) return;
+        pararCreditosFinais(true);
     }
 
     function aplicarModoConsulta(ativo) {
