@@ -2912,10 +2912,7 @@ try {
 
 <div class="painel-leitura">
     <div class="painel-leitura-topo">
-        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus
-            oninput="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
-            onchange="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
-            onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);} }">
+        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus>
         <div class="painel-leitura-acoes">
             <button id="resetar">🔄 Resetar Conferência</button>
         </div>
@@ -3056,193 +3053,14 @@ try {
 </div>
 
     <script>
-    (function() {
-        function formatarAgora() {
-            var d = new Date();
-            var dd = String(d.getDate()).padStart(2, '0');
-            var mm = String(d.getMonth() + 1).padStart(2, '0');
-            var yy = d.getFullYear();
-            var hh = String(d.getHours()).padStart(2, '0');
-            var mi = String(d.getMinutes()).padStart(2, '0');
-            return dd + '-' + mm + '-' + yy + ' ' + hh + ':' + mi;
-        }
-
-        function bindFallback() {
-            var input = document.getElementById('codigo_barras');
-            if (!input || input.__fallbackBound) return;
-            input.__fallbackBound = true;
-            var audioDesbloqueado = false;
-
-            function normalize(val) {
-                return String(val || '').replace(/\D+/g, '');
-            }
-
-            function desbloquearAudios() {
-                if (audioDesbloqueado) return;
-                audioDesbloqueado = true;
-                var ids = ['beep', 'concluido', 'pacotejaconferido', 'pacotedeoutraregional', 'posto_poupatempo', 'pertence_correios', 'pacote_nao_encontrado'];
-                for (var i = 0; i < ids.length; i++) {
-                    var a = document.getElementById(ids[i]);
-                    if (!a) continue;
-                    try {
-                        a.volume = 0;
-                        var p = a.play();
-                        (function(audio){
-                            if (p && p.then) {
-                                p.then(function() {
-                                    audio.pause();
-                                    audio.currentTime = 0;
-                                    audio.volume = 1;
-                                }).catch(function() { audio.volume = 1; });
-                            } else {
-                                audio.pause();
-                                audio.currentTime = 0;
-                                audio.volume = 1;
-                            }
-                        })(a);
-                    } catch (e) {}
-                }
-            }
-
-            function handle() {
-                var digits = normalize(input.value);
-                if (digits.length < 19) return;
-                if (digits.length > 19) digits = digits.substr(0, 19);
-
-                desbloquearAudios();
-
-                if (!window.__conferenciaInit && typeof window.iniciarConferenciaPacotes === 'function') {
-                    try { window.iniciarConferenciaPacotes(); } catch (e) {}
-                }
-                if (window.processarLeituraCodigo) {
-                    window.processarLeituraCodigo(digits);
-                    // Garantia: limpa input após delegação ao handler principal.
-                    // O handler pode levar tempo para processar (AJAX, etc), mas o field deve estar vazio para scanner ler próximo.
-                    setTimeout(function() {
-                        if (input) input.value = '';
-                    }, 50);
-                    return;
-                }
-
-                var linha = document.querySelector('tr[data-codigo="' + digits + '"]');
-                var msg = document.getElementById('mensagemLeitura');
-                var pacoteJaConferido = document.getElementById('pacotejaconferido');
-                var muteBeep = document.getElementById('muteBeep');
-                var beep = document.getElementById('beep');
-                if (!linha) {
-                    if (msg) {
-                        msg.innerHTML = '<strong>Pacote não encontrado:</strong> adicionado à lista pendente.';
-                    }
-                    if (window.adicionarPacotePendente) {
-                        var now = new Date();
-                        var mm = String(now.getMonth() + 1).padStart(2, '0');
-                        var dd = String(now.getDate()).padStart(2, '0');
-                        var dataPadrao = now.getFullYear() + '-' + mm + '-' + dd;
-                        var obj = {
-                            codbar: digits,
-                            lote: digits.substr(0, 8),
-                            regional: digits.substr(8, 3),
-                            posto: digits.substr(11, 3),
-                            quantidade: parseInt(digits.substr(14, 5), 10) || 1,
-                            dataexp: dataPadrao,
-                            responsavel: ''
-                        };
-                        window.adicionarPacotePendente(obj);
-                        var painel = document.getElementById('painelPacotesNovos');
-                        if (painel) {
-                            painel.style.display = 'block';
-                            painel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }
-                    }
-                    var audioNaoEncontrado = document.getElementById('pacote_nao_encontrado');
-                    if (audioNaoEncontrado) {
-                        try {
-                            audioNaoEncontrado.currentTime = 0;
-                            audioNaoEncontrado.play();
-                        } catch (e) {}
-                    } else if (window.speechSynthesis) {
-                        try {
-                            var ut = new SpeechSynthesisUtterance('pacote não encontrado');
-                            ut.lang = 'pt-BR';
-                            window.speechSynthesis.cancel();
-                            window.speechSynthesis.speak(ut);
-                        } catch (e) {}
-                    }
-                    input.value = '';
-                    return;
-                }
-
-                if (linha.classList.contains('confirmado')) {
-                    if (pacoteJaConferido) {
-                        try { pacoteJaConferido.currentTime = 0; pacoteJaConferido.play(); } catch (e) {}
-                    }
-                    destacarChipOperacao(linha.getAttribute('data-codigo') || digits);
-                    input.value = '';
-                    return;
-                }
-
-                linha.classList.add('confirmado');
-                var tdConf = linha.querySelector('.col-conferido-em');
-                if (tdConf) tdConf.textContent = formatarAgora();
-                var chipFallback = atualizarChipOperacaoPorCodigo(linha.getAttribute('data-codigo') || digits, true);
-                if (chipFallback) {
-                    chipFallback.setAttribute('data-conferido-em', formatarAgora());
-                }
-
-                var ultimas = document.querySelectorAll('tr.ultimo-lido');
-                for (var u = 0; u < ultimas.length; u++) {
-                    ultimas[u].classList.remove('ultimo-lido');
-                }
-                linha.classList.add('ultimo-lido');
-                linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                destacarChipOperacao(linha.getAttribute('data-codigo') || digits);
-
-                if (msg) msg.textContent = '';
-
-                if (beep && (!muteBeep || !muteBeep.checked)) {
-                    try { beep.currentTime = 0; beep.play(); } catch (e) {}
-                }
-
-                var usuario = '';
-                try { usuario = sessionStorage.getItem('conferencia_responsavel') || ''; } catch (e) {}
-                if (!usuario) {
-                    var badge = document.getElementById('usuarioBadge');
-                    if (badge) usuario = (badge.textContent || '').trim();
-                }
-                if (usuario) {
-                    var formData = new FormData();
-                    formData.append('salvar_lote_ajax', '1');
-                    formData.append('lote', linha.getAttribute('data-lote') || '');
-                    formData.append('regional', linha.getAttribute('data-regional') || '');
-                    formData.append('posto', linha.getAttribute('data-posto') || '');
-                    formData.append('dataexp', linha.getAttribute('data-data-sql') || linha.getAttribute('data-data') || '');
-                    formData.append('qtd', linha.getAttribute('data-qtd') || '');
-                    formData.append('codbar', linha.getAttribute('data-codigo') || digits);
-                    formData.append('usuario', usuario);
-                    fetch(window.location.href, { method: 'POST', body: formData }).catch(function(){});
-                }
-                // IMPORTANTE: sempre limpa o input por último, após AJAX disparado, para garantir que o scanner possa ler novamente.
-                setTimeout(function() {
-                    input.value = '';
-                }, 100);
-            }
-
-            input.addEventListener('input', handle);
-            input.addEventListener('change', handle);
-            input.addEventListener('keydown', function(e) {
-                if (e.keyCode === 13) {
-                    e.preventDefault();
-                    handle();
-                }
-            });
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', bindFallback);
-        } else {
-            bindFallback();
-        }
-    })();
+    // Inicializa o sistema de conferência assim que o DOM estiver disponível.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof window.iniciarConferenciaPacotes === 'function') window.iniciarConferenciaPacotes();
+        });
+    } else {
+        if (typeof window.iniciarConferenciaPacotes === 'function') window.iniciarConferenciaPacotes();
+    }
     </script>
 
 <div id="secaoTradicional" class="secao-visualizacao oculta">
