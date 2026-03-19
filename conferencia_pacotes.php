@@ -3935,6 +3935,7 @@ function iniciarConferenciaPacotes() {
                     pendentes[chavePendente] = {
                         posto: dados.posto || '',
                         regional: dados.regional || '',
+                        regional_codigo: dados.regional_codigo || '',
                         lotes: [],
                         qtd_total: 0
                     };
@@ -3948,6 +3949,7 @@ function iniciarConferenciaPacotes() {
             if (!grupos[chaveGrupo]) {
                 grupos[chaveGrupo] = {
                     regional: dados.regional || '',
+                    regional_codigo: dados.regional_codigo || '',
                     posto: dados.posto || '',
                     lotes: [],
                     qtd_total: 0,
@@ -3972,6 +3974,7 @@ function iniciarConferenciaPacotes() {
             if (!Object.prototype.hasOwnProperty.call(grupos, chave)) continue;
             resumo.push({
                 regional: grupos[chave].regional,
+                regional_codigo: grupos[chave].regional_codigo,
                 posto: grupos[chave].posto,
                 lotes: grupos[chave].lotes,
                 qtd_total: grupos[chave].qtd_total,
@@ -4596,7 +4599,11 @@ function iniciarConferenciaPacotes() {
             if (!dados) continue;
             if (!dados.conferido) continue;
             if (!dados.lacre_iipr) continue;
-            if (dados.lacre_correios || dados.etiqueta_correios) continue;
+            // v0.9.25.13+: Correios pode ser fechado em duas etapas:
+            // 1) salvar lacre do malote
+            // 2) depois salvar a etiqueta do mesmo malote
+            // Então só ignora quando o chip já tiver ambos os campos preenchidos.
+            if (dados.lacre_correios && dados.etiqueta_correios) continue;
             chips.push(chipsPosto[i]);
         }
         return chips;
@@ -4667,10 +4674,14 @@ function iniciarConferenciaPacotes() {
 
             var pacotes = [];
             for (var i = 0; i < chips.length; i++) {
+                var dadosAtuais = obterDadosChipOperacao(chips[i]);
+                var grupoResolvido = (dadosAtuais && dadosAtuais.grupo_correios) ? dadosAtuais.grupo_correios : grupoCorreios;
+                var lacreResolvido = lacreCorreios || (dadosAtuais ? dadosAtuais.lacre_correios : '');
+                var etiquetaResolvida = etiquetaCorreios || (dadosAtuais ? dadosAtuais.etiqueta_correios : '');
                 var payload = montarPacoteParaPersistencia(chips[i], {
-                    lacre_correios: lacreCorreios,
-                    grupo_correios: grupoCorreios,
-                    etiqueta_correios: etiquetaCorreios
+                    lacre_correios: lacreResolvido,
+                    grupo_correios: grupoResolvido,
+                    etiqueta_correios: etiquetaResolvida
                 });
                 if (payload) pacotes.push(payload);
             }
@@ -4678,12 +4689,13 @@ function iniciarConferenciaPacotes() {
                 var agora = formatarDataHoraAtual();
                 for (var j = 0; j < chips.length; j++) {
                     var dadosAtuais = obterDadosChipOperacao(chips[j]);
+                    var grupoResolvido = (dadosAtuais && dadosAtuais.grupo_correios) ? dadosAtuais.grupo_correios : grupoCorreios;
                     aplicarAtribuicaoNoChip(chips[j], {
                         lacre_iipr: dadosAtuais ? dadosAtuais.lacre_iipr : '',
                         grupo_iipr: dadosAtuais ? dadosAtuais.grupo_iipr : '',
-                        lacre_correios: lacreCorreios,
-                        grupo_correios: grupoCorreios,
-                        etiqueta_correios: etiquetaCorreios,
+                        lacre_correios: lacreCorreios || (dadosAtuais ? dadosAtuais.lacre_correios : ''),
+                        grupo_correios: grupoResolvido,
+                        etiqueta_correios: etiquetaCorreios || (dadosAtuais ? dadosAtuais.etiqueta_correios : ''),
                         usuario_lacre: usuarioAtual,
                         atualizado_lacre: agora
                     });

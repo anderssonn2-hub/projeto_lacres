@@ -1,233 +1,130 @@
 <?php
+$nomesPostos = array();
+try {
+    $pdo_controle = new PDO('mysql:host=10.15.61.169;dbname=controle;charset=utf8', 'root', 'vazio');
+    $pdo_controle->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $stNomes = $pdo_controle->query("SELECT LPAD(CAST(posto AS UNSIGNED), 3, '0') AS posto, MAX(nome) AS nome FROM ciPostosCsv GROUP BY LPAD(CAST(posto AS UNSIGNED), 3, '0') ORDER BY LPAD(CAST(posto AS UNSIGNED), 3, '0')");
+    while ($rowNome = $stNomes->fetch(PDO::FETCH_ASSOC)) {
+        $nomesPostos[$rowNome['posto']] = trim((string)$rowNome['nome']);
+    }
+} catch (Exception $e) {
+    $nomesPostos = array();
+}
 ?><!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prévia de Ofício dos Malotes v0.9.25.13</title>
+    <title>Prévia do Ofício dos Correios</title>
     <style>
-        :root {
-            --bg: #f2f6fb;
-            --card: #ffffff;
-            --line: #d9e5f2;
-            --text: #17324d;
-            --sub: #5b7188;
-            --accent: #0f766e;
-            --warn: #9a6700;
-        }
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
         body {
             margin: 0;
-            font-family: Georgia, "Times New Roman", serif;
-            background:
-                radial-gradient(circle at top right, rgba(15,118,110,0.14), transparent 28%),
-                linear-gradient(180deg, #f9fbfe 0%, var(--bg) 100%);
-            color: var(--text);
+            font-family: Arial, sans-serif;
+            background: #f7f7f7;
+            color: #111;
         }
         .wrap {
-            max-width: 1400px;
+            max-width: 1420px;
             margin: 0 auto;
-            padding: 28px 24px 40px;
-        }
-        .hero {
-            display: grid;
-            grid-template-columns: minmax(320px, 1.2fr) minmax(240px, 0.8fr);
-            gap: 16px;
-            margin-bottom: 18px;
-        }
-        .card {
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            padding: 18px;
-            box-shadow: 0 10px 24px rgba(13,38,59,0.08);
-        }
-        h1 {
-            margin: 0;
-            font-size: 34px;
-            letter-spacing: 0.5px;
-        }
-        .sub {
-            margin-top: 8px;
-            color: var(--sub);
-            font-size: 14px;
-            line-height: 1.5;
-        }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 12px;
-        }
-        .stat {
-            border: 1px solid var(--line);
-            border-radius: 14px;
             padding: 14px;
-            background: linear-gradient(180deg, #ffffff 0%, #f4f8fc 100%);
         }
-        .stat .label {
-            color: var(--sub);
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
+        .topo {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            padding: 8px 10px;
+            background: #fff;
+            border: 1px solid #cfcfcf;
         }
-        .stat .value {
-            margin-top: 8px;
-            font-size: 28px;
-            font-weight: 700;
+        .titulo {
+            font-size: 20px;
+            font-weight: bold;
         }
         .meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 14px;
-        }
-        .meta span {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 10px;
-            border-radius: 999px;
-            background: #eef4fb;
-            color: #204264;
             font-size: 12px;
-            font-weight: 700;
+            color: #555;
         }
-        .grid {
-            display: grid;
-            grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.7fr);
-            gap: 16px;
+        .secao {
+            margin-bottom: 18px;
+            page-break-inside: avoid;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            background: #fff;
         }
-        th,
-        td {
+        th, td {
+            border: 1px solid #8a8a8a;
+            padding: 4px 6px;
+            font-size: 12px;
+        }
+        thead th {
+            background: #efefef;
+            font-weight: bold;
+            text-align: center;
+        }
+        .col-posto {
+            width: 38%;
             text-align: left;
-            padding: 10px 8px;
-            border-bottom: 1px solid #e7eef5;
-            vertical-align: top;
-            font-size: 14px;
+            font-weight: bold;
         }
-        th {
-            font-size: 11px;
-            color: var(--sub);
-            text-transform: uppercase;
-            letter-spacing: 0.7px;
+        .col-iipr { width: 13%; }
+        .col-correios { width: 13%; }
+        .col-etiqueta { width: 36%; }
+        .secao-titulo {
+            background: #efefef;
+            font-weight: bold;
+            text-align: left;
         }
-        .pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            border-radius: 999px;
-            background: #e6f7f4;
-            color: var(--accent);
-            padding: 4px 9px;
-            font-size: 11px;
-            font-weight: 700;
+        input[type='text'] {
+            width: 100%;
+            border: 1px solid #bdbdbd;
+            padding: 3px 4px;
+            font-size: 12px;
+            font-family: Arial, sans-serif;
+            background: #fff;
         }
-        .pill.warn {
-            background: #fff4d6;
-            color: var(--warn);
+        tr.ativo td {
+            background: #fff9db;
         }
-        .empty {
-            margin-top: 12px;
+        .vazio {
             padding: 18px;
-            border: 1px dashed var(--line);
-            border-radius: 14px;
-            color: var(--sub);
-            line-height: 1.6;
-            background: #f8fbfe;
-        }
-        .lista-pendencias {
-            display: grid;
-            gap: 10px;
-            margin-top: 12px;
-        }
-        .pendencia {
-            border: 1px solid #f2e2b0;
-            border-radius: 14px;
-            background: #fffaf0;
-            padding: 12px 14px;
-        }
-        .pendencia strong {
-            display: block;
-            font-size: 15px;
-        }
-        .pendencia .detalhe {
-            margin-top: 6px;
-            color: var(--sub);
+            border: 1px dashed #bbb;
+            background: #fff;
+            color: #666;
             font-size: 13px;
-            line-height: 1.5;
         }
-        @media (max-width: 900px) {
-            .hero,
-            .grid {
-                grid-template-columns: 1fr;
-            }
-            .stats {
-                grid-template-columns: 1fr;
-            }
-            h1 {
-                font-size: 28px;
-            }
+        @media print {
+            body { background: #fff; }
+            .wrap { max-width: none; padding: 0; }
+            .topo { border: none; padding: 0 0 8px 0; }
+            input[type='text'] { border: none; }
         }
     </style>
 </head>
 <body>
     <div class="wrap">
-        <div class="hero">
-            <section class="card">
-                <h1>Prévia dinâmica do ofício</h1>
-                <div class="sub" id="subtituloPrevia">Aguardando dados da tela de conferência em modo chips.</div>
-                <div class="meta">
-                    <span id="metaUsuario">Responsável: -</span>
-                    <span id="metaAtualizacao">Atualização: -</span>
-                    <span id="metaPosto">Posto atual: -</span>
-                </div>
-            </section>
-            <section class="card">
-                <div class="stats">
-                    <div class="stat">
-                        <div class="label">Pacotes confirmados</div>
-                        <div class="value" id="statConfirmados">0</div>
-                    </div>
-                    <div class="stat">
-                        <div class="label">Linhas prontas</div>
-                        <div class="value" id="statLinhas">0</div>
-                    </div>
-                    <div class="stat">
-                        <div class="label">Pendências</div>
-                        <div class="value" id="statPendencias">0</div>
-                    </div>
-                </div>
-            </section>
+        <div class="topo">
+            <div>
+                <div class="titulo">Prévia do Ofício dos Correios</div>
+                <div class="meta" id="metaDatas">Aguardando conferência</div>
+            </div>
+            <div class="meta" id="metaAtualizacao">Última atualização: -</div>
         </div>
-
-        <div class="grid">
-            <section class="card">
-                <div class="pill warn">Pendências sem lacre IIPR</div>
-                <div id="areaPendencias"></div>
-            </section>
-        </div>
+        <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
     </div>
 
     <script>
     (function() {
+        var nomesPostos = <?php echo json_encode($nomesPostos); ?> || {};
         var storageKey = 'conferencia_previa_malotes_v1';
-        var channel = null;
-        var subtituloPrevia = document.getElementById('subtituloPrevia');
-        var metaUsuario = document.getElementById('metaUsuario');
+        var areaGrade = document.getElementById('areaGrade');
+        var metaDatas = document.getElementById('metaDatas');
         var metaAtualizacao = document.getElementById('metaAtualizacao');
-        var metaPosto = document.getElementById('metaPosto');
-        var statConfirmados = document.getElementById('statConfirmados');
-        var statLinhas = document.getElementById('statLinhas');
-        var statPendencias = document.getElementById('statPendencias');
-
-        var areaPendencias = document.getElementById('areaPendencias');
+        var channel = null;
 
         function escapeHtml(valor) {
             return String(valor || '')
@@ -247,50 +144,202 @@
             }
         }
 
+        function expandirCompactado(texto) {
+            texto = String(texto || '').trim();
+            if (!texto) return [];
+            var partes = texto.split(',');
+            var nums = {};
+            for (var i = 0; i < partes.length; i++) {
+                var parte = String(partes[i] || '').trim();
+                if (!parte) continue;
+                if (parte.indexOf('-') !== -1) {
+                    var limites = parte.split('-');
+                    var ini = parseInt(limites[0], 10) || 0;
+                    var fim = parseInt(limites[1], 10) || 0;
+                    if (ini > 0 && fim >= ini) {
+                        for (var j = ini; j <= fim; j++) nums[j] = j;
+                    }
+                } else {
+                    var n = parseInt(parte, 10) || 0;
+                    if (n > 0) nums[n] = n;
+                }
+            }
+            var lista = [];
+            for (var chave in nums) {
+                if (Object.prototype.hasOwnProperty.call(nums, chave)) lista.push(nums[chave]);
+            }
+            lista.sort(function(a, b) { return a - b; });
+            return lista;
+        }
+
+        function compactar(nums) {
+            if (!nums || !nums.length) return '';
+            var vistos = {};
+            var limpos = [];
+            for (var i = 0; i < nums.length; i++) {
+                var n = parseInt(nums[i], 10) || 0;
+                if (n > 0 && !vistos[n]) {
+                    vistos[n] = true;
+                    limpos.push(n);
+                }
+            }
+            if (!limpos.length) return '';
+            limpos.sort(function(a, b) { return a - b; });
+            var partes = [];
+            var inicio = limpos[0];
+            var anterior = limpos[0];
+            for (var j = 1; j < limpos.length; j++) {
+                if (limpos[j] === anterior + 1) {
+                    anterior = limpos[j];
+                    continue;
+                }
+                partes.push(inicio === anterior ? String(inicio) : (inicio + '-' + anterior));
+                inicio = limpos[j];
+                anterior = limpos[j];
+            }
+            partes.push(inicio === anterior ? String(inicio) : (inicio + '-' + anterior));
+            return partes.join(', ');
+        }
+
+        function nomeSecao(item) {
+            var codigo = parseInt(item.regional_codigo || 0, 10) || 0;
+            if (codigo === 0) return 'CAPITAL';
+            if (codigo === 1) return 'METROPOLITANA';
+            if (codigo === 999) return 'CENTRAL IIPR';
+            return 'REGIONAIS';
+        }
+
+        function montarLinhas(snapshot) {
+            var mapa = {};
+            var resumo = snapshot && snapshot.resumo ? snapshot.resumo : [];
+            var pendentes = snapshot && snapshot.pendentes ? snapshot.pendentes : [];
+
+            for (var i = 0; i < pendentes.length; i++) {
+                var p = pendentes[i];
+                var postoPend = String(p.posto || '').trim();
+                if (!postoPend) continue;
+                if (!mapa[postoPend]) {
+                    mapa[postoPend] = {
+                        posto: postoPend,
+                        regional: p.regional || '',
+                        regional_codigo: p.regional_codigo || '',
+                        lacres_iipr: [],
+                        lacres_correios: [],
+                        etiqueta_correios: ''
+                    };
+                }
+            }
+
+            for (var j = 0; j < resumo.length; j++) {
+                var item = resumo[j];
+                var posto = String(item.posto || '').trim();
+                if (!posto) continue;
+                if (!mapa[posto]) {
+                    mapa[posto] = {
+                        posto: posto,
+                        regional: item.regional || '',
+                        regional_codigo: item.regional_codigo || '',
+                        lacres_iipr: [],
+                        lacres_correios: [],
+                        etiqueta_correios: ''
+                    };
+                }
+                mapa[posto].regional = mapa[posto].regional || item.regional || '';
+                mapa[posto].regional_codigo = mapa[posto].regional_codigo || item.regional_codigo || '';
+                mapa[posto].lacres_iipr = mapa[posto].lacres_iipr.concat(expandirCompactado(item.lacre_iipr));
+                mapa[posto].lacres_correios = mapa[posto].lacres_correios.concat(expandirCompactado(item.lacre_correios));
+                if (!mapa[posto].etiqueta_correios && item.etiqueta_correios) {
+                    mapa[posto].etiqueta_correios = item.etiqueta_correios;
+                }
+            }
+
+            var linhas = [];
+            for (var chave in mapa) {
+                if (!Object.prototype.hasOwnProperty.call(mapa, chave)) continue;
+                mapa[chave].lacre_iipr = compactar(mapa[chave].lacres_iipr);
+                mapa[chave].lacre_correios = compactar(mapa[chave].lacres_correios);
+                linhas.push(mapa[chave]);
+            }
+
+            linhas.sort(function(a, b) {
+                var regA = parseInt(a.regional_codigo || 0, 10) || 0;
+                var regB = parseInt(b.regional_codigo || 0, 10) || 0;
+                var ordemA = regA === 0 ? 0 : (regA === 1 ? 1 : (regA === 999 ? 2 : 3));
+                var ordemB = regB === 0 ? 0 : (regB === 1 ? 1 : (regB === 999 ? 2 : 3));
+                if (ordemA !== ordemB) return ordemA - ordemB;
+                if (regA !== regB && ordemA === 3) return regA - regB;
+                return (parseInt(a.posto || 0, 10) || 0) - (parseInt(b.posto || 0, 10) || 0);
+            });
+            return linhas;
+        }
+
+        function montarTabela(secao, linhas, postoAtual) {
+            var html = '';
+            html += '<div class="secao">';
+            html += '<table>';
+            html += '<thead>';
+            html += '<tr>';
+            html += '<th class="col-posto secao-titulo">' + escapeHtml(secao) + '</th>';
+            html += '<th class="col-iipr">Lacre IIPR</th>';
+            html += '<th class="col-correios">Lacre Correios</th>';
+            html += '<th class="col-etiqueta">Etiqueta Correios</th>';
+            html += '</tr>';
+            html += '</thead>';
+            html += '<tbody>';
+            for (var i = 0; i < linhas.length; i++) {
+                var item = linhas[i];
+                var nome = nomesPostos[item.posto] || ('Posto ' + item.posto);
+                var classe = String(item.posto) === String(postoAtual || '') ? ' class="ativo"' : '';
+                html += '<tr' + classe + '>';
+                html += '<td class="col-posto">' + escapeHtml(item.posto + ' - ' + nome) + '</td>';
+                html += '<td><input type="text" value="' + escapeHtml(item.lacre_iipr || '') + '" readonly></td>';
+                html += '<td><input type="text" value="' + escapeHtml(item.lacre_correios || '') + '" readonly></td>';
+                html += '<td><input type="text" value="' + escapeHtml(item.etiqueta_correios || '') + '" readonly></td>';
+                html += '</tr>';
+            }
+            html += '</tbody>';
+            html += '</table>';
+            html += '</div>';
+            return html;
+        }
+
         function renderizar(snapshot) {
             if (!snapshot) {
-                subtituloPrevia.textContent = 'Aguardando dados da tela de conferência em modo chips.';
-                metaUsuario.textContent = 'Responsável: -';
-                metaAtualizacao.textContent = 'Atualização: -';
-                metaPosto.textContent = 'Posto atual: -';
-                statConfirmados.textContent = '0';
-                statLinhas.textContent = '0';
-                statPendencias.textContent = '0';
-
-                areaPendencias.innerHTML = '<div class="empty">Nenhuma pendência recebida.</div>';
+                areaGrade.className = 'vazio';
+                areaGrade.innerHTML = 'Aguardando dados da conferência.';
+                metaDatas.textContent = 'Aguardando conferência';
+                metaAtualizacao.textContent = 'Última atualização: -';
                 return;
             }
 
-            subtituloPrevia.textContent = snapshot.datas_filtro && snapshot.datas_filtro.length
-                ? 'Datas filtradas: ' + snapshot.datas_filtro.join(', ')
-                : 'Prévia local sincronizada com a tela de conferência.';
-            metaUsuario.textContent = 'Responsável: ' + (snapshot.usuario || '-');
-            metaAtualizacao.textContent = 'Atualização: ' + (snapshot.gerado_em || '-');
-            metaPosto.textContent = 'Posto atual: ' + (snapshot.posto_selecionado || '-');
-            statConfirmados.textContent = String(snapshot.total_confirmados || 0);
-            statLinhas.textContent = String(snapshot.total_fechados || 0);
-            statPendencias.textContent = String((snapshot.pendentes || []).length);
+            metaDatas.textContent = snapshot.datas_filtro && snapshot.datas_filtro.length ? ('Datas: ' + snapshot.datas_filtro.join(', ')) : 'Sem datas informadas';
+            metaAtualizacao.textContent = 'Última atualização: ' + (snapshot.gerado_em || '-');
 
-            if (snapshot.pendentes && snapshot.pendentes.length) {
-                var cards = [];
-                for (var j = 0; j < snapshot.pendentes.length; j++) {
-                    var pendencia = snapshot.pendentes[j];
-                    cards.push(
-                        '<div class="pendencia">' +
-                            '<strong>Posto ' + escapeHtml(pendencia.posto || '-') + ' • ' + escapeHtml(pendencia.regional || '-') + '</strong>' +
-                            '<div class="detalhe">Lotes aguardando fechamento IIPR: ' + escapeHtml((pendencia.lotes || []).join(', ')) + '</div>' +
-                            '<div class="detalhe">Quantidade total: ' + escapeHtml(String(pendencia.qtd_total || 0)) + '</div>' +
-                        '</div>'
-                    );
-                }
-                areaPendencias.innerHTML = '<div class="lista-pendencias">' + cards.join('') + '</div>';
-            } else {
-                areaPendencias.innerHTML = '<div class="empty">Nenhum lote confirmado está aguardando lacre IIPR.</div>';
+            var linhas = montarLinhas(snapshot);
+            if (!linhas.length) {
+                areaGrade.className = 'vazio';
+                areaGrade.innerHTML = 'Nenhum posto conferido ainda.';
+                return;
             }
-        }
 
-        function atualizar() {
-            renderizar(lerSnapshot());
+            var grupos = {
+                'CAPITAL': [],
+                'METROPOLITANA': [],
+                'CENTRAL IIPR': [],
+                'REGIONAIS': []
+            };
+            for (var i = 0; i < linhas.length; i++) {
+                grupos[nomeSecao(linhas[i])].push(linhas[i]);
+            }
+
+            var html = '';
+            if (grupos['CAPITAL'].length) html += montarTabela('CAPITAL', grupos['CAPITAL'], snapshot.posto_selecionado);
+            if (grupos['METROPOLITANA'].length) html += montarTabela('METROPOLITANA', grupos['METROPOLITANA'], snapshot.posto_selecionado);
+            if (grupos['CENTRAL IIPR'].length) html += montarTabela('CENTRAL IIPR', grupos['CENTRAL IIPR'], snapshot.posto_selecionado);
+            if (grupos['REGIONAIS'].length) html += montarTabela('REGIONAIS', grupos['REGIONAIS'], snapshot.posto_selecionado);
+
+            areaGrade.className = '';
+            areaGrade.innerHTML = html;
         }
 
         if (window.BroadcastChannel) {
@@ -306,12 +355,14 @@
 
         window.addEventListener('storage', function(event) {
             if (event.key === storageKey) {
-                atualizar();
+                renderizar(lerSnapshot());
             }
         });
 
-        atualizar();
-        window.setInterval(atualizar, 2000);
+        renderizar(lerSnapshot());
+        window.setInterval(function() {
+            renderizar(lerSnapshot());
+        }, 2000);
     })();
     </script>
 </body>
