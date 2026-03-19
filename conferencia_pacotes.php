@@ -499,6 +499,10 @@ try {
         if ($dataexp === '') {
             $dataexp = date('d-m-Y');
         }
+        $dataexp_sql = normalizarDataSqlPacote($dataexp);
+        if ($dataexp_sql !== '') {
+            $dataexp = $dataexp_sql;
+        }
         if ($usuario_conf === '') {
             die(json_encode(array('success' => false, 'erro' => 'Usuario obrigatorio')));
         }
@@ -509,11 +513,15 @@ try {
         $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario, conferido_em) 
             VALUES (?, ?, ?, ?, ?, ?, 's', ?, NOW())
             ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), codbar=VALUES(codbar), dataexp=VALUES(dataexp), usuario=VALUES(usuario), conferido_em=NOW()";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(array($regional, $lote, $posto, $dataexp, $qtd, $codbar, $usuario_conf));
-        $stmt = null; // v8.17.4: Libera statement
-        $pdo = null;  // v8.17.4: Fecha conexão
-        die(json_encode(array('success' => true, 'sucesso' => true)));
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute(array($regional, $lote, $posto, $dataexp, $qtd, $codbar, $usuario_conf));
+            $stmt = null; // v8.17.4: Libera statement
+            $pdo = null;  // v8.17.4: Fecha conexão
+            die(json_encode(array('success' => true, 'sucesso' => true)));
+        } catch (Exception $ex) {
+            die(json_encode(array('success' => false, 'erro' => 'Falha ao gravar conferencia: ' . $ex->getMessage())));
+        }
     }
 
     if (isset($_POST['salvar_atribuicao_lacres_ajax'])) {
@@ -5410,18 +5418,35 @@ function iniciarConferenciaPacotes() {
         }
         tocando = true;
         var som = filaSons.shift();
-        try {
-            som.currentTime = 0;
-            var playPromise = som.play();
-            if (playPromise && playPromise.then) {
-                playPromise.catch(function() {
-                    tocando = false;
-                    tocarProximoSom();
-                });
+        var finalizado = false;
+        var watchdog = null;
+
+        function concluirSom() {
+            if (finalizado) return;
+            finalizado = true;
+            if (watchdog) {
+                clearTimeout(watchdog);
+                watchdog = null;
             }
-        } catch (e) {
             tocando = false;
             tocarProximoSom();
+        }
+
+        try {
+            som.currentTime = 0;
+            som.onended = concluirSom;
+            som.onerror = concluirSom;
+            var durMs = 2500;
+            if (isFinite(som.duration) && som.duration > 0) {
+                durMs = Math.max(1200, Math.floor(som.duration * 1000) + 350);
+            }
+            watchdog = setTimeout(concluirSom, durMs);
+            var playPromise = som.play();
+            if (playPromise && playPromise.then) {
+                playPromise.catch(concluirSom);
+            }
+        } catch (e) {
+            concluirSom();
         }
     }
 
@@ -6010,11 +6035,17 @@ function iniciarConferenciaPacotes() {
         })
         .then(function(data) {
             if (!(data && (data.success || data.sucesso))) {
-                console.error('Erro ao salvar:', data.erro);
+                console.error('Erro ao salvar:', data && data.erro ? data.erro : data);
+                if (mensagemLeitura) {
+                    mensagemLeitura.innerHTML = '<strong>Falha ao salvar no banco:</strong> ' + ((data && data.erro) ? data.erro : 'erro desconhecido');
+                }
             }
         })
         .catch(function(error) {
             console.error('Erro AJAX:', error);
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Falha ao salvar no banco:</strong> erro de comunicação AJAX.';
+            }
         });
     }
     
@@ -6090,6 +6121,10 @@ function iniciarConferenciaPacotes() {
             delete codigosEmProcessamento[valor];
             if (limparInput && input) {
                 input.value = '';
+                input.focus();
+                setTimeout(function() { if (input) input.value = ''; }, 20);
+                setTimeout(function() { if (input) input.value = ''; }, 80);
+                setTimeout(function() { if (input) input.value = ''; }, 180);
             }
         }
 
@@ -6412,6 +6447,11 @@ function iniciarConferenciaPacotes() {
     document.addEventListener('keydown', function(e) {
         if (!e) return;
         var alvo = e.target;
+        // Se o foco está no campo principal, o próprio listener do input já processa.
+        // Evita processamento duplicado (input + keydown global), que causa resíduos e inconsistências.
+        if (alvo && alvo.id === 'codigo_barras') {
+            return;
+        }
         if (alvo && (alvo.id === 'usuario_conf_modal' || alvo.id === 'pacote_lote' || alvo.id === 'pacote_regional' || alvo.id === 'pacote_posto' || alvo.id === 'pacote_qtd' || alvo.id === 'pacote_dataexp' || alvo.id === 'pacote_responsavel')) {
             return;
         }
