@@ -3385,7 +3385,7 @@ if (empty($regionais_data)) {
 </div>
 
 <!-- Áudios -->
-<audio id="beep" src="beep.mp3" preload="auto"></audio>
+<audio id="beep" src=".devcontainer/beep.mp3" preload="auto"></audio>
 <audio id="concluido" src="concluido.mp3" preload="auto"></audio>
 <audio id="pacotejaconferido" src="pacotejaconferido.mp3" preload="auto"></audio>
 <audio id="pacotedeoutraregional" src="pacotedeoutraregional.mp3" preload="auto"></audio>
@@ -5283,9 +5283,11 @@ function iniciarConferenciaPacotes() {
     function tocarBeepConfirmacao() {
         if (!beep || (muteBeep && muteBeep.checked)) return;
         try {
-            beep.pause();
-            beep.currentTime = 0;
-            var playPromise = beep.play();
+            var srcBeep = beep.getAttribute('src') || beep.currentSrc || '.devcontainer/beep.mp3';
+            var beepInstancia = new Audio(srcBeep);
+            beepInstancia.preload = 'auto';
+            beepInstancia.volume = 1;
+            var playPromise = beepInstancia.play();
             if (playPromise && playPromise.catch) {
                 playPromise.catch(function() {});
             }
