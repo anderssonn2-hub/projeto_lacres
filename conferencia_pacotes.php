@@ -2720,7 +2720,7 @@ try {
             <option value="Tarde">☀️ Tarde</option>
             <option value="Noite">🌆 Noite</option>
         </select>
-        <div style="font-size:11px; color:rgba(255,255,255,.75); margin-top:6px;" id="turnoOrigemBadge">Carregando preferência…</div>
+        <div style="font-size:11px; color:rgba(255,255,255,.75); margin-top:6px;" id="turnoOrigemBadge">Turno usado no salvamento de pacotes não listados.</div>
     </div>
 </div>
 <input type="checkbox" id="autoSalvar" checked style="display:none;">
@@ -3704,6 +3704,7 @@ function iniciarConferenciaPacotes() {
     var creditosJaExibidos = false;
     var creditosAtivos = false;
     var timerInicioCreditos = null;
+    var creditosIniciadoEm = 0;
     var vozEscutaAtiva = false;
     var vozModoAtual = '';
     var vozReinicioManual = false;
@@ -3767,8 +3768,8 @@ function iniciarConferenciaPacotes() {
         var origemEl = document.getElementById('turnoOrigemBadge');
         if (origemEl) {
             origemEl.textContent = turnoSalvo
-                ? 'Preferência salva: ' + turno
-                : 'Auto-detectado por horário: ' + turno;
+                ? 'Preferência salva: ' + turno + ' (aplicado no salvamento de pacotes pendentes)'
+                : 'Auto-detectado: ' + turno + ' (aplicado no salvamento de pacotes pendentes)';
         }
     }
 
@@ -3778,7 +3779,7 @@ function iniciarConferenciaPacotes() {
             try { localStorage.setItem(storageTurnoKey, novoTurno); } catch(e) {}
             aplicarTurno(novoTurno);
             var origemEl = document.getElementById('turnoOrigemBadge');
-            if (origemEl) origemEl.textContent = 'Turno selecionado: ' + novoTurno;
+            if (origemEl) origemEl.textContent = 'Turno selecionado: ' + novoTurno + ' (aplicado no salvamento de pacotes pendentes)';
         });
     }
 
@@ -3870,6 +3871,7 @@ function iniciarConferenciaPacotes() {
         if (creditosAtivos || creditosJaExibidos || creditosDesativados()) return;
         creditosJaExibidos = true;
         creditosAtivos = true;
+        creditosIniciadoEm = Date.now();
         renderizarCreditosFinais();
 
         if (creditosOverlay) {
@@ -3908,7 +3910,15 @@ function iniciarConferenciaPacotes() {
             creditosJaExibidos = false;
             return;
         }
-        if (creditosDesativados() || creditosAtivos || creditosJaExibidos || timerInicioCreditos) return;
+
+        if (creditosDesativados()) {
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Conferência finalizada:</strong> créditos finais estão desativados no topo da tela.';
+            }
+            return;
+        }
+
+        if (creditosAtivos || creditosJaExibidos || timerInicioCreditos) return;
 
         timerInicioCreditos = setTimeout(function() {
             timerInicioCreditos = null;
@@ -3920,9 +3930,10 @@ function iniciarConferenciaPacotes() {
     }
 
     function aplicarInterrupcaoCreditos() {
-        if (creditosAtivos) {
-            pararCreditosFinais();
-        }
+        if (!creditosAtivos) return;
+        // Evita fechar os créditos imediatamente por evento residual do scanner/teclado.
+        if ((Date.now() - creditosIniciadoEm) < 1500) return;
+        pararCreditosFinais();
     }
 
     function aplicarModoConsulta(ativo) {
@@ -5975,6 +5986,7 @@ function iniciarConferenciaPacotes() {
     renderizarDiagnosticoVoz();
     publicarResumoPrevia();
     iniciarPollingControleRemoto();
+    verificarConclusaoFinalCorreios();
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
