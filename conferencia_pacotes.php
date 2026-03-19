@@ -3612,8 +3612,9 @@ function iniciarConferenciaPacotes() {
 
 
     function todosCorreiosConferidos() {
-        // Créditos finais só entram quando todos os lotes visíveis da operação foram conferidos.
-        var linhas = document.querySelectorAll('tbody tr[data-codigo]');
+        // Créditos finais entram quando todos os lotes dos Correios estiverem conferidos.
+        // Lotes do Poupa Tempo não devem bloquear esse encerramento.
+        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
         if (!linhas || !linhas.length) return false;
         for (var i = 0; i < linhas.length; i++) {
             if (!linhas[i].classList.contains('confirmado')) {
@@ -3624,7 +3625,7 @@ function iniciarConferenciaPacotes() {
     }
 
     function montarResumoFinalConferencia() {
-        var linhas = document.querySelectorAll('tbody tr[data-codigo]');
+        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
         var totalPacotes = linhas.length;
         var postos = {};
         var regionais = {};
@@ -3679,7 +3680,7 @@ function iniciarConferenciaPacotes() {
         var r = montarResumoFinalConferencia();
         creditosTrilha.innerHTML = '' +
             '<div class="creditos-titulo">Encerramento da Conferência</div>' +
-            '<div class="creditos-bloco">Missão concluída com sucesso<div class="creditos-sub">Todos os lotes da operação foram conferidos com sucesso.</div></div>' +
+            '<div class="creditos-bloco">Missão concluída com sucesso<div class="creditos-sub">Todos os lotes dos Correios foram conferidos com sucesso.</div></div>' +
             '<div class="creditos-bloco">Estatísticas Gerais<div class="creditos-sub">Pacotes conferidos: ' + r.totalPacotes + ' | Postos atendidos: ' + r.totalPostos + ' | Regionais fechadas: ' + r.totalRegionais + '</div><div class="creditos-sub">Malotes consolidados: ' + r.totalMalotes + ' | Pendências: ' + r.pendencias + '</div></div>' +
             '<div class="creditos-bloco">Datas da operação<div class="creditos-sub">' + escapeHtml(r.datas) + '</div></div>' +
             '<div class="creditos-bloco">Créditos da expedição<div class="creditos-sub">' + escapeHtml(r.usuario) + ' - Conferência e coordenação da operação</div><div class="creditos-sub">Andre Agra - Impressão e apoio operacional</div><div class="creditos-sub">Equipe de Expedição - Fechamento, conferência e despacho</div><div class="creditos-sub">Equipe de Tecnologia - Sistema de conferência e melhorias contínuas</div></div>' +
