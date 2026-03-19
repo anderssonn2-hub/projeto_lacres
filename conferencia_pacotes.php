@@ -2912,7 +2912,10 @@ try {
 
 <div class="painel-leitura">
     <div class="painel-leitura-topo">
-        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus>
+        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus
+            oninput="if(window.iniciarConferenciaPacotes&&!window.processarLeituraCodigo){window.iniciarConferenciaPacotes();} if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
+            onchange="if(window.iniciarConferenciaPacotes&&!window.processarLeituraCodigo){window.iniciarConferenciaPacotes();} if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
+            onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.iniciarConferenciaPacotes&&!window.processarLeituraCodigo){window.iniciarConferenciaPacotes();} if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);} }">
         <div class="painel-leitura-acoes">
             <button id="resetar">🔄 Resetar Conferência</button>
         </div>
@@ -3762,6 +3765,18 @@ function iniciarConferenciaPacotes() {
     var codigosEmProcessamento = {};
     var ultimoCodigoProcessado = '';
     var ultimaLeituraProcessadaEm = 0;
+
+    // Expõe funções críticas cedo para que handlers inline e fallbacks consigam operar
+    // mesmo se alguma parte tardia da inicialização falhar.
+    window.processarLeituraCodigo = function(valor) {
+        return processarLeituraCodigo(valor);
+    };
+    window.liberarPaginaComUsuario = function(nome, restaurar) {
+        return liberarPaginaComUsuario(nome, restaurar);
+    };
+    window.selecionarTipoConferencia = function(tipo) {
+        return selecionarTipoConferencia(tipo);
+    };
 
     function mostrarConfirmacao(texto, autoFechar) {
         if (confirmacaoTexto) {
@@ -5409,8 +5424,6 @@ function iniciarConferenciaPacotes() {
         if (input) input.focus();
     }
 
-    window.selecionarTipoConferencia = selecionarTipoConferencia;
-
     function abrirModalPacote(codigo, idx) {
         if (!modalPacote) return;
         var cod = codigo || '';
@@ -5694,8 +5707,6 @@ function iniciarConferenciaPacotes() {
             overlayTipo.style.display = 'flex';
         }
     }
-
-    window.liberarPaginaComUsuario = liberarPaginaComUsuario;
 
     if (btnConfirmarUsuario) {
         btnConfirmarUsuario.addEventListener('click', function() {
@@ -6208,50 +6219,6 @@ function iniciarConferenciaPacotes() {
 
     window.processarLeituraCodigo = processarLeituraCodigo;
 
-    // Scanner de código de barras
-    if (input) {
-        var timerProcessamentoCampo = null;
-
-        function agendarProcessamentoCampo() {
-            if (!input) return;
-            if (timerProcessamentoCampo) {
-                clearTimeout(timerProcessamentoCampo);
-            }
-            timerProcessamentoCampo = setTimeout(function() {
-                timerProcessamentoCampo = null;
-                var valorAtual = String(input.value || '').trim();
-                var digits = valorAtual.replace(/\D+/g, '');
-                if (!digits) {
-                    ultimoCodLido = '';
-                    return;
-                }
-                if (digits.length >= 19) {
-                    ultimoCodLido = digits;
-                    processarLeituraCodigo(digits);
-                    return;
-                }
-                if ((Date.now() - ultimaLeituraProcessadaEm) <= 1200) {
-                    input.value = '';
-                    ultimoCodLido = '';
-                }
-            }, 35);
-        }
-
-        input.addEventListener('input', agendarProcessamentoCampo);
-        input.addEventListener('change', agendarProcessamentoCampo);
-        input.addEventListener('paste', function() {
-            setTimeout(agendarProcessamentoCampo, 0);
-        });
-        input.addEventListener('keydown', function(e) {
-            if (e.keyCode === 13) {
-                e.preventDefault();
-                processarLeituraCodigo(input.value);
-                return;
-            }
-            setTimeout(agendarProcessamentoCampo, 0);
-        });
-    }
-
     var scanBuffer = '';
     var scanTimer = null;
     document.addEventListener('keydown', function(e) {
@@ -6471,6 +6438,12 @@ function iniciarConferenciaPacotes() {
 
     renderizarPostosBloqueados();
     } catch (e) {
+        window.__conferenciaInit = false;
+        try {
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Falha ao iniciar conferência:</strong> ' + (e && e.message ? e.message : 'erro inesperado');
+            }
+        } catch (e1) {}
         try { console.error('Erro ao iniciar conferência', e); } catch (e2) {}
     }
 }
