@@ -2712,16 +2712,7 @@ try {
             Desativar animação final (créditos)
         </label>
     </div>
-    <div class="radio-box">
-        <div style="color:#fff; font-weight:600; margin-bottom:8px;">🕐 Turno de operação</div>
-        <select id="turnoAtualSelect" style="padding:6px 10px; border-radius:6px; border:none; font-size:13px; font-weight:600; cursor:pointer; background:#fff; color:#333; width:100%; max-width:200px;">
-            <option value="Madrugada">🌙 Madrugada</option>
-            <option value="Manhã" selected>🌅 Manhã</option>
-            <option value="Tarde">☀️ Tarde</option>
-            <option value="Noite">🌆 Noite</option>
-        </select>
-        <div style="font-size:11px; color:rgba(255,255,255,.75); margin-top:6px;" id="turnoOrigemBadge">Turno usado no salvamento de pacotes não listados.</div>
-    </div>
+
 </div>
 <input type="checkbox" id="autoSalvar" checked style="display:none;">
 
@@ -3677,7 +3668,6 @@ function iniciarConferenciaPacotes() {
     var resumoPacotesPendentes = document.getElementById('resumoPacotesPendentes');
     var autorSalvamentoPacotes = document.getElementById('autor_salvamento_pacotes');
     var turnoSalvamentoPacotes = document.getElementById('turno_salvamento_pacotes');
-    var turnoAtualSelect       = document.getElementById('turnoAtualSelect');
     var criadoSalvamentoPacotes = document.getElementById('criado_salvamento_pacotes');
     var consolidarSalvamentoPacotes = document.getElementById('consolidar_salvamento_pacotes');
     var pacotesPendentes = [];
@@ -3697,8 +3687,6 @@ function iniciarConferenciaPacotes() {
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
     var storageCreditosKey = 'conferencia_desativar_creditos_finais';
-    var storageTurnoKey    = 'projeto_lacres_turno';
-    var turnoAtual         = '';
     var previewStorageKey  = 'conferencia_previa_malotes_v1';
     var controleCanal = <?php echo json_encode($controle_canal); ?>;
     var postoSelecionadoMalote = '';
@@ -3758,43 +3746,7 @@ function iniciarConferenciaPacotes() {
         return 'Noite';
     }
 
-    function aplicarTurno(turno) {
-        if (!turno) return;
-        turnoAtual = turno;
-        if (turnoAtualSelect) turnoAtualSelect.value = turno;
-        if (turnoSalvamentoPacotes) turnoSalvamentoPacotes.value = turno;
-    }
 
-    function carregarTurnoSalvo() {
-        var turnoSalvo = '';
-        try { turnoSalvo = localStorage.getItem(storageTurnoKey) || ''; } catch(e) {}
-        var turno = turnoSalvo || detectarTurnoAutomatico();
-        aplicarTurno(turno);
-        var origemEl = document.getElementById('turnoOrigemBadge');
-        if (origemEl) {
-            origemEl.textContent = turnoSalvo
-                ? 'Preferência salva: ' + turno + ' (aplicado no salvamento de pacotes pendentes)'
-                : 'Auto-detectado: ' + turno + ' (aplicado no salvamento de pacotes pendentes)';
-        }
-    }
-
-    if (turnoAtualSelect) {
-        turnoAtualSelect.addEventListener('change', function() {
-            var novoTurno = this.value;
-            try { localStorage.setItem(storageTurnoKey, novoTurno); } catch(e) {}
-            aplicarTurno(novoTurno);
-            var origemEl = document.getElementById('turnoOrigemBadge');
-            if (origemEl) origemEl.textContent = 'Turno selecionado: ' + novoTurno + ' (aplicado no salvamento de pacotes pendentes)';
-        });
-    }
-
-    if (turnoSalvamentoPacotes) {
-        turnoSalvamentoPacotes.addEventListener('change', function() {
-            var novoTurno = this.value;
-            try { localStorage.setItem(storageTurnoKey, novoTurno); } catch(e) {}
-            aplicarTurno(novoTurno);
-        });
-    }
 
     function todosCorreiosConferidos() {
         // Considera apenas linhas reais de pacote.
@@ -5810,7 +5762,7 @@ function iniciarConferenciaPacotes() {
             atualizarOpcoesSalvamentoPendentes();
             var autorSalvar = autorSalvamentoPacotes ? autorSalvamentoPacotes.value.trim() : '';
             var criadoSalvar = criadoSalvamentoPacotes ? criadoSalvamentoPacotes.value.trim() : '';
-            var turnoSalvar = turnoSalvamentoPacotes ? turnoSalvamentoPacotes.value : 'Manhã';
+            var turnoSalvar = 'Manhã';  // Turno padrão
             var consolidarSalvar = consolidarSalvamentoPacotes ? !!consolidarSalvamentoPacotes.checked : false;
             if (!autorSalvar) {
                 alert('Informe o autor do salvamento.');
@@ -5983,7 +5935,7 @@ function iniciarConferenciaPacotes() {
     } catch (e3) {}
 
     carregarPreferenciaCreditos();
-    carregarTurnoSalvo();
+
     aplicarFiltroTipoVisual(obterTipoInicioSelecionado());
     atualizarResumoTodasTabelas();
     sincronizarPainelOperacao();
