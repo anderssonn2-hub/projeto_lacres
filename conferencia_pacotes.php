@@ -5280,6 +5280,18 @@ function iniciarConferenciaPacotes() {
         }
     }
 
+    function tocarBeepConfirmacao() {
+        if (!beep || (muteBeep && muteBeep.checked)) return;
+        try {
+            beep.pause();
+            beep.currentTime = 0;
+            var playPromise = beep.play();
+            if (playPromise && playPromise.catch) {
+                playPromise.catch(function() {});
+            }
+        } catch (e) {}
+    }
+
     function falarTexto(texto) {
         if (!window.speechSynthesis || !texto) return;
         try {
@@ -5305,8 +5317,9 @@ function iniciarConferenciaPacotes() {
             }
             if (pertenceCorreios) {
                 enfileirarSom(pertenceCorreios);
+            } else {
+                falarTexto('posto dos correios');
             }
-            falarTexto('posto dos correios');
             return;
         }
         if (mensagemLeitura) {
@@ -5314,11 +5327,11 @@ function iniciarConferenciaPacotes() {
         }
         if (postoPoupaTempo) {
             enfileirarSom(postoPoupaTempo);
+        } else {
+            falarTexto('posto do poupa tempo');
         }
-        falarTexto('posto do poupa tempo');
     }
 
-    // Encadeia para tocar o próximo som quando o atual terminar
     var listaSons = [];
     if (beep) listaSons.push(beep);
     if (concluido) listaSons.push(concluido);
@@ -5327,11 +5340,6 @@ function iniciarConferenciaPacotes() {
     if (postoPoupaTempo) listaSons.push(postoPoupaTempo);
     if (pertenceCorreios) listaSons.push(pertenceCorreios);
     if (pacoteNaoEncontradoAudio) listaSons.push(pacoteNaoEncontradoAudio);
-    for (var si = 0; si < listaSons.length; si++) {
-        listaSons[si].addEventListener('ended', function() {
-            tocarProximoSom();
-        });
-    }
 
     function desbloquearAudio() {
         if (audioDesbloqueado) return;
@@ -6063,7 +6071,9 @@ function iniciarConferenciaPacotes() {
                 somAlerta = pacoteOutraRegional;
                 enfileirarSom(somAlerta);
                 somAlerta = null;
-                falarTexto('pacote de outra regional');
+                if (!pacoteOutraRegional) {
+                    falarTexto('pacote de outra regional');
+                }
 
                 var desejaTrocarRegional = window.confirm(
                     'ATENÇÃO: pacote de outra regional.\n\n' +
@@ -6091,14 +6101,18 @@ function iniciarConferenciaPacotes() {
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto do Poupa Tempo:</strong> altere o tipo para Poupa Tempo ou Todos.';
             }
-            falarTexto('posto do poupa tempo');
+            if (!postoPoupaTempo) {
+                falarTexto('posto do poupa tempo');
+            }
         } else if (!modoTodos && podeConferir && tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
             somAlerta = pertenceCorreios;
             podeConferir = false;
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
             }
-            falarTexto('posto dos correios');
+            if (!pertenceCorreios) {
+                falarTexto('posto dos correios');
+            }
         }
 
         if (podeConferir && tipoPacote === 'poupatempo') {
@@ -6131,9 +6145,7 @@ function iniciarConferenciaPacotes() {
         }
         atualizarResumoTabela(linha.closest('table'));
 
-        if (!muteBeep || !muteBeep.checked) {
-            enfileirarSom(beep);
-        }
+        tocarBeepConfirmacao();
         if (somAlerta) {
             enfileirarSom(somAlerta);
         }
