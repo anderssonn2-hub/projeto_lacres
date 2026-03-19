@@ -471,19 +471,39 @@ try {
 
     // Handler AJAX salvar
     if (isset($_POST['salvar_lote_ajax'])) {
-        $lote = trim($_POST['lote']);
-        $regional = trim($_POST['regional']);
-        $posto = trim($_POST['posto']);
-        $dataexp = trim($_POST['dataexp']);
-        $qtd = (int)$_POST['qtd'];
-        $codbar = trim($_POST['codbar']);
-        $usuario_conf = isset($_POST['usuario']) ? trim($_POST['usuario']) : '';
+        $lote = isset($_POST['lote']) ? trim((string)$_POST['lote']) : '';
+        $regional = isset($_POST['regional']) ? trim((string)$_POST['regional']) : '';
+        $posto = isset($_POST['posto']) ? trim((string)$_POST['posto']) : '';
+        $dataexp = isset($_POST['dataexp']) ? trim((string)$_POST['dataexp']) : '';
+        $qtd = isset($_POST['qtd']) ? (int)$_POST['qtd'] : 0;
+        $codbar = isset($_POST['codbar']) ? preg_replace('/\D+/', '', (string)$_POST['codbar']) : '';
+        $usuario_conf = isset($_POST['usuario']) ? trim((string)$_POST['usuario']) : '';
+
+        if (strlen($codbar) >= 19) {
+            $codbar19 = substr($codbar, -19);
+            if ($lote === '') {
+                $lote = substr($codbar19, 0, 8);
+            }
+            if ($regional === '') {
+                $regional = substr($codbar19, 8, 3);
+            }
+            if ($posto === '') {
+                $posto = substr($codbar19, 11, 3);
+            }
+            if ($qtd <= 0) {
+                $qtd = (int)substr($codbar19, 14, 5);
+            }
+            $codbar = $codbar19;
+        }
 
         if ($dataexp === '') {
             $dataexp = date('d-m-Y');
         }
         if ($usuario_conf === '') {
             die(json_encode(array('success' => false, 'erro' => 'Usuario obrigatorio')));
+        }
+        if ($lote === '' || $regional === '' || $posto === '' || strlen($codbar) !== 19) {
+            die(json_encode(array('success' => false, 'erro' => 'Dados do pacote incompletos')));
         }
         
         $sql = "INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario, conferido_em) 
@@ -493,7 +513,7 @@ try {
         $stmt->execute(array($regional, $lote, $posto, $dataexp, $qtd, $codbar, $usuario_conf));
         $stmt = null; // v8.17.4: Libera statement
         $pdo = null;  // v8.17.4: Fecha conexão
-        die(json_encode(array('success' => true)));
+        die(json_encode(array('success' => true, 'sucesso' => true)));
     }
 
     if (isset($_POST['salvar_atribuicao_lacres_ajax'])) {
@@ -5947,6 +5967,30 @@ function iniciarConferenciaPacotes() {
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
+        var codigo = String(codbar || '').replace(/\D+/g, '');
+        if (codigo.length > 19) {
+            codigo = codigo.substr(codigo.length - 19, 19);
+        }
+        if (!lote && codigo.length === 19) lote = codigo.substr(0, 8);
+        if (!regional && codigo.length === 19) regional = codigo.substr(8, 3);
+        if (!posto && codigo.length === 19) posto = codigo.substr(11, 3);
+        if ((!qtd || parseInt(qtd, 10) <= 0) && codigo.length === 19) qtd = parseInt(codigo.substr(14, 5), 10) || 1;
+        if (!dataexp) {
+            var now = new Date();
+            dataexp = String(now.getDate()).padStart(2, '0') + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + now.getFullYear();
+        }
+        if (!usuario) {
+            try { usuario = sessionStorage.getItem(storageUsuarioKey) || ''; } catch (e1) { usuario = ''; }
+            if (!usuario) {
+                var badge = document.getElementById('usuarioBadge');
+                if (badge) usuario = (badge.textContent || '').trim();
+            }
+        }
+        if (codigo.length !== 19 || !usuario) {
+            console.error('Salvar conferência ignorado por dados incompletos', { lote: lote, regional: regional, posto: posto, dataexp: dataexp, qtd: qtd, codbar: codigo, usuario: usuario });
+            return;
+        }
+
         var formData = new FormData();
         formData.append('salvar_lote_ajax', '1');
         formData.append('lote', lote);
@@ -5954,7 +5998,7 @@ function iniciarConferenciaPacotes() {
         formData.append('posto', posto);
         formData.append('dataexp', dataexp);
         formData.append('qtd', qtd);
-        formData.append('codbar', codbar);
+        formData.append('codbar', codigo);
         formData.append('usuario', usuario);
         
         fetch(window.location.href, {
@@ -5965,7 +6009,7 @@ function iniciarConferenciaPacotes() {
             return response.json();
         })
         .then(function(data) {
-            if (!data.sucesso) {
+            if (!(data && (data.success || data.sucesso))) {
                 console.error('Erro ao salvar:', data.erro);
             }
         })
@@ -5996,6 +6040,7 @@ function iniciarConferenciaPacotes() {
 
     function processarLeituraCodigo(valorBruto) {
         if (!input) return;
+        try {
         if (modoConsulta) {
             if (mensagemLeitura) {
                 mensagemLeitura.textContent = 'Modo consulta ativo.';
@@ -6263,7 +6308,7 @@ function iniciarConferenciaPacotes() {
         }
 
         var grupoAtual = null;
-        var todasLinhas = document.querySelectorAll('tbody tr');
+        var todasLinhas = document.querySelectorAll('tbody tr[data-codigo]');
         var linhasDoGrupo = [];
 
         if (tipoAtual === 'poupatempo') {
@@ -6306,6 +6351,13 @@ function iniciarConferenciaPacotes() {
 
         verificarConclusaoFinalCorreios();
         finalizarProcessamento(true);
+        } catch (erroProcessamentoLeitura) {
+            console.error('Erro em processarLeituraCodigo:', erroProcessamentoLeitura);
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+        }
     }
 
     window.processarLeituraCodigo = processarLeituraCodigo;
