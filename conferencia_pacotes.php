@@ -3052,17 +3052,6 @@ try {
 
 </div>
 
-    <script>
-    // Inicializa o sistema de conferência assim que o DOM estiver disponível.
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof window.iniciarConferenciaPacotes === 'function') window.iniciarConferenciaPacotes();
-        });
-    } else {
-        if (typeof window.iniciarConferenciaPacotes === 'function') window.iniciarConferenciaPacotes();
-    }
-    </script>
-
 <div id="secaoTradicional" class="secao-visualizacao oculta">
 
 <!-- Tabelas Agrupadas -->
@@ -5420,6 +5409,8 @@ function iniciarConferenciaPacotes() {
         if (input) input.focus();
     }
 
+    window.selecionarTipoConferencia = selecionarTipoConferencia;
+
     function abrirModalPacote(codigo, idx) {
         if (!modalPacote) return;
         var cod = codigo || '';
@@ -5703,6 +5694,8 @@ function iniciarConferenciaPacotes() {
             overlayTipo.style.display = 'flex';
         }
     }
+
+    window.liberarPaginaComUsuario = liberarPaginaComUsuario;
 
     if (btnConfirmarUsuario) {
         btnConfirmarUsuario.addEventListener('click', function() {
@@ -6217,47 +6210,46 @@ function iniciarConferenciaPacotes() {
 
     // Scanner de código de barras
     if (input) {
-        input.addEventListener("input", function() {
-            processarLeituraCodigo(input.value);
+        var timerProcessamentoCampo = null;
+
+        function agendarProcessamentoCampo() {
+            if (!input) return;
+            if (timerProcessamentoCampo) {
+                clearTimeout(timerProcessamentoCampo);
+            }
+            timerProcessamentoCampo = setTimeout(function() {
+                timerProcessamentoCampo = null;
+                var valorAtual = String(input.value || '').trim();
+                var digits = valorAtual.replace(/\D+/g, '');
+                if (!digits) {
+                    ultimoCodLido = '';
+                    return;
+                }
+                if (digits.length >= 19) {
+                    ultimoCodLido = digits;
+                    processarLeituraCodigo(digits);
+                    return;
+                }
+                if ((Date.now() - ultimaLeituraProcessadaEm) <= 1200) {
+                    input.value = '';
+                    ultimoCodLido = '';
+                }
+            }, 35);
+        }
+
+        input.addEventListener('input', agendarProcessamentoCampo);
+        input.addEventListener('change', agendarProcessamentoCampo);
+        input.addEventListener('paste', function() {
+            setTimeout(agendarProcessamentoCampo, 0);
         });
-        input.addEventListener("change", function() {
-            processarLeituraCodigo(input.value);
-        });
-        input.addEventListener("paste", function() {
-            setTimeout(function() {
-                processarLeituraCodigo(input.value);
-            }, 0);
-        });
-        input.addEventListener("keydown", function(e) {
+        input.addEventListener('keydown', function(e) {
             if (e.keyCode === 13) {
                 e.preventDefault();
                 processarLeituraCodigo(input.value);
+                return;
             }
+            setTimeout(agendarProcessamentoCampo, 0);
         });
-        setInterval(function() {
-            if (!input) return;
-            var valorAtual = (input.value || '').trim();
-            if (!valorAtual || valorAtual === ultimoCodLido) return;
-            ultimoCodLido = valorAtual;
-            processarLeituraCodigo(valorAtual);
-            if ((input.value || '').trim() === '') {
-                ultimoCodLido = '';
-            }
-        }, 300);
-
-        // Segurança extra: limpa qualquer resíduo do input (completo ou parcial).
-        // Cobre o caso de código preso por qualquer motivo.
-        setInterval(function() {
-            if (!input) return;
-            var val = (input.value || '').trim();
-            if (!val) return;
-            var digits = val.replace(/\D+/g, '');
-            // Limpa se: parcial (não chegou a 19) ou se chegou a 19 mas não está sendo processado.
-            if (digits.length < 19 || (digits.length >= 19 && !codigosEmProcessamento[digits.substr(digits.length - 19, 19)])) {
-                input.value = '';
-                ultimoCodLido = '';
-            }
-        }, 500);
     }
 
     var scanBuffer = '';
@@ -6502,6 +6494,10 @@ if (document.readyState === 'loading') {
             if (input) input.focus();
             return;
         }
+        if (typeof window.liberarPaginaComUsuario === 'function') {
+            window.liberarPaginaComUsuario(nome, false);
+            return;
+        }
         var badge = document.getElementById('usuarioBadge');
         if (badge) badge.textContent = nome;
         var overlay = document.getElementById('overlayUsuario');
@@ -6538,6 +6534,10 @@ if (document.readyState === 'loading') {
 (function() {
     function selecionarTipoFallback(tipo) {
         if (!tipo) return;
+        if (typeof window.selecionarTipoConferencia === 'function') {
+            window.selecionarTipoConferencia(tipo);
+            return;
+        }
         var radios = document.querySelectorAll('input[name="tipo_inicio"]');
         for (var i = 0; i < radios.length; i++) {
             if (radios[i].value === tipo) {
