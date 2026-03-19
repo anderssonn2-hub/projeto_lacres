@@ -6036,10 +6036,14 @@ function iniciarConferenciaPacotes() {
         codigosEmProcessamento[valor] = true;
         ultimoCodigoProcessado = valor;
         ultimaLeituraProcessadaEm = agoraLeitura;
+        // Limpa o input IMEDIATAMENTE ao receber código válido.
+        // Não espera o processamento concluir (evita que código fique preso no campo durante async).
+        input.value = '';
+        input.focus();
 
         function finalizarProcessamento(limparInput) {
             delete codigosEmProcessamento[valor];
-            if (limparInput) {
+            if (limparInput && input) {
                 input.value = '';
             }
         }
@@ -6336,13 +6340,15 @@ function iniciarConferenciaPacotes() {
             }
         }, 300);
 
-        // Segurança extra: limpa input residual (ex: scanner que deixou dígitos a mais).
-        // Se houver menos de 19 dígitos após processamento, limpa para evitar travamento.
+        // Segurança extra: limpa qualquer resíduo do input (completo ou parcial).
+        // Cobre o caso de código preso por qualquer motivo.
         setInterval(function() {
             if (!input) return;
             var val = (input.value || '').trim();
-            if (val && val.length > 0 && val.length < 19) {
-                // Código incompleto ou resíduo → limpa.
+            if (!val) return;
+            var digits = val.replace(/\D+/g, '');
+            // Limpa se: parcial (não chegou a 19) ou se chegou a 19 mas não está sendo processado.
+            if (digits.length < 19 || (digits.length >= 19 && !codigosEmProcessamento[digits.substr(digits.length - 19, 19)])) {
                 input.value = '';
                 ultimoCodLido = '';
             }
