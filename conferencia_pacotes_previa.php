@@ -39,9 +39,7 @@ try {
         html, body {
             margin: 0;
             padding: 0;
-            background:
-                radial-gradient(circle at top left, rgba(255,255,255,0.8), transparent 32%),
-                linear-gradient(135deg, #d7d0bf 0%, #efeadc 45%, #d8cfbd 100%);
+            background: #ece8de;
             color: var(--tinta);
             font-family: Georgia, "Times New Roman", serif;
         }
@@ -64,7 +62,7 @@ try {
             gap: 4px;
         }
         .titulo-pagina {
-            font-size: 28px;
+            font-size: 24px;
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
@@ -139,18 +137,18 @@ try {
             color: var(--erro);
         }
         .documento {
-            max-width: 1180px;
+            max-width: 1080px;
             margin: 0 auto;
-            background: var(--papel);
-            box-shadow: 0 20px 60px rgba(24, 23, 19, 0.18), inset 0 0 0 1px rgba(45,43,39,0.2);
-            padding: 34px 34px 42px;
+            background: #fff;
+            box-shadow: 0 12px 32px rgba(24, 23, 19, 0.14);
+            padding: 28px 28px 34px;
             position: relative;
         }
         .documento::before {
             content: '';
             position: absolute;
-            inset: 14px;
-            border: 1px solid rgba(45,43,39,0.18);
+            inset: 10px;
+            border: 1px solid rgba(45,43,39,0.1);
             pointer-events: none;
         }
         .cabecalho {
@@ -162,7 +160,7 @@ try {
         }
         .cabecalho-bloco {
             border: 1px solid var(--grade);
-            background: rgba(255,255,255,0.36);
+            background: #fff;
         }
         .cabecalho-linha {
             display: grid;
@@ -181,7 +179,7 @@ try {
             letter-spacing: 0.08em;
             text-transform: uppercase;
             border-right: 1px solid rgba(45,43,39,0.4);
-            background: rgba(235,228,210,0.75);
+            background: #f4f1ea;
         }
         .cabecalho-valor {
             padding: 10px 14px;
@@ -194,7 +192,7 @@ try {
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            background: rgba(255,255,255,0.46);
+            background: #fff;
         }
         .numero-topo {
             padding: 12px 14px 6px;
@@ -224,16 +222,16 @@ try {
             justify-content: space-between;
             gap: 14px;
             flex-wrap: wrap;
-            margin-bottom: 16px;
+            margin-bottom: 10px;
             font-family: Arial, sans-serif;
             font-size: 12px;
             color: var(--tinta-suave);
         }
         .texto-abertura {
-            margin-bottom: 20px;
-            font-size: 15px;
-            line-height: 1.65;
-            text-align: justify;
+            margin-bottom: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            text-align: left;
         }
         .secao {
             margin-bottom: 18px;
@@ -243,7 +241,7 @@ try {
             padding: 7px 12px;
             border: 1px solid var(--grade);
             border-bottom: 0;
-            background: var(--tarja);
+            background: #efefef;
             font-family: Arial, sans-serif;
             font-size: 12px;
             font-weight: bold;
@@ -254,7 +252,7 @@ try {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-            background: rgba(255,255,255,0.34);
+            background: #fff;
         }
         th, td {
             border: 1px solid var(--grade);
@@ -263,17 +261,16 @@ try {
             vertical-align: middle;
         }
         thead th {
-            background: rgba(235,228,210,0.78);
+            background: #f3f3f3;
             font-family: Arial, sans-serif;
             font-size: 11px;
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
-        .col-destino { width: 24%; }
-        .col-posto { width: 22%; }
-        .col-iipr { width: 22%; }
-        .col-correios { width: 10%; }
-        .col-etiqueta { width: 22%; }
+        .col-posto { width: 32%; }
+        .col-iipr { width: 28%; }
+        .col-correios { width: 14%; }
+        .col-etiqueta { width: 26%; }
         .destino {
             font-weight: bold;
             letter-spacing: 0.02em;
@@ -600,19 +597,14 @@ try {
         }
 
         function nomeSecao(item) {
+            var posto = String(item.posto || '').trim();
+            var postoPad = posto && /^\d+$/.test(posto) ? posto.padStart(3, '0') : posto;
+            if (postoPad === '001') return 'POSTO 001';
             var codigo = parseInt(item.regional_codigo || 0, 10) || 0;
             if (codigo === 0) return 'CAPITAL';
             if (codigo === 1) return 'METROPOLITANA';
-            if (codigo === 999) return 'CENTRAL IIPR';
+            if (codigo === 999) return 'CENTRAL';
             return 'REGIONAIS';
-        }
-
-        function rotuloLinhaOficio(item) {
-            var codigo = parseInt(item.regional_codigo || 0, 10) || 0;
-            if (codigo === 0) return 'CAPITAL';
-            if (codigo === 1) return 'METROPOLITANA';
-            if (codigo === 999) return 'CENTRAL IIPR';
-            return String(codigo).padStart(3, '0');
         }
 
         function garantirChavesResumo(snapshot, persistir) {
@@ -669,8 +661,7 @@ try {
                     lacre_correios: item.lacre_correios || '',
                     etiqueta_correios: item.etiqueta_correios || '',
                     lotes: item.lotes || [],
-                    qtd_total: item.qtd_total || 0,
-                    destino_oficio: rotuloLinhaOficio(item)
+                    qtd_total: item.qtd_total || 0
                 });
             }
 
@@ -691,36 +682,21 @@ try {
         }
 
         function montarTabela(secao, linhas) {
-            var totaisPorDestino = {};
-            var ordens = {};
             var html = '';
             html += '<div class="secao">';
             html += '<div class="secao-titulo">' + escapeHtml(secao) + '</div>';
             html += '<table>';
             html += '<thead><tr>';
-            html += '<th class="col-destino">Linha do ofício</th>';
-            html += '<th class="col-posto">Origem</th>';
+            html += '<th class="col-posto">Posto</th>';
             html += '<th class="col-iipr">Lacre IIPR</th>';
             html += '<th class="col-correios">Lacre Correios</th>';
             html += '<th class="col-etiqueta">Etiqueta Correios</th>';
             html += '</tr></thead><tbody>';
 
-            for (var i0 = 0; i0 < linhas.length; i0++) {
-                var destino0 = String(linhas[i0].destino_oficio || '-');
-                totaisPorDestino[destino0] = (totaisPorDestino[destino0] || 0) + 1;
-            }
-
             for (var i = 0; i < linhas.length; i++) {
                 var item = linhas[i];
-                var destino = String(item.destino_oficio || '-');
-                ordens[destino] = (ordens[destino] || 0) + 1;
-                var rotuloDestino = destino;
-                if ((totaisPorDestino[destino] || 0) > 1) {
-                    rotuloDestino += ' - linha ' + ordens[destino];
-                }
                 html += '<tr data-row-key="' + escapeHtml(item.row_key) + '">';
-                html += '<td class="destino">' + escapeHtml(rotuloDestino) + '</td>';
-                html += '<td><div>' + escapeHtml(item.posto_rotulo) + '</div><div class="posto-linha">Grupo Correios: ' + escapeHtml(item.grupo_correios || '-') + '</div></td>';
+                html += '<td><div class="destino">' + escapeHtml(item.posto_rotulo) + '</div></td>';
                 html += '<td><textarea class="campo-impressao campo-lacres-iipr" rows="' + calcularLinhasLacres(item.lacre_iipr || '') + '" readonly>' + escapeHtml(item.lacre_iipr || '') + '</textarea></td>';
                 html += '<td><input class="campo-impressao" type="text" value="' + escapeHtml(item.lacre_correios || '') + '" readonly></td>';
                 html += '<td><input class="campo-impressao campo-etiqueta" type="text" value="' + escapeHtml(item.etiqueta_correios || '') + '" data-row-key="' + escapeHtml(item.row_key) + '" data-field="etiqueta_correios" maxlength="35"></td>';
@@ -783,9 +759,10 @@ try {
             }
 
             var grupos = {
+                'POSTO 001': [],
                 'CAPITAL': [],
                 'METROPOLITANA': [],
-                'CENTRAL IIPR': [],
+                'CENTRAL': [],
                 'REGIONAIS': []
             };
             for (var i = 0; i < linhas.length; i++) {
@@ -793,9 +770,10 @@ try {
             }
 
             var html = '';
+            if (grupos['POSTO 001'].length) html += montarTabela('POSTO 001', grupos['POSTO 001']);
             if (grupos['CAPITAL'].length) html += montarTabela('CAPITAL', grupos['CAPITAL']);
             if (grupos['METROPOLITANA'].length) html += montarTabela('METROPOLITANA', grupos['METROPOLITANA']);
-            if (grupos['CENTRAL IIPR'].length) html += montarTabela('CENTRAL IIPR', grupos['CENTRAL IIPR']);
+            if (grupos['CENTRAL'].length) html += montarTabela('CENTRAL', grupos['CENTRAL']);
             if (grupos['REGIONAIS'].length) html += montarTabela('REGIONAIS', grupos['REGIONAIS']);
 
             areaGrade.className = '';

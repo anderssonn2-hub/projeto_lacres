@@ -4155,6 +4155,7 @@ function iniciarConferenciaPacotes() {
     var postoSelecionadoMalote = '';
     var grupoSelecionadoMalote = '';
     var malotesRascunho = { postos: {}, atribuicoes: {} };
+    var historicoMalotes = [];
     var previewChannel = null;
     var previewWindowRef = null;
     var reconhecimentoVoz = null;
@@ -4739,6 +4740,181 @@ function iniciarConferenciaPacotes() {
 
     function criarEstruturaRascunhoMalotes() {
         return { postos: {}, atribuicoes: {} };
+    }
+
+    function clonarEstruturaSimples(valor) {
+        try {
+            return JSON.parse(JSON.stringify(valor || null));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function mostrarAvisoMalotes(texto, tipo) {
+        if (!mensagemLeitura) {
+            return;
+        }
+        var classe = tipo === 'erro' ? 'Aviso' : 'Aviso';
+        mensagemLeitura.innerHTML = '<strong>' + classe + ':</strong> ' + escapeHtml(String(texto || ''));
+    }
+
+    function capturarEstadoChipMalote(chip) {
+        if (!chip) return null;
+        return {
+            codigo: chip.getAttribute('data-codigo') || '',
+            posto: chip.getAttribute('data-posto') || '',
+            lacre_iipr: chip.getAttribute('data-lacre-iipr') || '',
+            grupo_iipr: chip.getAttribute('data-grupo-iipr') || '',
+            lacre_correios: chip.getAttribute('data-lacre-correios') || '',
+            grupo_correios: chip.getAttribute('data-grupo-correios') || '',
+            etiqueta_correios: chip.getAttribute('data-etiqueta-correios') || '',
+            usuario_lacre: chip.getAttribute('data-usuario-lacre') || '',
+            atualizado_lacre: chip.getAttribute('data-atualizado-lacre') || '',
+            pendente: String(chip.getAttribute('data-malote-pendente') || '') === '1'
+        };
+    }
+
+    function registrarHistoricoMalote(posto, tipo, chips, descricao) {
+        if (!chips || !chips.length) return;
+        var estados = [];
+        for (var i = 0; i < chips.length; i++) {
+            var estado = capturarEstadoChipMalote(chips[i]);
+            if (estado && estado.codigo) {
+                estados.push(estado);
+            }
+        }
+        if (!estados.length) return;
+        historicoMalotes.push({
+            posto: String(posto || ''),
+            tipo: String(tipo || ''),
+            descricao: String(descricao || ''),
+            rascunho: clonarEstruturaSimples(malotesRascunho) || criarEstruturaRascunhoMalotes(),
+            estados: estados
+        });
+        if (historicoMalotes.length > 60) {
+            historicoMalotes.shift();
+        }
+    }
+
+    function limparHistoricoMaloteDoPosto(posto) {
+        var alvo = String(posto || '');
+        if (!alvo) return;
+        var filtrado = [];
+        for (var i = 0; i < historicoMalotes.length; i++) {
+            if (String(historicoMalotes[i].posto || '') !== alvo) {
+                filtrado.push(historicoMalotes[i]);
+            }
+        }
+        historicoMalotes = filtrado;
+    }
+
+    function desfazerUltimaAcaoMalote(posto) {
+        var alvo = String(posto || '');
+        for (var i = historicoMalotes.length - 1; i >= 0; i--) {
+            var item = historicoMalotes[i];
+            if (String(item.posto || '') !== alvo) continue;
+            historicoMalotes.splice(i, 1);
+            malotesRascunho = clonarEstruturaSimples(item.rascunho) || criarEstruturaRascunhoMalotes();
+            for (var j = 0; j < item.estados.length; j++) {
+                var chip = obterChipPorCodigo(item.estados[j].codigo || '');
+                if (!chip) continue;
+                aplicarAtribuicaoNoChip(chip, item.estados[j]);
+            }
+            salvarRascunhoMalotesLocal();
+            renderizarPainelMalotes();
+            atualizarColunaMaloteTradicional();
+            renderizarMapasMalotesPostos();
+            publicarResumoPrevia();
+            mostrarAvisoMalotes('Última ação desfeita no posto ' + alvo + (item.descricao ? ' (' + item.descricao + ')' : '') + '.', 'info');
+            return true;
+        }
+        mostrarAvisoMalotes('Não há ação pendente para desfazer neste posto.', 'info');
+        return false;
+    }
+
+    function coletarOcorrenciasLacre(valor, postoAtual) {
+        var lacre = normalizarNumeroLacre(valor || '');
+        var ocorrencias = [];
+        var vistos = {};
+        if (!lacre) return ocorrencias;
+
+        var chips = document.querySelectorAll('.operacao-chip[data-codigo]');
+        for (var i = 0; i < chips.length; i++) {
+            var lacreIipr = normalizarNumeroLacre(chips[i].getAttribute('data-lacre-iipr') || '');
+            var lacreCorreios = normalizarNumeroLacre(chips[i].getAttribute('data-lacre-correios') || '');
+            if (lacreIipr !== lacre && lacreCorreios !== lacre) continue;
+            var posto = String(chips[i].getAttribute('data-posto') || '').trim();
+            var grupo = String(chips[i].getAttribute(lacreIipr === lacre ? 'data-grupo-iipr' : 'data-grupo-correios') || '').trim();
+            var chave = (lacreIipr === lacre ? 'iipr' : 'correios') + '|' + (grupo || posto || chips[i].getAttribute('data-codigo') || '');
+            if (vistos[chave]) continue;
+            vistos[chave] = true;
+            ocorrencias.push((lacreIipr === lacre ? 'Lacre IIPR' : 'Lacre Correios') + ' já usado no posto ' + (posto || '-') + (postoAtual && posto === postoAtual ? ' (mesmo posto)' : ''));
+        }
+
+        var campos = document.querySelectorAll('.input-inline-lacre-iipr, .input-inline-lacre-correios');
+        for (var j = 0; j < campos.length; j++) {
+            var valorCampo = normalizarNumeroLacre(campos[j].value || '');
+            if (!valorCampo || valorCampo !== lacre) continue;
+            var postoCampo = String(campos[j].getAttribute('data-posto') || '').trim();
+            if (postoAtual && postoCampo === postoAtual && document.activeElement === campos[j]) {
+                continue;
+            }
+            var chaveCampo = 'campo|' + postoCampo + '|' + campos[j].className;
+            if (vistos[chaveCampo]) continue;
+            vistos[chaveCampo] = true;
+            ocorrencias.push('Campo aberto do posto ' + (postoCampo || '-') + ' já contém este lacre');
+        }
+
+        return ocorrencias;
+    }
+
+    function coletarOcorrenciasEtiqueta(valor, postoAtual) {
+        var etiqueta = String(valor || '').trim();
+        var ocorrencias = [];
+        var vistos = {};
+        if (!etiqueta) return ocorrencias;
+
+        var chips = document.querySelectorAll('.operacao-chip[data-codigo]');
+        for (var i = 0; i < chips.length; i++) {
+            var etiquetaAtual = String(chips[i].getAttribute('data-etiqueta-correios') || '').trim();
+            if (!etiquetaAtual || etiquetaAtual !== etiqueta) continue;
+            var posto = String(chips[i].getAttribute('data-posto') || '').trim();
+            var grupo = String(chips[i].getAttribute('data-grupo-correios') || '').trim();
+            var chave = 'et|' + (grupo || posto || chips[i].getAttribute('data-codigo') || '');
+            if (vistos[chave]) continue;
+            vistos[chave] = true;
+            ocorrencias.push('Etiqueta já aparece no posto ' + (posto || '-') + (postoAtual && posto === postoAtual ? ' (mesmo posto)' : ''));
+        }
+
+        var campos = document.querySelectorAll('.input-inline-etiqueta-correios');
+        for (var j = 0; j < campos.length; j++) {
+            var valorCampo = String(campos[j].value || '').trim();
+            if (!valorCampo || valorCampo !== etiqueta) continue;
+            var postoCampo = String(campos[j].getAttribute('data-posto') || '').trim();
+            if (postoAtual && postoCampo === postoAtual && document.activeElement === campos[j]) {
+                continue;
+            }
+            var chaveCampo = 'campo|' + postoCampo;
+            if (vistos[chaveCampo]) continue;
+            vistos[chaveCampo] = true;
+            ocorrencias.push('Campo aberto do posto ' + (postoCampo || '-') + ' já contém esta etiqueta');
+        }
+
+        return ocorrencias;
+    }
+
+    function avisarSeHaDuplicidadeLacre(valor, postoAtual) {
+        var ocorrencias = coletarOcorrenciasLacre(valor, postoAtual);
+        if (ocorrencias.length) {
+            mostrarAvisoMalotes('Há lacre repetido: ' + ocorrencias.join(' | '), 'info');
+        }
+    }
+
+    function avisarSeHaDuplicidadeEtiqueta(valor, postoAtual) {
+        var ocorrencias = coletarOcorrenciasEtiqueta(valor, postoAtual);
+        if (ocorrencias.length) {
+            mostrarAvisoMalotes('Há etiqueta repetida: ' + ocorrencias.join(' | '), 'info');
+        }
     }
 
     function criarIdMalote(prefixo) {
@@ -5573,7 +5749,7 @@ function iniciarConferenciaPacotes() {
                 '<div class="operacao-malote-bolsa ' + (resumo.iiprPendentesCorreios.length ? 'pronto-correios' : '') + '">' +
                     (tagsCorreios.length ? '<div class="operacao-malote-tags">' + tagsCorreios.join('') + '</div>' : '<div class="operacao-malote-bolsa-vazio">Nenhum malote IIPR pendente para o Correios neste posto.</div>') +
                 '</div>' +
-                '<div class="operacao-malote-form-inline duplo"><input type="text" class="input-inline-lacre-correios" data-posto="' + escapeHtml(posto) + '" maxlength="12" placeholder="Lacre Correios"><input type="text" class="input-inline-etiqueta-correios" data-posto="' + escapeHtml(posto) + '" maxlength="35" placeholder="Etiqueta Correios"><button type="button" class="btn-inline-correios btn-inline-fechar-correios" data-posto="' + escapeHtml(posto) + '">Fechar Correios</button><button type="button" class="btn-inline-salvar-posto" data-posto="' + escapeHtml(posto) + '">Salvar posto</button></div>' +
+                '<div class="operacao-malote-form-inline duplo"><input type="text" class="input-inline-lacre-correios" data-posto="' + escapeHtml(posto) + '" maxlength="12" placeholder="Lacre Correios"><input type="text" class="input-inline-etiqueta-correios" data-posto="' + escapeHtml(posto) + '" maxlength="35" placeholder="Etiqueta Correios"><button type="button" class="btn-inline-correios btn-inline-fechar-correios" data-posto="' + escapeHtml(posto) + '">Fechar Correios</button><button type="button" class="btn-inline-salvar-posto" data-posto="' + escapeHtml(posto) + '">Salvar posto</button><button type="button" class="btn-inline-desfazer-posto" data-posto="' + escapeHtml(posto) + '">Desfazer último</button></div>' +
                 '<div class="operacao-malote-rodape"><div class="operacao-malote-pendencia">Pendentes para salvar neste posto: ' + resumo.pendenciasSalvar + '</div></div>' +
             '</div>' +
             '<div class="operacao-posto-card">' +
@@ -5605,6 +5781,8 @@ function iniciarConferenciaPacotes() {
             alert('Este posto não possui chips verdes pendentes para fechar no IIPR.');
             return false;
         }
+        registrarHistoricoMalote(posto, 'iipr', chips, 'fechamento IIPR');
+        avisarSeHaDuplicidadeLacre(lacre, posto);
         var grupoIipr = criarIdMalote('GI');
         for (var i = 0; i < chips.length; i++) {
             registrarAtribuicaoPendenteNoChip(chips[i], {
@@ -5655,6 +5833,13 @@ function iniciarConferenciaPacotes() {
         if (!chips.length) {
             alert('Não há chips válidos para fechar o malote Correios deste posto.');
             return false;
+        }
+        registrarHistoricoMalote(posto, 'correios', chips, 'fechamento Correios');
+        if (lacre) {
+            avisarSeHaDuplicidadeLacre(lacre, posto);
+        }
+        if (etiqueta) {
+            avisarSeHaDuplicidadeEtiqueta(etiqueta, posto);
         }
         for (var k = 0; k < chips.length; k++) {
             var dadosAtuais = obterDadosChipOperacao(chips[k]);
@@ -5707,6 +5892,7 @@ function iniciarConferenciaPacotes() {
                     atualizarColunaMaloteLinha(linha);
                 }
             }
+            limparHistoricoMaloteDoPosto(posto);
             salvarRascunhoMalotesLocal();
             renderizarPainelMalotes();
             atualizarColunaMaloteTradicional();
@@ -6453,6 +6639,13 @@ function iniciarConferenciaPacotes() {
             return;
         }
         var botaoSalvarPostoInline = e.target && e.target.closest ? e.target.closest('.btn-inline-salvar-posto') : null;
+        var botaoDesfazerPostoInline = e.target && e.target.closest ? e.target.closest('.btn-inline-desfazer-posto') : null;
+        if (botaoDesfazerPostoInline) {
+            var postoDesfazer = botaoDesfazerPostoInline.getAttribute('data-posto') || '';
+            selecionarPostoMalote(postoDesfazer);
+            desfazerUltimaAcaoMalote(postoDesfazer);
+            return;
+        }
         if (botaoSalvarPostoInline) {
             var postoSalvar = botaoSalvarPostoInline.getAttribute('data-posto') || '';
             selecionarPostoMalote(postoSalvar);
@@ -6475,6 +6668,18 @@ function iniciarConferenciaPacotes() {
             selecionarPostoMalote(linhaPosto.getAttribute('data-posto') || '', linhaPosto.getAttribute('data-grupo') || '');
         }
     });
+
+    document.addEventListener('blur', function(e) {
+        var alvo = e.target;
+        if (!alvo || !alvo.classList) return;
+        if (alvo.classList.contains('input-inline-lacre-iipr') || alvo.classList.contains('input-inline-lacre-correios')) {
+            avisarSeHaDuplicidadeLacre(alvo.value || '', alvo.getAttribute('data-posto') || '');
+            return;
+        }
+        if (alvo.classList.contains('input-inline-etiqueta-correios')) {
+            avisarSeHaDuplicidadeEtiqueta(alvo.value || '', alvo.getAttribute('data-posto') || '');
+        }
+    }, true);
 
     function alternarModoVisualizacao(modo) {
         var abrirClassificacao = modo === 'classificacao';
