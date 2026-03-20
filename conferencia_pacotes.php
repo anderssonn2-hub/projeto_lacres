@@ -6078,6 +6078,10 @@ function iniciarConferenciaPacotes() {
     }
 
     document.addEventListener('click', function(e) {
+        var campoInlineMalote = e.target && e.target.closest ? e.target.closest('.operacao-posto-mapa input, .operacao-posto-mapa textarea, .operacao-posto-mapa select') : null;
+        if (campoInlineMalote) {
+            return;
+        }
         var botaoFecharIiprInline = e.target && e.target.closest ? e.target.closest('.btn-inline-fechar-iipr') : null;
         if (botaoFecharIiprInline) {
             var postoIipr = botaoFecharIiprInline.getAttribute('data-posto') || '';
@@ -6116,6 +6120,10 @@ function iniciarConferenciaPacotes() {
         }
         var linhaPosto = e.target && e.target.closest ? e.target.closest('.operacao-posto-row') : null;
         if (linhaPosto) {
+            var cliqueDentroMapa = e.target && e.target.closest ? e.target.closest('.operacao-posto-mapa') : null;
+            if (cliqueDentroMapa) {
+                return;
+            }
             selecionarPostoMalote(linhaPosto.getAttribute('data-posto') || '', linhaPosto.getAttribute('data-grupo') || '');
         }
     });
