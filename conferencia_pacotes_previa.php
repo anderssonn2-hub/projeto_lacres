@@ -15,7 +15,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prévia do Ofício dos Correios v0.9.25.14</title>
+    <title>Prévia do Ofício dos Correios v0.9.25.16</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -86,6 +86,7 @@ try {
             font-size: 12px;
             font-family: Arial, sans-serif;
             background: #fff;
+            color: #111;
         }
         tr.ativo td {
             background: #fff9db;
@@ -109,7 +110,7 @@ try {
     <div class="wrap">
         <div class="topo">
             <div>
-                <div class="titulo">Prévia do Ofício dos Correios v0.9.25.14</div>
+                <div class="titulo">Prévia do Ofício dos Correios v0.9.25.16</div>
                 <div class="meta" id="metaDatas">Aguardando conferência</div>
             </div>
             <div class="meta" id="metaAtualizacao">Última atualização: -</div>
@@ -209,56 +210,31 @@ try {
             return 'REGIONAIS';
         }
 
+        function rotuloLinhaOficio(item) {
+            var codigo = parseInt(item.regional_codigo || 0, 10) || 0;
+            if (codigo === 0) return 'CAPITAL';
+            if (codigo === 1) return 'METROPOLITANA';
+            if (codigo === 999) return 'CENTRAL IIPR';
+            return String(codigo).padStart(3, '0');
+        }
+
         function montarLinhas(snapshot) {
-            var mapa = {};
             var resumo = snapshot && snapshot.resumo ? snapshot.resumo : [];
-            var pendentes = snapshot && snapshot.pendentes ? snapshot.pendentes : [];
-
-            for (var i = 0; i < pendentes.length; i++) {
-                var p = pendentes[i];
-                var postoPend = String(p.posto || '').trim();
-                if (!postoPend) continue;
-                if (!mapa[postoPend]) {
-                    mapa[postoPend] = {
-                        posto: postoPend,
-                        regional: p.regional || '',
-                        regional_codigo: p.regional_codigo || '',
-                        lacres_iipr: [],
-                        lacres_correios: [],
-                        etiqueta_correios: ''
-                    };
-                }
-            }
-
-            for (var j = 0; j < resumo.length; j++) {
-                var item = resumo[j];
-                var posto = String(item.posto || '').trim();
-                if (!posto) continue;
-                if (!mapa[posto]) {
-                    mapa[posto] = {
-                        posto: posto,
-                        regional: item.regional || '',
-                        regional_codigo: item.regional_codigo || '',
-                        lacres_iipr: [],
-                        lacres_correios: [],
-                        etiqueta_correios: ''
-                    };
-                }
-                mapa[posto].regional = mapa[posto].regional || item.regional || '';
-                mapa[posto].regional_codigo = mapa[posto].regional_codigo || item.regional_codigo || '';
-                mapa[posto].lacres_iipr = mapa[posto].lacres_iipr.concat(expandirCompactado(item.lacre_iipr));
-                mapa[posto].lacres_correios = mapa[posto].lacres_correios.concat(expandirCompactado(item.lacre_correios));
-                if (!mapa[posto].etiqueta_correios && item.etiqueta_correios) {
-                    mapa[posto].etiqueta_correios = item.etiqueta_correios;
-                }
-            }
-
             var linhas = [];
-            for (var chave in mapa) {
-                if (!Object.prototype.hasOwnProperty.call(mapa, chave)) continue;
-                mapa[chave].lacre_iipr = compactar(mapa[chave].lacres_iipr);
-                mapa[chave].lacre_correios = compactar(mapa[chave].lacres_correios);
-                linhas.push(mapa[chave]);
+            for (var i = 0; i < resumo.length; i++) {
+                var item = resumo[i];
+                if (!item) continue;
+                linhas.push({
+                    posto: String(item.posto || '').trim(),
+                    regional: item.regional || '',
+                    regional_codigo: item.regional_codigo || '',
+                    grupo_correios: item.grupo_correios || '',
+                    grupo_iipr: item.grupo_iipr || '',
+                    lacre_iipr: item.lacre_iipr || '',
+                    lacre_correios: item.lacre_correios || '',
+                    etiqueta_correios: item.etiqueta_correios || '',
+                    destino_oficio: rotuloLinhaOficio(item)
+                });
             }
 
             linhas.sort(function(a, b) {
@@ -268,7 +244,11 @@ try {
                 var ordemB = regB === 0 ? 0 : (regB === 1 ? 1 : (regB === 999 ? 2 : 3));
                 if (ordemA !== ordemB) return ordemA - ordemB;
                 if (regA !== regB && ordemA === 3) return regA - regB;
-                return (parseInt(a.posto || 0, 10) || 0) - (parseInt(b.posto || 0, 10) || 0);
+                var grupoA = String(a.grupo_correios || a.grupo_iipr || '');
+                var grupoB = String(b.grupo_correios || b.grupo_iipr || '');
+                if (grupoA < grupoB) return -1;
+                if (grupoA > grupoB) return 1;
+                return 0;
             });
             return linhas;
         }
@@ -286,12 +266,23 @@ try {
             html += '</tr>';
             html += '</thead>';
             html += '<tbody>';
+            var totaisPorDestino = {};
+            var ordemPorDestino = {};
+            for (var i0 = 0; i0 < linhas.length; i0++) {
+                var destino0 = String(linhas[i0].destino_oficio || '-');
+                totaisPorDestino[destino0] = (totaisPorDestino[destino0] || 0) + 1;
+            }
             for (var i = 0; i < linhas.length; i++) {
                 var item = linhas[i];
-                var nome = nomesPostos[item.posto] || ('Posto ' + item.posto);
+                var destino = String(item.destino_oficio || '-');
+                ordemPorDestino[destino] = (ordemPorDestino[destino] || 0) + 1;
+                var rotulo = destino;
+                if ((totaisPorDestino[destino] || 0) > 1) {
+                    rotulo += ' - linha ' + ordemPorDestino[destino];
+                }
                 var classe = String(item.posto) === String(postoAtual || '') ? ' class="ativo"' : '';
                 html += '<tr' + classe + '>';
-                html += '<td class="col-posto">' + escapeHtml(item.posto + ' - ' + nome) + '</td>';
+                html += '<td class="col-posto">' + escapeHtml(rotulo) + '</td>';
                 html += '<td><input type="text" value="' + escapeHtml(item.lacre_iipr || '') + '" readonly></td>';
                 html += '<td><input type="text" value="' + escapeHtml(item.lacre_correios || '') + '" readonly></td>';
                 html += '<td><input type="text" value="' + escapeHtml(item.etiqueta_correios || '') + '" readonly></td>';
@@ -318,7 +309,7 @@ try {
             var linhas = montarLinhas(snapshot);
             if (!linhas.length) {
                 areaGrade.className = 'vazio';
-                areaGrade.innerHTML = 'Nenhum posto conferido ainda.';
+                areaGrade.innerHTML = 'Nenhuma linha pronta do ofício foi gerada ainda.';
                 return;
             }
 

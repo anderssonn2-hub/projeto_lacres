@@ -2259,6 +2259,8 @@ try {
             width: 100%;
             border-collapse: collapse;
             margin-top: 8px;
+            background: rgba(8, 25, 40, 0.92);
+            border: 1px solid rgba(255,255,255,0.12);
         }
         .operacao-oficio-tabela th,
         .operacao-oficio-tabela td {
@@ -2274,6 +2276,10 @@ try {
             text-transform: uppercase;
             font-size: 10px;
             letter-spacing: 0.6px;
+            background: rgba(255,255,255,0.06);
+        }
+        .operacao-oficio-tabela td {
+            background: rgba(8, 25, 40, 0.86);
         }
         .operacao-oficio-vazio {
             margin-top: 10px;
@@ -5113,6 +5119,8 @@ function iniciarConferenciaPacotes() {
                     gruposCorreios[chaveCorreios] = {
                         posto: dados.posto || '',
                         regional: dados.regional || '',
+                        regional_codigo: dados.regional_codigo || '',
+                        destino_oficio: obterDestinoLinhaOficio(dados),
                         lacres_iipr: [],
                         lacre_correios: dados.lacre_correios || '',
                         etiqueta_correios: dados.etiqueta_correios || '',
@@ -5170,6 +5178,14 @@ function iniciarConferenciaPacotes() {
         return resumo;
     }
 
+    function obterDestinoLinhaOficio(dados) {
+        var codigo = parseInt(dados && dados.regional_codigo ? dados.regional_codigo : 0, 10) || 0;
+        if (codigo === 0) return 'CAPITAL';
+        if (codigo === 1) return 'METROPOLITANA';
+        if (codigo === 999) return 'CENTRAL IIPR';
+        return String(codigo).padStart(3, '0');
+    }
+
     function renderizarMapaMalotesPosto(posto) {
         if (!posto) return;
         var container = document.querySelector('.operacao-posto-row[data-posto="' + posto + '"] .operacao-posto-mapa');
@@ -5202,11 +5218,23 @@ function iniciarConferenciaPacotes() {
         var htmlLinhasOficio = '';
         if (resumo.linhasOficio.length) {
             var linhas = [];
+            var totaisPorDestino = {};
+            var ordemPorDestino = {};
+            for (var l0 = 0; l0 < resumo.linhasOficio.length; l0++) {
+                var destino0 = String(resumo.linhasOficio[l0].destino_oficio || '-');
+                totaisPorDestino[destino0] = (totaisPorDestino[destino0] || 0) + 1;
+            }
             for (var l = 0; l < resumo.linhasOficio.length; l++) {
                 var linha = resumo.linhasOficio[l];
-                linhas.push('<tr><td>Posto ' + escapeHtml(posto) + ' - ' + escapeHtml(resumo.regional || '-') + '</td><td>' + escapeHtml(linha.lacres_iipr || '-') + '</td><td>' + escapeHtml(linha.lacre_correios || '-') + '</td><td style="word-break:break-all;">' + escapeHtml(linha.etiqueta_correios || '-') + '</td></tr>');
+                var destino = String(linha.destino_oficio || '-');
+                ordemPorDestino[destino] = (ordemPorDestino[destino] || 0) + 1;
+                var rotuloDestino = destino;
+                if ((totaisPorDestino[destino] || 0) > 1) {
+                    rotuloDestino += ' - linha ' + ordemPorDestino[destino];
+                }
+                linhas.push('<tr><td>' + escapeHtml(rotuloDestino) + '</td><td>' + escapeHtml(linha.lacres_iipr || '-') + '</td><td>' + escapeHtml(linha.lacre_correios || '-') + '</td><td style="word-break:break-all;">' + escapeHtml(linha.etiqueta_correios || '-') + '</td></tr>');
             }
-            htmlLinhasOficio = '<table class="operacao-oficio-tabela"><thead><tr><th>Posto / Regional</th><th>Lacre IIPR</th><th>Lacre Correios</th><th>Etiqueta</th></tr></thead><tbody>' + linhas.join('') + '</tbody></table>';
+            htmlLinhasOficio = '<table class="operacao-oficio-tabela"><thead><tr><th>Regional / Linha</th><th>Lacre IIPR</th><th>Lacre Correios</th><th>Etiqueta</th></tr></thead><tbody>' + linhas.join('') + '</tbody></table>';
         } else {
             htmlLinhasOficio = '<div class="operacao-oficio-vazio">A linha pronta do ofício aparece depois que o malote Correios recebe lacre e etiqueta.</div>';
         }
