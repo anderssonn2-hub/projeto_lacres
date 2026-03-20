@@ -1,130 +1,559 @@
 <?php
 $nomesPostos = array();
+$ultimoOficioCorreios = 0;
 try {
     $pdo_controle = new PDO('mysql:host=10.15.61.169;dbname=controle;charset=utf8', 'root', 'vazio');
     $pdo_controle->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
     $stNomes = $pdo_controle->query("SELECT LPAD(CAST(posto AS UNSIGNED), 3, '0') AS posto, MAX(nome) AS nome FROM ciPostosCsv GROUP BY LPAD(CAST(posto AS UNSIGNED), 3, '0') ORDER BY LPAD(CAST(posto AS UNSIGNED), 3, '0')");
     while ($rowNome = $stNomes->fetch(PDO::FETCH_ASSOC)) {
         $nomesPostos[$rowNome['posto']] = trim((string)$rowNome['nome']);
     }
+
+    $stUltimo = $pdo_controle->query("SELECT id FROM ciDespachos WHERE LOWER(grupo) = 'correios' ORDER BY id DESC LIMIT 1");
+    $ultimoOficioCorreios = (int)$stUltimo->fetchColumn();
 } catch (Exception $e) {
     $nomesPostos = array();
+    $ultimoOficioCorreios = 0;
 }
 ?><!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prévia do Ofício dos Correios v0.9.25.16</title>
+    <title>Prévia do Ofício dos Correios</title>
     <style>
         * { box-sizing: border-box; }
-        body {
+        :root {
+            --papel: #f4efe4;
+            --papel-sombra: #d8d0c0;
+            --tinta: #171717;
+            --tinta-suave: #5a574f;
+            --grade: #2d2b27;
+            --tarja: #ebe4d2;
+            --destaque: #193c2d;
+            --destaque-claro: #2f6a50;
+            --aviso: #b46a13;
+            --erro: #972d2d;
+        }
+        html, body {
             margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f7f7f7;
-            color: #111;
+            padding: 0;
+            background:
+                radial-gradient(circle at top left, rgba(255,255,255,0.8), transparent 32%),
+                linear-gradient(135deg, #d7d0bf 0%, #efeadc 45%, #d8cfbd 100%);
+            color: var(--tinta);
+            font-family: Georgia, "Times New Roman", serif;
         }
-        .wrap {
-            max-width: 1420px;
-            margin: 0 auto;
-            padding: 14px;
+        .pagina {
+            min-height: 100vh;
+            padding: 28px 18px 48px;
         }
-        .topo {
+        .barra-acoes {
+            max-width: 1180px;
+            margin: 0 auto 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 10px;
-            padding: 8px 10px;
-            background: #fff;
-            border: 1px solid #cfcfcf;
+            gap: 16px;
+            flex-wrap: wrap;
         }
-        .titulo {
-            font-size: 20px;
+        .barra-esquerda {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .titulo-pagina {
+            font-size: 28px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .subtitulo-pagina {
+            font-size: 13px;
+            color: var(--tinta-suave);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .acoes {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            border: 1px solid var(--grade);
+            background: rgba(255,255,255,0.72);
+            color: var(--tinta);
+            padding: 11px 18px;
+            font-size: 13px;
+            font-family: Arial, sans-serif;
             font-weight: bold;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
         }
-        .meta {
+        .btn:hover {
+            transform: translateY(-1px);
+            background: #fff;
+        }
+        .btn-principal {
+            background: var(--destaque);
+            color: #fff;
+            border-color: var(--destaque);
+        }
+        .btn-principal:hover {
+            background: var(--destaque-claro);
+        }
+        .status-barra {
+            max-width: 1180px;
+            margin: 0 auto 16px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-family: Arial, sans-serif;
             font-size: 12px;
-            color: #555;
+            color: var(--tinta-suave);
+        }
+        .status-item {
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.62);
+            border: 1px solid rgba(45,43,39,0.18);
+        }
+        .status-item strong {
+            color: var(--tinta);
+        }
+        .aviso {
+            max-width: 1180px;
+            margin: 0 auto 16px;
+            padding: 12px 14px;
+            border: 1px solid rgba(180,106,19,0.35);
+            background: rgba(255,249,232,0.88);
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #6b460f;
+            display: none;
+        }
+        .aviso.erro {
+            border-color: rgba(151,45,45,0.35);
+            background: rgba(255,239,239,0.9);
+            color: var(--erro);
+        }
+        .documento {
+            max-width: 1180px;
+            margin: 0 auto;
+            background: var(--papel);
+            box-shadow: 0 20px 60px rgba(24, 23, 19, 0.18), inset 0 0 0 1px rgba(45,43,39,0.2);
+            padding: 34px 34px 42px;
+            position: relative;
+        }
+        .documento::before {
+            content: '';
+            position: absolute;
+            inset: 14px;
+            border: 1px solid rgba(45,43,39,0.18);
+            pointer-events: none;
+        }
+        .cabecalho {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 180px;
+            gap: 24px;
+            align-items: start;
+            margin-bottom: 22px;
+        }
+        .cabecalho-bloco {
+            border: 1px solid var(--grade);
+            background: rgba(255,255,255,0.36);
+        }
+        .cabecalho-linha {
+            display: grid;
+            grid-template-columns: 124px 1fr;
+            border-bottom: 1px solid rgba(45,43,39,0.4);
+            min-height: 44px;
+        }
+        .cabecalho-linha:last-child {
+            border-bottom: 0;
+        }
+        .cabecalho-rotulo {
+            padding: 10px 12px;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            border-right: 1px solid rgba(45,43,39,0.4);
+            background: rgba(235,228,210,0.75);
+        }
+        .cabecalho-valor {
+            padding: 10px 14px;
+            font-size: 14px;
+            line-height: 1.35;
+        }
+        .numero-oficio {
+            border: 1px solid var(--grade);
+            min-height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background: rgba(255,255,255,0.46);
+        }
+        .numero-topo {
+            padding: 12px 14px 6px;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            text-align: center;
+        }
+        .numero-valor {
+            padding: 10px 14px 4px;
+            text-align: center;
+            font-size: 46px;
+            line-height: 1;
+        }
+        .numero-rodape {
+            padding: 10px 14px 14px;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            text-align: center;
+            color: var(--tinta-suave);
+            text-transform: uppercase;
+        }
+        .documento-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: var(--tinta-suave);
+        }
+        .texto-abertura {
+            margin-bottom: 20px;
+            font-size: 15px;
+            line-height: 1.65;
+            text-align: justify;
         }
         .secao {
             margin-bottom: 18px;
             page-break-inside: avoid;
         }
+        .secao-titulo {
+            padding: 7px 12px;
+            border: 1px solid var(--grade);
+            border-bottom: 0;
+            background: var(--tarja);
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
-            background: #fff;
+            table-layout: fixed;
+            background: rgba(255,255,255,0.34);
         }
         th, td {
-            border: 1px solid #8a8a8a;
-            padding: 4px 6px;
-            font-size: 12px;
+            border: 1px solid var(--grade);
+            padding: 8px 10px;
+            font-size: 13px;
+            vertical-align: middle;
         }
         thead th {
-            background: #efefef;
-            font-weight: bold;
-            text-align: center;
-        }
-        .col-posto {
-            width: 38%;
-            text-align: left;
-            font-weight: bold;
-        }
-        .col-iipr { width: 13%; }
-        .col-correios { width: 13%; }
-        .col-etiqueta { width: 36%; }
-        .secao-titulo {
-            background: #efefef;
-            font-weight: bold;
-            text-align: left;
-        }
-        input[type='text'] {
-            width: 100%;
-            border: 1px solid #bdbdbd;
-            padding: 3px 4px;
-            font-size: 12px;
+            background: rgba(235,228,210,0.78);
             font-family: Arial, sans-serif;
-            background: #fff;
-            color: #111;
+            font-size: 11px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
         }
-        tr.ativo td {
-            background: #fff9db;
+        .col-destino { width: 28%; }
+        .col-posto { width: 24%; }
+        .col-iipr { width: 12%; }
+        .col-correios { width: 12%; }
+        .col-etiqueta { width: 24%; }
+        .destino {
+            font-weight: bold;
+            letter-spacing: 0.02em;
+        }
+        .posto-linha {
+            color: var(--tinta-suave);
+        }
+        .campo-impressao {
+            width: 100%;
+            border: 0;
+            background: transparent;
+            color: var(--tinta);
+            font-size: 13px;
+            font-family: Georgia, "Times New Roman", serif;
+            padding: 0;
+            outline: none;
+        }
+        .campo-impressao[readonly] {
+            cursor: default;
+        }
+        .campo-etiqueta {
+            border-bottom: 1px dashed rgba(45,43,39,0.45);
+            padding-bottom: 2px;
+        }
+        .campo-etiqueta:focus {
+            border-bottom-color: var(--destaque);
+        }
+        .rodape {
+            margin-top: 28px;
+            display: flex;
+            justify-content: space-between;
+            gap: 18px;
+            flex-wrap: wrap;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: var(--tinta-suave);
+        }
+        .assinatura {
+            min-width: 280px;
+            padding-top: 26px;
+            border-top: 1px solid var(--grade);
+            text-align: center;
+            color: var(--tinta);
         }
         .vazio {
+            border: 1px dashed rgba(45,43,39,0.4);
+            padding: 28px;
+            background: rgba(255,255,255,0.42);
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: var(--tinta-suave);
+        }
+        .modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(18, 18, 18, 0.55);
+            z-index: 20;
             padding: 18px;
-            border: 1px dashed #bbb;
-            background: #fff;
-            color: #666;
+        }
+        .modal.ativo {
+            display: flex;
+        }
+        .modal-conteudo {
+            width: min(520px, 100%);
+            background: #f7f1e4;
+            border: 1px solid var(--grade);
+            box-shadow: 0 24px 60px rgba(0,0,0,0.28);
+            padding: 24px;
+        }
+        .modal-titulo {
+            margin: 0 0 10px;
+            font-size: 24px;
+        }
+        .modal-texto {
+            margin: 0 0 18px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--tinta-suave);
+        }
+        .modal-opcoes {
+            display: grid;
+            gap: 10px;
+        }
+        .modal-opcao {
+            width: 100%;
+            text-align: left;
+            padding: 12px 14px;
+            background: rgba(255,255,255,0.82);
+            border: 1px solid rgba(45,43,39,0.3);
+            cursor: pointer;
+        }
+        .modal-opcao strong {
+            display: block;
+            font-family: Arial, sans-serif;
             font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+        .modal-opcao span {
+            display: block;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: var(--tinta-suave);
+        }
+        .modal-rodape {
+            margin-top: 16px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        @media (max-width: 900px) {
+            .cabecalho {
+                grid-template-columns: 1fr;
+            }
+            .documento {
+                padding: 22px 18px 28px;
+            }
+            .cabecalho-linha {
+                grid-template-columns: 96px 1fr;
+            }
+            th, td {
+                padding: 7px 6px;
+                font-size: 12px;
+            }
         }
         @media print {
-            body { background: #fff; }
-            .wrap { max-width: none; padding: 0; }
-            .topo { border: none; padding: 0 0 8px 0; }
-            input[type='text'] { border: none; }
+            body {
+                background: #fff;
+            }
+            .pagina {
+                padding: 0;
+            }
+            .barra-acoes,
+            .status-barra,
+            .aviso,
+            .modal {
+                display: none !important;
+            }
+            .documento {
+                max-width: none;
+                box-shadow: none;
+                padding: 0;
+                background: #fff;
+            }
+            .documento::before {
+                display: none;
+            }
+            .campo-etiqueta {
+                border-bottom: 0;
+            }
+            .campo-impressao {
+                appearance: none;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="wrap">
-        <div class="topo">
-            <div>
-                <div class="titulo">Prévia do Ofício dos Correios v0.9.25.16</div>
-                <div class="meta" id="metaDatas">Aguardando conferência</div>
+    <div class="pagina">
+        <div class="barra-acoes">
+            <div class="barra-esquerda">
+                <div class="titulo-pagina">Prévia do Ofício dos Correios</div>
+                <div class="subtitulo-pagina">Documento operacional gerado a partir dos malotes fechados na conferência</div>
             </div>
-            <div class="meta" id="metaAtualizacao">Última atualização: -</div>
+            <div class="acoes">
+                <button type="button" class="btn" id="btnImprimir">Apenas Imprimir</button>
+                <button type="button" class="btn btn-principal" id="btnGravarImprimir">Gravar e Imprimir Correios</button>
+            </div>
         </div>
-        <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
+
+        <div class="status-barra">
+            <div class="status-item"><strong id="statusNumeroRotulo">Número:</strong> <span id="statusNumeroValor">Prévia</span></div>
+            <div class="status-item"><strong>Linhas prontas:</strong> <span id="statusLinhas">0</span></div>
+            <div class="status-item"><strong>Datas:</strong> <span id="statusDatas">-</span></div>
+            <div class="status-item"><strong>Responsável:</strong> <span id="statusUsuario">-</span></div>
+            <div class="status-item"><strong>Atualização:</strong> <span id="statusAtualizacao">-</span></div>
+        </div>
+
+        <div class="aviso" id="caixaAviso"></div>
+
+        <div class="documento">
+            <div class="cabecalho">
+                <div class="cabecalho-bloco">
+                    <div class="cabecalho-linha">
+                        <div class="cabecalho-rotulo">Cliente</div>
+                        <div class="cabecalho-valor">CORREIOS</div>
+                    </div>
+                    <div class="cabecalho-linha">
+                        <div class="cabecalho-rotulo">Referência</div>
+                        <div class="cabecalho-valor">Conferência de pacotes e fechamento de malotes de despacho</div>
+                    </div>
+                    <div class="cabecalho-linha">
+                        <div class="cabecalho-rotulo">Período</div>
+                        <div class="cabecalho-valor" id="textoPeriodo">Aguardando datas da conferência</div>
+                    </div>
+                    <div class="cabecalho-linha">
+                        <div class="cabecalho-rotulo">Emitido por</div>
+                        <div class="cabecalho-valor" id="textoUsuario">Equipe de Conferência</div>
+                    </div>
+                </div>
+                <div class="numero-oficio">
+                    <div class="numero-topo">Ofício</div>
+                    <div class="numero-valor" id="numeroOficio">Prévia</div>
+                    <div class="numero-rodape" id="numeroRodape">Grave para numerar</div>
+                </div>
+            </div>
+
+            <div class="documento-meta">
+                <div>Documento gerado a partir dos grupos Correios fechados na operação.</div>
+                <div id="metaUltimoOficio">Último ofício Correios: <?php echo (int)$ultimoOficioCorreios; ?></div>
+            </div>
+
+            <div class="texto-abertura">
+                Encaminhamos abaixo a composição final dos malotes de despacho dos Correios, já consolidada por destino de ofício. As etiquetas podem ser ajustadas diretamente nesta prévia antes da gravação definitiva do número do ofício.
+            </div>
+
+            <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
+
+            <div class="rodape">
+                <div id="textoRodapeLotes">Nenhuma linha pronta foi consolidada.</div>
+                <div class="assinatura">Expedição / Conferência de Pacotes</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modalGravacao" aria-hidden="true">
+        <div class="modal-conteudo">
+            <h2 class="modal-titulo">Gravar ofício Correios</h2>
+            <p class="modal-texto" id="modalTextoBase">Escolha se o documento deve sobrescrever o último número existente ou se deve criar um novo ofício.</p>
+            <div class="modal-opcoes">
+                <button type="button" class="modal-opcao" id="btnSobrescrever">
+                    <strong id="textoSobrescrever">Sobrescrever último</strong>
+                    <span id="detalheSobrescrever">Atualiza o último ofício Correios disponível.</span>
+                </button>
+                <button type="button" class="modal-opcao" id="btnCriarNovo">
+                    <strong id="textoCriarNovo">Criar novo</strong>
+                    <span id="detalheCriarNovo">Gera um novo número de ofício sem alterar o anterior.</span>
+                </button>
+            </div>
+            <div class="modal-rodape">
+                <button type="button" class="btn" id="btnCancelarModal">Cancelar</button>
+            </div>
+        </div>
     </div>
 
     <script>
     (function() {
         var nomesPostos = <?php echo json_encode($nomesPostos); ?> || {};
+        var ultimoOficioInicial = <?php echo (int)$ultimoOficioCorreios; ?> || 0;
         var storageKey = 'conferencia_previa_malotes_v1';
         var areaGrade = document.getElementById('areaGrade');
-        var metaDatas = document.getElementById('metaDatas');
-        var metaAtualizacao = document.getElementById('metaAtualizacao');
+        var statusNumeroRotulo = document.getElementById('statusNumeroRotulo');
+        var statusNumeroValor = document.getElementById('statusNumeroValor');
+        var statusLinhas = document.getElementById('statusLinhas');
+        var statusDatas = document.getElementById('statusDatas');
+        var statusUsuario = document.getElementById('statusUsuario');
+        var statusAtualizacao = document.getElementById('statusAtualizacao');
+        var caixaAviso = document.getElementById('caixaAviso');
+        var textoPeriodo = document.getElementById('textoPeriodo');
+        var textoUsuario = document.getElementById('textoUsuario');
+        var numeroOficio = document.getElementById('numeroOficio');
+        var numeroRodape = document.getElementById('numeroRodape');
+        var textoRodapeLotes = document.getElementById('textoRodapeLotes');
+        var metaUltimoOficio = document.getElementById('metaUltimoOficio');
+        var modalGravacao = document.getElementById('modalGravacao');
+        var modalTextoBase = document.getElementById('modalTextoBase');
+        var textoSobrescrever = document.getElementById('textoSobrescrever');
+        var detalheSobrescrever = document.getElementById('detalheSobrescrever');
+        var textoCriarNovo = document.getElementById('textoCriarNovo');
+        var detalheCriarNovo = document.getElementById('detalheCriarNovo');
+        var estadoOficio = {
+            ultimoConhecido: ultimoOficioInicial,
+            salvoId: 0,
+            salvoNumero: 0,
+            salvando: false
+        };
         var channel = null;
 
         function escapeHtml(valor) {
@@ -136,6 +565,12 @@ try {
                 .replace(/'/g, '&#039;');
         }
 
+        function exibirAviso(texto, erro) {
+            caixaAviso.textContent = String(texto || '');
+            caixaAviso.className = erro ? 'aviso erro' : 'aviso';
+            caixaAviso.style.display = texto ? 'block' : 'none';
+        }
+
         function lerSnapshot() {
             try {
                 var bruto = localStorage.getItem(storageKey);
@@ -145,61 +580,16 @@ try {
             }
         }
 
-        function expandirCompactado(texto) {
-            texto = String(texto || '').trim();
-            if (!texto) return [];
-            var partes = texto.split(',');
-            var nums = {};
-            for (var i = 0; i < partes.length; i++) {
-                var parte = String(partes[i] || '').trim();
-                if (!parte) continue;
-                if (parte.indexOf('-') !== -1) {
-                    var limites = parte.split('-');
-                    var ini = parseInt(limites[0], 10) || 0;
-                    var fim = parseInt(limites[1], 10) || 0;
-                    if (ini > 0 && fim >= ini) {
-                        for (var j = ini; j <= fim; j++) nums[j] = j;
-                    }
-                } else {
-                    var n = parseInt(parte, 10) || 0;
-                    if (n > 0) nums[n] = n;
-                }
+        function salvarSnapshot(snapshot) {
+            if (!snapshot) return;
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(snapshot));
+            } catch (e1) {}
+            if (channel) {
+                try {
+                    channel.postMessage(snapshot);
+                } catch (e2) {}
             }
-            var lista = [];
-            for (var chave in nums) {
-                if (Object.prototype.hasOwnProperty.call(nums, chave)) lista.push(nums[chave]);
-            }
-            lista.sort(function(a, b) { return a - b; });
-            return lista;
-        }
-
-        function compactar(nums) {
-            if (!nums || !nums.length) return '';
-            var vistos = {};
-            var limpos = [];
-            for (var i = 0; i < nums.length; i++) {
-                var n = parseInt(nums[i], 10) || 0;
-                if (n > 0 && !vistos[n]) {
-                    vistos[n] = true;
-                    limpos.push(n);
-                }
-            }
-            if (!limpos.length) return '';
-            limpos.sort(function(a, b) { return a - b; });
-            var partes = [];
-            var inicio = limpos[0];
-            var anterior = limpos[0];
-            for (var j = 1; j < limpos.length; j++) {
-                if (limpos[j] === anterior + 1) {
-                    anterior = limpos[j];
-                    continue;
-                }
-                partes.push(inicio === anterior ? String(inicio) : (inicio + '-' + anterior));
-                inicio = limpos[j];
-                anterior = limpos[j];
-            }
-            partes.push(inicio === anterior ? String(inicio) : (inicio + '-' + anterior));
-            return partes.join(', ');
         }
 
         function nomeSecao(item) {
@@ -218,14 +608,36 @@ try {
             return String(codigo).padStart(3, '0');
         }
 
+        function garantirChavesResumo(snapshot, persistir) {
+            if (!snapshot || !snapshot.resumo || !snapshot.resumo.length) return snapshot;
+            var alterou = false;
+            for (var i = 0; i < snapshot.resumo.length; i++) {
+                var item = snapshot.resumo[i] || {};
+                if (!item.row_key) {
+                    item.row_key = item.grupo_correios ? ('gc:' + item.grupo_correios) : (item.grupo_iipr ? ('gi:' + item.grupo_iipr) : ('ln:' + i + ':' + (item.posto || '') + ':' + (item.regional_codigo || '')));
+                    snapshot.resumo[i] = item;
+                    alterou = true;
+                }
+            }
+            if (alterou && persistir) {
+                salvarSnapshot(snapshot);
+            }
+            return snapshot;
+        }
+
         function montarLinhas(snapshot) {
+            snapshot = garantirChavesResumo(snapshot, false);
             var resumo = snapshot && snapshot.resumo ? snapshot.resumo : [];
             var linhas = [];
             for (var i = 0; i < resumo.length; i++) {
                 var item = resumo[i];
                 if (!item) continue;
+                var posto = String(item.posto || '').trim();
+                var postoPadrao = posto && /^\d+$/.test(posto) ? posto.padStart(3, '0') : posto;
                 linhas.push({
-                    posto: String(item.posto || '').trim(),
+                    row_key: item.row_key,
+                    posto: posto,
+                    posto_rotulo: postoPadrao && nomesPostos[postoPadrao] ? (postoPadrao + ' - ' + nomesPostos[postoPadrao]) : (postoPadrao ? ('Posto ' + postoPadrao) : 'Sem posto'),
                     regional: item.regional || '',
                     regional_codigo: item.regional_codigo || '',
                     grupo_correios: item.grupo_correios || '',
@@ -233,6 +645,8 @@ try {
                     lacre_iipr: item.lacre_iipr || '',
                     lacre_correios: item.lacre_correios || '',
                     etiqueta_correios: item.etiqueta_correios || '',
+                    lotes: item.lotes || [],
+                    qtd_total: item.qtd_total || 0,
                     destino_oficio: rotuloLinhaOficio(item)
                 });
             }
@@ -243,9 +657,9 @@ try {
                 var ordemA = regA === 0 ? 0 : (regA === 1 ? 1 : (regA === 999 ? 2 : 3));
                 var ordemB = regB === 0 ? 0 : (regB === 1 ? 1 : (regB === 999 ? 2 : 3));
                 if (ordemA !== ordemB) return ordemA - ordemB;
-                if (regA !== regB && ordemA === 3) return regA - regB;
-                var grupoA = String(a.grupo_correios || a.grupo_iipr || '');
-                var grupoB = String(b.grupo_correios || b.grupo_iipr || '');
+                if (ordemA === 3 && regA !== regB) return regA - regB;
+                var grupoA = String(a.grupo_correios || a.grupo_iipr || a.row_key || '');
+                var grupoB = String(b.grupo_correios || b.grupo_iipr || b.row_key || '');
                 if (grupoA < grupoB) return -1;
                 if (grupoA > grupoB) return 1;
                 return 0;
@@ -253,60 +667,92 @@ try {
             return linhas;
         }
 
-        function montarTabela(secao, linhas, postoAtual) {
+        function montarTabela(secao, linhas) {
+            var totaisPorDestino = {};
+            var ordens = {};
             var html = '';
             html += '<div class="secao">';
+            html += '<div class="secao-titulo">' + escapeHtml(secao) + '</div>';
             html += '<table>';
-            html += '<thead>';
-            html += '<tr>';
-            html += '<th class="col-posto secao-titulo">' + escapeHtml(secao) + '</th>';
+            html += '<thead><tr>';
+            html += '<th class="col-destino">Linha do ofício</th>';
+            html += '<th class="col-posto">Origem</th>';
             html += '<th class="col-iipr">Lacre IIPR</th>';
             html += '<th class="col-correios">Lacre Correios</th>';
             html += '<th class="col-etiqueta">Etiqueta Correios</th>';
-            html += '</tr>';
-            html += '</thead>';
-            html += '<tbody>';
-            var totaisPorDestino = {};
-            var ordemPorDestino = {};
+            html += '</tr></thead><tbody>';
+
             for (var i0 = 0; i0 < linhas.length; i0++) {
                 var destino0 = String(linhas[i0].destino_oficio || '-');
                 totaisPorDestino[destino0] = (totaisPorDestino[destino0] || 0) + 1;
             }
+
             for (var i = 0; i < linhas.length; i++) {
                 var item = linhas[i];
                 var destino = String(item.destino_oficio || '-');
-                ordemPorDestino[destino] = (ordemPorDestino[destino] || 0) + 1;
-                var rotulo = destino;
+                ordens[destino] = (ordens[destino] || 0) + 1;
+                var rotuloDestino = destino;
                 if ((totaisPorDestino[destino] || 0) > 1) {
-                    rotulo += ' - linha ' + ordemPorDestino[destino];
+                    rotuloDestino += ' - linha ' + ordens[destino];
                 }
-                var classe = String(item.posto) === String(postoAtual || '') ? ' class="ativo"' : '';
-                html += '<tr' + classe + '>';
-                html += '<td class="col-posto">' + escapeHtml(rotulo) + '</td>';
-                html += '<td><input type="text" value="' + escapeHtml(item.lacre_iipr || '') + '" readonly></td>';
-                html += '<td><input type="text" value="' + escapeHtml(item.lacre_correios || '') + '" readonly></td>';
-                html += '<td><input type="text" value="' + escapeHtml(item.etiqueta_correios || '') + '" readonly></td>';
+                html += '<tr data-row-key="' + escapeHtml(item.row_key) + '">';
+                html += '<td class="destino">' + escapeHtml(rotuloDestino) + '</td>';
+                html += '<td><div>' + escapeHtml(item.posto_rotulo) + '</div><div class="posto-linha">Grupo Correios: ' + escapeHtml(item.grupo_correios || '-') + '</div></td>';
+                html += '<td><input class="campo-impressao" type="text" value="' + escapeHtml(item.lacre_iipr || '') + '" readonly></td>';
+                html += '<td><input class="campo-impressao" type="text" value="' + escapeHtml(item.lacre_correios || '') + '" readonly></td>';
+                html += '<td><input class="campo-impressao campo-etiqueta" type="text" value="' + escapeHtml(item.etiqueta_correios || '') + '" data-row-key="' + escapeHtml(item.row_key) + '" data-field="etiqueta_correios" maxlength="35"></td>';
                 html += '</tr>';
             }
-            html += '</tbody>';
-            html += '</table>';
-            html += '</div>';
+
+            html += '</tbody></table></div>';
             return html;
+        }
+
+        function atualizarCabecalho(snapshot, linhas) {
+            var datas = snapshot && snapshot.datas_filtro && snapshot.datas_filtro.length ? snapshot.datas_filtro.join(', ') : '-';
+            var usuario = snapshot && snapshot.usuario ? snapshot.usuario : 'Equipe de Conferência';
+            var numeroAtual = estadoOficio.salvoNumero || (snapshot && snapshot.oficio_numero ? parseInt(snapshot.oficio_numero, 10) || 0 : 0);
+            var ultimoTexto = estadoOficio.ultimoConhecido > 0 ? String(estadoOficio.ultimoConhecido) : 'nenhum';
+
+            statusLinhas.textContent = String(linhas.length || 0);
+            statusDatas.textContent = datas;
+            statusUsuario.textContent = usuario;
+            statusAtualizacao.textContent = snapshot && snapshot.gerado_em ? snapshot.gerado_em : '-';
+            textoPeriodo.textContent = datas === '-' ? 'Aguardando datas da conferência' : datas;
+            textoUsuario.textContent = usuario;
+            metaUltimoOficio.textContent = 'Último ofício Correios: ' + ultimoTexto;
+
+            if (numeroAtual > 0) {
+                numeroOficio.textContent = numeroAtual;
+                numeroRodape.textContent = 'Documento gravado';
+                statusNumeroRotulo.textContent = 'Número gravado:';
+                statusNumeroValor.textContent = String(numeroAtual);
+            } else {
+                numeroOficio.textContent = 'Prévia';
+                numeroRodape.textContent = estadoOficio.ultimoConhecido > 0 ? ('Último existente: ' + estadoOficio.ultimoConhecido) : 'Grave para numerar';
+                statusNumeroRotulo.textContent = 'Número:';
+                statusNumeroValor.textContent = 'Prévia';
+            }
+
+            if (linhas.length) {
+                textoRodapeLotes.textContent = linhas.length + ' linha(s) pronta(s) para o ofício. Ajuste a etiqueta Correios aqui antes da gravação definitiva, se necessário.';
+            } else {
+                textoRodapeLotes.textContent = 'Nenhuma linha pronta foi consolidada.';
+            }
         }
 
         function renderizar(snapshot) {
             if (!snapshot) {
                 areaGrade.className = 'vazio';
                 areaGrade.innerHTML = 'Aguardando dados da conferência.';
-                metaDatas.textContent = 'Aguardando conferência';
-                metaAtualizacao.textContent = 'Última atualização: -';
+                atualizarCabecalho(null, []);
                 return;
             }
 
-            metaDatas.textContent = snapshot.datas_filtro && snapshot.datas_filtro.length ? ('Datas: ' + snapshot.datas_filtro.join(', ')) : 'Sem datas informadas';
-            metaAtualizacao.textContent = 'Última atualização: ' + (snapshot.gerado_em || '-');
-
+            snapshot = garantirChavesResumo(snapshot, false);
             var linhas = montarLinhas(snapshot);
+            atualizarCabecalho(snapshot, linhas);
+
             if (!linhas.length) {
                 areaGrade.className = 'vazio';
                 areaGrade.innerHTML = 'Nenhuma linha pronta do ofício foi gerada ainda.';
@@ -324,20 +770,157 @@ try {
             }
 
             var html = '';
-            if (grupos['CAPITAL'].length) html += montarTabela('CAPITAL', grupos['CAPITAL'], snapshot.posto_selecionado);
-            if (grupos['METROPOLITANA'].length) html += montarTabela('METROPOLITANA', grupos['METROPOLITANA'], snapshot.posto_selecionado);
-            if (grupos['CENTRAL IIPR'].length) html += montarTabela('CENTRAL IIPR', grupos['CENTRAL IIPR'], snapshot.posto_selecionado);
-            if (grupos['REGIONAIS'].length) html += montarTabela('REGIONAIS', grupos['REGIONAIS'], snapshot.posto_selecionado);
+            if (grupos['CAPITAL'].length) html += montarTabela('CAPITAL', grupos['CAPITAL']);
+            if (grupos['METROPOLITANA'].length) html += montarTabela('METROPOLITANA', grupos['METROPOLITANA']);
+            if (grupos['CENTRAL IIPR'].length) html += montarTabela('CENTRAL IIPR', grupos['CENTRAL IIPR']);
+            if (grupos['REGIONAIS'].length) html += montarTabela('REGIONAIS', grupos['REGIONAIS']);
 
             areaGrade.className = '';
             areaGrade.innerHTML = html;
         }
 
+        function atualizarCampoResumo(rowKey, field, value) {
+            var snapshot = lerSnapshot();
+            if (!snapshot || !snapshot.resumo || !snapshot.resumo.length) return;
+            snapshot = garantirChavesResumo(snapshot, false);
+            for (var i = 0; i < snapshot.resumo.length; i++) {
+                if (String(snapshot.resumo[i].row_key || '') === String(rowKey || '')) {
+                    snapshot.resumo[i][field] = value;
+                    salvarSnapshot(snapshot);
+                    return;
+                }
+            }
+        }
+
+        function estaEditandoEtiqueta() {
+            var ativo = document.activeElement;
+            return !!(ativo && ativo.classList && ativo.classList.contains('campo-etiqueta'));
+        }
+
+        function renderizarQuandoPossivel(snapshot) {
+            if (estaEditandoEtiqueta()) {
+                return;
+            }
+            renderizar(snapshot);
+        }
+
+        function fecharModal() {
+            modalGravacao.classList.remove('ativo');
+            modalGravacao.setAttribute('aria-hidden', 'true');
+        }
+
+        function abrirModal() {
+            var alvoSobrescrever = estadoOficio.salvoId || estadoOficio.ultimoConhecido || 0;
+            var proximo = (estadoOficio.ultimoConhecido || 0) + 1;
+            modalTextoBase.textContent = 'Escolha como o número do ofício Correios deve ser tratado para esta prévia.';
+            textoSobrescrever.textContent = alvoSobrescrever > 0 ? ('Sobrescrever nº ' + alvoSobrescrever) : 'Sobrescrever último';
+            detalheSobrescrever.textContent = alvoSobrescrever > 0 ? ('Regrava o ofício ' + alvoSobrescrever + ' com as linhas atuais da conferência.') : 'Não existe ofício anterior disponível; neste caso será criado um novo automaticamente.';
+            textoCriarNovo.textContent = 'Criar novo nº ' + (proximo > 0 ? proximo : 1);
+            detalheCriarNovo.textContent = 'Cria um novo ofício sem alterar os anteriores.';
+            modalGravacao.classList.add('ativo');
+            modalGravacao.setAttribute('aria-hidden', 'false');
+        }
+
+        function imprimirDocumento() {
+            window.print();
+        }
+
+        function gravarOficio(modo) {
+            if (estadoOficio.salvando) return;
+            var snapshot = lerSnapshot();
+            if (!snapshot || !snapshot.resumo || !snapshot.resumo.length) {
+                exibirAviso('Nao ha linhas prontas para gravar.', true);
+                fecharModal();
+                return;
+            }
+
+            snapshot = garantirChavesResumo(snapshot, false);
+            var formData = new FormData();
+            formData.append('salvar_oficio_correios_preview_ajax', '1');
+            formData.append('usuario', snapshot.usuario || 'Equipe de Conferência');
+            formData.append('modo_oficio', modo === 'novo' ? 'novo' : 'sobrescrever');
+            formData.append('id_oficio_sobrescrever', String(estadoOficio.salvoId || estadoOficio.ultimoConhecido || 0));
+            formData.append('datas_json', JSON.stringify(snapshot.datas_filtro || []));
+            formData.append('datas_str', (snapshot.datas_filtro || []).join(','));
+            formData.append('snapshot_oficio', JSON.stringify(snapshot));
+
+            estadoOficio.salvando = true;
+            exibirAviso('Gravando ofício Correios...', false);
+            fecharModal();
+
+            fetch('conferencia_pacotes.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(json) {
+                estadoOficio.salvando = false;
+                if (!json || !json.success) {
+                    exibirAviso(json && json.erro ? json.erro : 'Falha ao gravar o ofício.', true);
+                    return;
+                }
+
+                estadoOficio.salvoId = parseInt(json.id_oficio || 0, 10) || 0;
+                estadoOficio.salvoNumero = parseInt(json.numero_oficio || 0, 10) || 0;
+                if (estadoOficio.salvoNumero > estadoOficio.ultimoConhecido) {
+                    estadoOficio.ultimoConhecido = estadoOficio.salvoNumero;
+                }
+
+                snapshot.oficio_id_salvo = estadoOficio.salvoId;
+                snapshot.oficio_numero = estadoOficio.salvoNumero;
+                salvarSnapshot(snapshot);
+                renderizar(snapshot);
+                exibirAviso('Ofício ' + estadoOficio.salvoNumero + ' gravado com ' + (json.linhas_gravadas || 0) + ' linha(s) e ' + (json.lotes_gravados || 0) + ' lote(s).', false);
+                window.setTimeout(function() {
+                    imprimirDocumento();
+                }, 120);
+            })
+            .catch(function() {
+                estadoOficio.salvando = false;
+                exibirAviso('Falha de comunicação ao gravar o ofício.', true);
+            });
+        }
+
+        document.getElementById('btnImprimir').addEventListener('click', function() {
+            exibirAviso('', false);
+            imprimirDocumento();
+        });
+
+        document.getElementById('btnGravarImprimir').addEventListener('click', function() {
+            exibirAviso('', false);
+            abrirModal();
+        });
+
+        document.getElementById('btnCancelarModal').addEventListener('click', fecharModal);
+        document.getElementById('btnSobrescrever').addEventListener('click', function() {
+            gravarOficio('sobrescrever');
+        });
+        document.getElementById('btnCriarNovo').addEventListener('click', function() {
+            gravarOficio('novo');
+        });
+
+        modalGravacao.addEventListener('click', function(event) {
+            if (event.target === modalGravacao) {
+                fecharModal();
+            }
+        });
+
+        areaGrade.addEventListener('input', function(event) {
+            var alvo = event.target;
+            if (!alvo || alvo.getAttribute('data-field') !== 'etiqueta_correios') return;
+            atualizarCampoResumo(alvo.getAttribute('data-row-key'), 'etiqueta_correios', String(alvo.value || '').trim());
+        });
+
         if (window.BroadcastChannel) {
             try {
                 channel = new BroadcastChannel('conferencia_previa_malotes');
                 channel.onmessage = function(event) {
-                    renderizar(event.data || null);
+                    var snapshot = event.data || null;
+                    if (snapshot && estadoOficio.salvoNumero > 0 && !snapshot.oficio_numero) {
+                        snapshot.oficio_numero = estadoOficio.salvoNumero;
+                        snapshot.oficio_id_salvo = estadoOficio.salvoId;
+                    }
+                    renderizarQuandoPossivel(snapshot);
                 };
             } catch (e) {
                 channel = null;
@@ -346,13 +929,19 @@ try {
 
         window.addEventListener('storage', function(event) {
             if (event.key === storageKey) {
-                renderizar(lerSnapshot());
+                renderizarQuandoPossivel(lerSnapshot());
             }
         });
 
+        areaGrade.addEventListener('blur', function(event) {
+            var alvo = event.target;
+            if (!alvo || !alvo.classList || !alvo.classList.contains('campo-etiqueta')) return;
+            renderizar(lerSnapshot());
+        }, true);
+
         renderizar(lerSnapshot());
         window.setInterval(function() {
-            renderizar(lerSnapshot());
+            renderizarQuandoPossivel(lerSnapshot());
         }, 2000);
     })();
     </script>
