@@ -14,7 +14,7 @@
    
     v9.24.2: Impressao e rodape (18/02/2026)
     - [CORRIGIDO] Impressao/PDF apenas das folhas marcadas
-    - [CORRIGIDO] Rodape: "Produzido por" e "CELEPAR" + "IIPR-POUPA-TEMPO"
+    - [CORRIGIDO] Rodape: "Produzido por" e "CELEPAR" + "CELEPAR-POUPA-TEMPO"
 
     v9.21.5: Ajustes Finais de Layout e UX (29/01/2026)
    - [CORRIGIDO] ✅ Rodapé reduzido para caber na página (padding menor)
@@ -2213,7 +2213,7 @@ if (document.readyState === 'loading') {
             </div>
                         <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
                             <div style="margin-bottom:3px;">______________________________</div>
-                            <div style="font-size:12px;"><strong>IIPR-POUPA-TEMPO - Data:</strong> <?php echo date('d-m-Y'); ?></div>
+                            <div style="font-size:12px;"><strong>CELEPAR-POUPA-TEMPO - Data:</strong> <?php echo date('d-m-Y'); ?></div>
                         </div>
           </div>
         </div>
