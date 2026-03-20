@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.15
+/* conferencia_pacotes.php — v0.9.25.16
  * CHANGELOG v9.25.14:
  * - [AJUSTE] Áudio concluído por regional no fluxo Correios
  * - [NOVO] Créditos finais estilo filme com trilha final_conferencia.mp3
@@ -1491,7 +1491,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.15</title>
+    <title>Conferência de Pacotes v0.9.25.16</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2022,6 +2022,9 @@ try {
             cursor: pointer;
             transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
             white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
         .operacao-chip:hover {
             transform: translateY(-1px);
@@ -2031,6 +2034,14 @@ try {
             background: linear-gradient(180deg, #2aff75 0%, #18b958 100%);
             color: #03220f;
             border-color: rgba(255,255,255,0.22);
+        }
+        .operacao-chip.confirmado.tem-iipr {
+            background: linear-gradient(180deg, #ffe082 0%, #ffbf47 100%);
+            color: #4d2d00;
+        }
+        .operacao-chip.confirmado.tem-correios {
+            background: linear-gradient(180deg, #a6e8ff 0%, #51c7ff 100%);
+            color: #06263a;
         }
         .operacao-chip.ativo {
             outline: 2px solid #ffe66d;
@@ -2046,9 +2057,228 @@ try {
         .operacao-chip.tem-correios {
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 0 0 2px rgba(83,194,255,0.28);
         }
+        .operacao-chip-texto {
+            display: inline-flex;
+            align-items: center;
+        }
+        .operacao-chip-indicadores {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .operacao-chip-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            padding: 0 6px;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: 0.4px;
+            background: rgba(3, 34, 15, 0.18);
+            color: inherit;
+        }
+        .operacao-chip-badge.iipr {
+            background: rgba(122, 77, 0, 0.18);
+        }
+        .operacao-chip-badge.correios {
+            background: rgba(6, 38, 58, 0.18);
+        }
         .operacao-posto-row.selecionado-malote {
             border-color: #7bdff2;
             box-shadow: 0 0 0 2px rgba(123,223,242,0.18);
+        }
+        .operacao-posto-mapa {
+            grid-column: 1 / -1;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+        .operacao-posto-workspace {
+            display: grid;
+            grid-template-columns: minmax(260px, 1.1fr) minmax(320px, 1.2fr) minmax(320px, 1.2fr);
+            gap: 10px;
+        }
+        .operacao-posto-card {
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            background: rgba(6,16,28,0.46);
+            padding: 12px;
+            min-width: 0;
+        }
+        .operacao-posto-card h5 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 900;
+            color: #f8fbff;
+        }
+        .operacao-posto-card-sub {
+            margin-top: 3px;
+            font-size: 11px;
+            color: #a7cae7;
+        }
+        .operacao-malote-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .operacao-malote-contador {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: rgba(123,223,242,0.12);
+            color: #c6edff;
+            font-size: 10px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+        .operacao-malote-bolsa {
+            min-height: 88px;
+            border: 1px dashed rgba(255,255,255,0.18);
+            border-radius: 14px 14px 18px 18px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0.10) 100%);
+            padding: 12px;
+        }
+        .operacao-malote-bolsa.pronto-iipr {
+            border-color: rgba(255,191,71,0.65);
+            background: linear-gradient(180deg, rgba(255,224,130,0.18) 0%, rgba(255,191,71,0.08) 100%);
+        }
+        .operacao-malote-bolsa.pronto-correios {
+            border-color: rgba(81,199,255,0.65);
+            background: linear-gradient(180deg, rgba(166,232,255,0.18) 0%, rgba(81,199,255,0.08) 100%);
+        }
+        .operacao-malote-bolsa-vazio {
+            color: #95b7d1;
+            font-size: 12px;
+        }
+        .operacao-malote-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .operacao-malote-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 9px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            color: #f8fbff;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .operacao-malote-tag i {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.16);
+            font-style: normal;
+            font-size: 9px;
+        }
+        .operacao-malote-tag.iipr {
+            background: rgba(255,191,71,0.18);
+            color: #ffe9b0;
+        }
+        .operacao-malote-tag.correios {
+            background: rgba(81,199,255,0.18);
+            color: #d8f5ff;
+        }
+        .operacao-malote-tag.fechado {
+            background: rgba(42,255,117,0.16);
+            color: #d7ffe5;
+        }
+        .operacao-malote-form-inline {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .operacao-malote-form-inline.duplo {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto auto;
+        }
+        .operacao-malote-form-inline input {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .operacao-malote-form-inline button,
+        .operacao-malote-rodape button {
+            border: 0;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+        .btn-inline-iipr {
+            background: #ffbf47;
+            color: #4d2d00;
+        }
+        .btn-inline-correios {
+            background: #51c7ff;
+            color: #06263a;
+        }
+        .btn-inline-salvar-posto {
+            background: #21ff8b;
+            color: #03220f;
+        }
+        .operacao-malote-historico {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .operacao-malote-rodape {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .operacao-malote-pendencia {
+            font-size: 11px;
+            color: #ffd7aa;
+            font-weight: 800;
+        }
+        .operacao-oficio-tabela {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+        .operacao-oficio-tabela th,
+        .operacao-oficio-tabela td {
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding: 7px 6px;
+            text-align: left;
+            font-size: 11px;
+            color: #f7fbff;
+            vertical-align: top;
+        }
+        .operacao-oficio-tabela th {
+            color: #a7cae7;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.6px;
+        }
+        .operacao-oficio-vazio {
+            margin-top: 10px;
+            color: #95b7d1;
+            font-size: 12px;
         }
         .operacao-numero {
             text-align: center;
@@ -2698,12 +2928,15 @@ try {
             .painel-malotes-grid { grid-template-columns: 1fr; }
             .painel-malotes-resumo { width: 100%; }
             .painel-malotes-badge { flex: 1 1 96px; }
+            .operacao-posto-workspace { grid-template-columns: 1fr; }
+            .operacao-malote-form-inline,
+            .operacao-malote-form-inline.duplo { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.15</div>
+    <div class="versao">v0.9.25.16</div>
     <div id="indicador-dias" class="collapsed">
         <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
             <span>📅 Status de Conferências</span>
@@ -2748,7 +2981,7 @@ try {
     </div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.15</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.16</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -3134,7 +3367,7 @@ try {
         </div>
     </div>
     <div class="painel-malotes-ajuda">
-        Primeiro confirme os lotes em verde. Depois monte o malote IIPR com os lotes marcados, informe o lacre e feche o malote. Em seguida monte o malote maior dos Correios com os IIPR já fechados, informe lacre e etiqueta e só então use Salvar tudo no banco para persistir o mapeamento final de cada lote.
+        No modo chips, o fluxo principal agora acontece na própria linha do posto: feche o IIPR com os chips verdes do posto, depois feche o Correios com os IIPR já prontos e use a linha pronta do ofício como conferência visual. O botão Salvar tudo no banco continua disponível para persistir tudo de uma vez.
     </div>
 </div>
 
@@ -3278,13 +3511,14 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
             echo ' data-atualizado-lacre="' . htmlspecialchars((string)$item['atualizado_lacre_em'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-conferido-em="' . htmlspecialchars($item['conferido_em'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-conf="' . (!empty($item['conf']) ? '1' : '0') . '">';
-            echo htmlspecialchars($item['lote'], ENT_QUOTES, 'UTF-8');
+            echo '<span class="operacao-chip-texto">' . htmlspecialchars($item['lote'], ENT_QUOTES, 'UTF-8') . '</span><span class="operacao-chip-indicadores"></span>';
             echo '</button>';
         }
         echo '</div>';
         echo '<div class="operacao-numero"><span data-role="pacotes">' . $totalPacotes . '</span><span class="operacao-numero-label">PACOTES</span></div>';
         echo '<div class="operacao-numero"><span data-role="conferidos">' . $conferidos . '</span><span class="operacao-numero-label">CONFERIDOS</span></div>';
         echo '<div class="operacao-pendentes"><span data-role="pendentes">' . $pendentes . '</span><span class="operacao-numero-label">PENDENTES</span></div>';
+        echo '<div class="operacao-posto-mapa" data-row-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '"></div>';
         echo '</div>';
     }
 
@@ -3757,7 +3991,7 @@ function iniciarConferenciaPacotes() {
             '<div class="creditos-bloco">Estatísticas Gerais<div class="creditos-sub">Pacotes conferidos: ' + r.totalPacotes + ' | Postos atendidos: ' + r.totalPostos + ' | Regionais fechadas: ' + r.totalRegionais + '</div><div class="creditos-sub">Malotes consolidados: ' + r.totalMalotes + ' | Pendências: ' + r.pendencias + '</div></div>' +
             '<div class="creditos-bloco">Datas da operação<div class="creditos-sub">' + escapeHtml(r.datas) + '</div></div>' +
             '<div class="creditos-bloco">Créditos da expedição<div class="creditos-sub">' + escapeHtml(r.usuario) + ' - Conferência e coordenação da operação</div><div class="creditos-sub">Andre Agra - Impressão e apoio operacional</div><div class="creditos-sub">Equipe de Expedição - Fechamento, conferência e despacho</div><div class="creditos-sub">Equipe de Tecnologia - Sistema de conferência e melhorias contínuas</div></div>' +
-            '<div class="creditos-bloco">Versão atual<div class="creditos-sub">Sistema de Conferência de Pacotes v0.9.25.15</div><div class="creditos-sub">Encerrado em ' + escapeHtml(r.geradoEm) + '</div></div>';
+            '<div class="creditos-bloco">Versão atual<div class="creditos-sub">Sistema de Conferência de Pacotes v0.9.25.16</div><div class="creditos-sub">Encerrado em ' + escapeHtml(r.geradoEm) + '</div></div>';
     }
 
     function concluirCreditosComTheEnd() {
@@ -4428,7 +4662,7 @@ function iniciarConferenciaPacotes() {
                 continue;
             }
 
-            var chaveGrupo = [dados.posto || '', dados.grupo_correios || '', dados.grupo_iipr || '', dados.regional || ''].join('|');
+            var chaveGrupo = dados.grupo_correios ? [dados.posto || '', dados.grupo_correios || '', dados.regional || ''].join('|') : [dados.posto || '', dados.grupo_iipr || '', dados.regional || ''].join('|');
             if (!grupos[chaveGrupo]) {
                 grupos[chaveGrupo] = {
                     regional: dados.regional || '',
@@ -4439,14 +4673,15 @@ function iniciarConferenciaPacotes() {
                     lacres_iipr: [],
                     lacres_correios: [],
                     etiqueta_correios: '',
-                    grupo_iipr: dados.grupo_iipr || '',
+                    grupo_iipr: [],
                     grupo_correios: dados.grupo_correios || ''
                 };
             }
             grupos[chaveGrupo].lotes.push(dados.lote || '');
             grupos[chaveGrupo].qtd_total += parseInt(dados.qtd || 0, 10) || 0;
-            if (dados.lacre_iipr) grupos[chaveGrupo].lacres_iipr.push(dados.lacre_iipr);
-            if (dados.lacre_correios) grupos[chaveGrupo].lacres_correios.push(dados.lacre_correios);
+            if (dados.lacre_iipr && grupos[chaveGrupo].lacres_iipr.indexOf(String(dados.lacre_iipr)) === -1) grupos[chaveGrupo].lacres_iipr.push(String(dados.lacre_iipr));
+            if (dados.lacre_correios && grupos[chaveGrupo].lacres_correios.indexOf(String(dados.lacre_correios)) === -1) grupos[chaveGrupo].lacres_correios.push(String(dados.lacre_correios));
+            if (dados.grupo_iipr && grupos[chaveGrupo].grupo_iipr.indexOf(dados.grupo_iipr) === -1) grupos[chaveGrupo].grupo_iipr.push(dados.grupo_iipr);
             if (!grupos[chaveGrupo].etiqueta_correios && dados.etiqueta_correios) {
                 grupos[chaveGrupo].etiqueta_correios = dados.etiqueta_correios;
             }
@@ -4464,7 +4699,7 @@ function iniciarConferenciaPacotes() {
                 lacre_iipr: compactarSequenciaNumerica(grupos[chave].lacres_iipr),
                 lacre_correios: compactarSequenciaNumerica(grupos[chave].lacres_correios),
                 etiqueta_correios: grupos[chave].etiqueta_correios,
-                grupo_iipr: grupos[chave].grupo_iipr,
+                grupo_iipr: grupos[chave].grupo_iipr.join(','),
                 grupo_correios: grupos[chave].grupo_correios
             });
         }
@@ -4490,7 +4725,7 @@ function iniciarConferenciaPacotes() {
         });
 
         return {
-            versao: '0.9.25.11',
+            versao: '0.9.25.16',
             gerado_em: formatarDataHoraAtual(),
             usuario: usuarioAtual || '',
             posto_selecionado: postoSelecionadoMalote || '',
@@ -4742,6 +4977,396 @@ function iniciarConferenciaPacotes() {
         };
     }
 
+    function atualizarVisualChipOperacao(chip) {
+        if (!chip) return;
+        var texto = chip.querySelector('.operacao-chip-texto');
+        var indicadores = chip.querySelector('.operacao-chip-indicadores');
+        if (!texto) {
+            texto = document.createElement('span');
+            texto.className = 'operacao-chip-texto';
+            chip.appendChild(texto);
+        }
+        if (!indicadores) {
+            indicadores = document.createElement('span');
+            indicadores.className = 'operacao-chip-indicadores';
+            chip.appendChild(indicadores);
+        }
+        texto.textContent = chip.getAttribute('data-lote') || '';
+        var badges = [];
+        if (chip.classList.contains('tem-iipr')) {
+            badges.push('<span class="operacao-chip-badge iipr" title="Chip dentro de malote IIPR">I</span>');
+        }
+        if (chip.classList.contains('tem-correios')) {
+            badges.push('<span class="operacao-chip-badge correios" title="Chip dentro de malote Correios">C</span>');
+        }
+        indicadores.innerHTML = badges.join('');
+    }
+
+    function contarPendenciasDoPosto(posto) {
+        if (!posto || !malotesRascunho || !malotesRascunho.atribuicoes) return 0;
+        var total = 0;
+        for (var codigo in malotesRascunho.atribuicoes) {
+            if (!Object.prototype.hasOwnProperty.call(malotesRascunho.atribuicoes, codigo)) continue;
+            if (String(malotesRascunho.atribuicoes[codigo].posto || '') === String(posto)) {
+                total++;
+            }
+        }
+        return total;
+    }
+
+    function obterChipsConfirmadosSemIiprDoPosto(posto) {
+        if (!posto) return [];
+        var chipsPosto = obterChipsPosto(posto);
+        var chips = [];
+        for (var i = 0; i < chipsPosto.length; i++) {
+            var dados = obterDadosChipOperacao(chipsPosto[i]);
+            if (!dados || dados.isPT || !dados.conferido || dados.lacre_iipr) continue;
+            chips.push(chipsPosto[i]);
+        }
+        return chips;
+    }
+
+    function obterGruposIiprSemCorreiosDoPosto(posto) {
+        if (!posto) return [];
+        var chipsPosto = obterChipsPosto(posto);
+        var grupos = {};
+        for (var i = 0; i < chipsPosto.length; i++) {
+            var dados = obterDadosChipOperacao(chipsPosto[i]);
+            if (!dados || dados.isPT || !dados.conferido || !dados.lacre_iipr) continue;
+            if (dados.lacre_correios || dados.etiqueta_correios) continue;
+            var chave = dados.grupo_iipr || ('GI|' + dados.lacre_iipr);
+            if (!grupos[chave]) {
+                grupos[chave] = {
+                    chave: chave,
+                    lacre_iipr: dados.lacre_iipr,
+                    lotes: [],
+                    chips: []
+                };
+            }
+            if (grupos[chave].lotes.indexOf(dados.lote) === -1) {
+                grupos[chave].lotes.push(dados.lote);
+            }
+            grupos[chave].chips.push(chipsPosto[i]);
+        }
+        var lista = [];
+        for (var grupo in grupos) {
+            if (!Object.prototype.hasOwnProperty.call(grupos, grupo)) continue;
+            lista.push(grupos[grupo]);
+        }
+        lista.sort(function(a, b) {
+            var lacreA = parseInt(a.lacre_iipr || 0, 10) || 0;
+            var lacreB = parseInt(b.lacre_iipr || 0, 10) || 0;
+            return lacreA - lacreB;
+        });
+        return lista;
+    }
+
+    function obterResumoMalotesDoPosto(posto) {
+        var resumo = {
+            posto: posto || '',
+            regional: '',
+            pendentesIipr: [],
+            iiprFechados: [],
+            iiprPendentesCorreios: [],
+            linhasOficio: [],
+            pendenciasSalvar: contarPendenciasDoPosto(posto)
+        };
+        if (!posto) return resumo;
+
+        var chips = obterChipsPosto(posto);
+        var gruposIipr = {};
+        var gruposCorreios = {};
+        for (var i = 0; i < chips.length; i++) {
+            var dados = obterDadosChipOperacao(chips[i]);
+            if (!dados || dados.isPT) continue;
+            if (!resumo.regional && dados.regional) resumo.regional = dados.regional;
+            if (!dados.conferido) continue;
+
+            if (!dados.lacre_iipr) {
+                resumo.pendentesIipr.push({ codigo: dados.codigo, lote: dados.lote, qtd: dados.qtd });
+                continue;
+            }
+
+            var chaveIipr = dados.grupo_iipr || ('GI|' + dados.lacre_iipr);
+            if (!gruposIipr[chaveIipr]) {
+                gruposIipr[chaveIipr] = {
+                    chave: chaveIipr,
+                    lacre_iipr: dados.lacre_iipr,
+                    lotes: [],
+                    qtd_total: 0,
+                    pendente: false,
+                    temCorreios: false
+                };
+            }
+            if (gruposIipr[chaveIipr].lotes.indexOf(dados.lote) === -1) {
+                gruposIipr[chaveIipr].lotes.push(dados.lote);
+            }
+            gruposIipr[chaveIipr].qtd_total += parseInt(dados.qtd || 0, 10) || 0;
+            if (chips[i].getAttribute('data-malote-pendente') === '1') {
+                gruposIipr[chaveIipr].pendente = true;
+            }
+
+            if (dados.lacre_correios || dados.etiqueta_correios) {
+                gruposIipr[chaveIipr].temCorreios = true;
+                var chaveCorreios = dados.grupo_correios || ('GC|' + (dados.lacre_correios || '-') + '|' + (dados.etiqueta_correios || '-') + '|' + (dados.posto || '-'));
+                if (!gruposCorreios[chaveCorreios]) {
+                    gruposCorreios[chaveCorreios] = {
+                        posto: dados.posto || '',
+                        regional: dados.regional || '',
+                        lacres_iipr: [],
+                        lacre_correios: dados.lacre_correios || '',
+                        etiqueta_correios: dados.etiqueta_correios || '',
+                        lotes: [],
+                        pendente: false
+                    };
+                }
+                if (dados.lacre_iipr && gruposCorreios[chaveCorreios].lacres_iipr.indexOf(String(dados.lacre_iipr)) === -1) {
+                    gruposCorreios[chaveCorreios].lacres_iipr.push(String(dados.lacre_iipr));
+                }
+                if (dados.lote && gruposCorreios[chaveCorreios].lotes.indexOf(dados.lote) === -1) {
+                    gruposCorreios[chaveCorreios].lotes.push(dados.lote);
+                }
+                if (!gruposCorreios[chaveCorreios].lacre_correios && dados.lacre_correios) {
+                    gruposCorreios[chaveCorreios].lacre_correios = dados.lacre_correios;
+                }
+                if (!gruposCorreios[chaveCorreios].etiqueta_correios && dados.etiqueta_correios) {
+                    gruposCorreios[chaveCorreios].etiqueta_correios = dados.etiqueta_correios;
+                }
+                if (chips[i].getAttribute('data-malote-pendente') === '1') {
+                    gruposCorreios[chaveCorreios].pendente = true;
+                }
+            }
+        }
+
+        for (var chave in gruposIipr) {
+            if (!Object.prototype.hasOwnProperty.call(gruposIipr, chave)) continue;
+            resumo.iiprFechados.push(gruposIipr[chave]);
+            if (!gruposIipr[chave].temCorreios) {
+                resumo.iiprPendentesCorreios.push(gruposIipr[chave]);
+            }
+        }
+        for (var chaveC in gruposCorreios) {
+            if (!Object.prototype.hasOwnProperty.call(gruposCorreios, chaveC)) continue;
+            gruposCorreios[chaveC].lacres_iipr = compactarSequenciaNumerica(gruposCorreios[chaveC].lacres_iipr);
+            resumo.linhasOficio.push(gruposCorreios[chaveC]);
+        }
+
+        resumo.iiprFechados.sort(function(a, b) {
+            var lacreA = parseInt(a.lacre_iipr || 0, 10) || 0;
+            var lacreB = parseInt(b.lacre_iipr || 0, 10) || 0;
+            return lacreA - lacreB;
+        });
+        resumo.iiprPendentesCorreios.sort(function(a, b) {
+            var lacreA = parseInt(a.lacre_iipr || 0, 10) || 0;
+            var lacreB = parseInt(b.lacre_iipr || 0, 10) || 0;
+            return lacreA - lacreB;
+        });
+        resumo.linhasOficio.sort(function(a, b) {
+            var lacreA = parseInt(a.lacre_correios || 0, 10) || 0;
+            var lacreB = parseInt(b.lacre_correios || 0, 10) || 0;
+            return lacreA - lacreB;
+        });
+
+        return resumo;
+    }
+
+    function renderizarMapaMalotesPosto(posto) {
+        if (!posto) return;
+        var container = document.querySelector('.operacao-posto-row[data-posto="' + posto + '"] .operacao-posto-mapa');
+        if (!container) return;
+        var chips = obterChipsPosto(posto);
+        if (!chips.length) {
+            container.innerHTML = '';
+            return;
+        }
+        var primeiro = obterDadosChipOperacao(chips[0]);
+        if (!primeiro || primeiro.isPT) {
+            container.innerHTML = '<div class="operacao-posto-card"><h5>Fluxo Correios</h5><div class="operacao-posto-card-sub">A linha inline de malotes vale apenas para postos dos Correios.</div></div>';
+            return;
+        }
+
+        var resumo = obterResumoMalotesDoPosto(posto);
+        var tagsPendentes = [];
+        for (var i = 0; i < resumo.pendentesIipr.length; i++) {
+            tagsPendentes.push('<span class="operacao-malote-tag iipr"><i>CH</i>Lote ' + escapeHtml(resumo.pendentesIipr[i].lote) + ' • qtd ' + escapeHtml(resumo.pendentesIipr[i].qtd) + '</span>');
+        }
+        var historicoIipr = [];
+        for (var j = 0; j < resumo.iiprFechados.length; j++) {
+            historicoIipr.push('<span class="operacao-malote-tag fechado"><i>I</i>' + escapeHtml(String(resumo.iiprFechados[j].lacre_iipr || '-')) + ' • lotes ' + escapeHtml(resumo.iiprFechados[j].lotes.join(', ')) + (resumo.iiprFechados[j].temCorreios ? ' • no Correios' : '') + '</span>');
+        }
+        var tagsCorreios = [];
+        for (var k = 0; k < resumo.iiprPendentesCorreios.length; k++) {
+            tagsCorreios.push('<span class="operacao-malote-tag correios"><i>I</i>' + escapeHtml(String(resumo.iiprPendentesCorreios[k].lacre_iipr || '-')) + ' • lotes ' + escapeHtml(resumo.iiprPendentesCorreios[k].lotes.join(', ')) + '</span>');
+        }
+
+        var htmlLinhasOficio = '';
+        if (resumo.linhasOficio.length) {
+            var linhas = [];
+            for (var l = 0; l < resumo.linhasOficio.length; l++) {
+                var linha = resumo.linhasOficio[l];
+                linhas.push('<tr><td>Posto ' + escapeHtml(posto) + ' - ' + escapeHtml(resumo.regional || '-') + '</td><td>' + escapeHtml(linha.lacres_iipr || '-') + '</td><td>' + escapeHtml(linha.lacre_correios || '-') + '</td><td style="word-break:break-all;">' + escapeHtml(linha.etiqueta_correios || '-') + '</td></tr>');
+            }
+            htmlLinhasOficio = '<table class="operacao-oficio-tabela"><thead><tr><th>Posto / Regional</th><th>Lacre IIPR</th><th>Lacre Correios</th><th>Etiqueta</th></tr></thead><tbody>' + linhas.join('') + '</tbody></table>';
+        } else {
+            htmlLinhasOficio = '<div class="operacao-oficio-vazio">A linha pronta do ofício aparece depois que o malote Correios recebe lacre e etiqueta.</div>';
+        }
+
+        container.innerHTML = '<div class="operacao-posto-workspace">' +
+            '<div class="operacao-posto-card">' +
+                '<div class="operacao-malote-head"><div><h5>Malote IIPR na linha do posto</h5><div class="operacao-posto-card-sub">Fecha todos os chips verdes deste posto que ainda não entraram em um malote IIPR.</div></div><span class="operacao-malote-contador">Prontos ' + resumo.pendentesIipr.length + '</span></div>' +
+                '<div class="operacao-malote-bolsa ' + (resumo.pendentesIipr.length ? 'pronto-iipr' : '') + '">' +
+                    (tagsPendentes.length ? '<div class="operacao-malote-tags">' + tagsPendentes.join('') + '</div>' : '<div class="operacao-malote-bolsa-vazio">Nenhum chip verde aguardando IIPR neste posto.</div>') +
+                '</div>' +
+                '<div class="operacao-malote-form-inline"><input type="text" class="input-inline-lacre-iipr" data-posto="' + escapeHtml(posto) + '" maxlength="12" placeholder="Digite o lacre IIPR"><button type="button" class="btn-inline-iipr btn-inline-fechar-iipr" data-posto="' + escapeHtml(posto) + '">Fechar IIPR agora</button></div>' +
+                '<div class="operacao-malote-historico">' + (historicoIipr.length ? historicoIipr.join('') : '<span class="operacao-malote-bolsa-vazio">Os IIPR fechados deste posto aparecerão aqui.</span>') + '</div>' +
+            '</div>' +
+            '<div class="operacao-posto-card">' +
+                '<div class="operacao-malote-head"><div><h5>Malote Correios do posto</h5><div class="operacao-posto-card-sub">Quando terminar o posto, feche o malote maior com todos os IIPR ainda sem lacre Correios.</div></div><span class="operacao-malote-contador">IIPR ' + resumo.iiprPendentesCorreios.length + '</span></div>' +
+                '<div class="operacao-malote-bolsa ' + (resumo.iiprPendentesCorreios.length ? 'pronto-correios' : '') + '">' +
+                    (tagsCorreios.length ? '<div class="operacao-malote-tags">' + tagsCorreios.join('') + '</div>' : '<div class="operacao-malote-bolsa-vazio">Nenhum malote IIPR pendente para o Correios neste posto.</div>') +
+                '</div>' +
+                '<div class="operacao-malote-form-inline duplo"><input type="text" class="input-inline-lacre-correios" data-posto="' + escapeHtml(posto) + '" maxlength="12" placeholder="Lacre Correios"><input type="text" class="input-inline-etiqueta-correios" data-posto="' + escapeHtml(posto) + '" maxlength="35" placeholder="Etiqueta Correios"><button type="button" class="btn-inline-correios btn-inline-fechar-correios" data-posto="' + escapeHtml(posto) + '">Fechar Correios</button><button type="button" class="btn-inline-salvar-posto" data-posto="' + escapeHtml(posto) + '">Salvar posto</button></div>' +
+                '<div class="operacao-malote-rodape"><div class="operacao-malote-pendencia">Pendentes para salvar neste posto: ' + resumo.pendenciasSalvar + '</div></div>' +
+            '</div>' +
+            '<div class="operacao-posto-card">' +
+                '<div class="operacao-malote-head"><div><h5>Linha pronta do ofício Correios</h5><div class="operacao-posto-card-sub">Se houver mais de um IIPR dentro do mesmo malote Correios, os lacres saem juntos na mesma linha.</div></div><span class="operacao-malote-contador">Linhas ' + resumo.linhasOficio.length + '</span></div>' +
+                htmlLinhasOficio +
+            '</div>' +
+        '</div>';
+    }
+
+    function renderizarMapasMalotesPostos() {
+        var linhas = document.querySelectorAll('.operacao-posto-row[data-posto]');
+        for (var i = 0; i < linhas.length; i++) {
+            renderizarMapaMalotesPosto(linhas[i].getAttribute('data-posto') || '');
+        }
+    }
+
+    function fecharMaloteIiprDoPosto(posto, lacreIipr) {
+        var lacre = normalizarNumeroLacre(lacreIipr || '');
+        if (!posto) {
+            alert('Selecione um posto válido.');
+            return false;
+        }
+        if (!lacre) {
+            alert('Informe o lacre IIPR.');
+            return false;
+        }
+        var chips = obterChipsConfirmadosSemIiprDoPosto(posto);
+        if (!chips.length) {
+            alert('Este posto não possui chips verdes pendentes para fechar no IIPR.');
+            return false;
+        }
+        var grupoIipr = criarIdMalote('GI');
+        for (var i = 0; i < chips.length; i++) {
+            registrarAtribuicaoPendenteNoChip(chips[i], {
+                lacre_iipr: lacre,
+                grupo_iipr: grupoIipr,
+                lacre_correios: '',
+                grupo_correios: '',
+                etiqueta_correios: ''
+            });
+        }
+        var estado = obterEstadoPostoRascunho(posto);
+        estado.iipr_atual = null;
+        salvarRascunhoMalotesLocal();
+        renderizarPainelMalotes();
+        atualizarColunaMaloteTradicional();
+        renderizarMapasMalotesPostos();
+        limparModoVoz('Malote IIPR fechado direto na linha do posto.');
+        return true;
+    }
+
+    function fecharMaloteCorreiosDoPosto(posto, lacreCorreios, etiquetaCorreios) {
+        var lacre = normalizarNumeroLacre(lacreCorreios || '');
+        var etiqueta = String(etiquetaCorreios || '').trim();
+        if (!posto) {
+            alert('Selecione um posto válido.');
+            return false;
+        }
+        if (!lacre && !etiqueta) {
+            alert('Informe ao menos o lacre ou a etiqueta Correios.');
+            return false;
+        }
+        var gruposPendentes = obterGruposIiprSemCorreiosDoPosto(posto);
+        if (!gruposPendentes.length) {
+            alert('Este posto não possui malotes IIPR pendentes para o Correios.');
+            return false;
+        }
+        var grupoCorreios = criarIdMalote('GC');
+        var chips = [];
+        var vistos = {};
+        for (var i = 0; i < gruposPendentes.length; i++) {
+            for (var j = 0; j < gruposPendentes[i].chips.length; j++) {
+                var codigo = gruposPendentes[i].chips[j].getAttribute('data-codigo') || '';
+                if (!codigo || vistos[codigo]) continue;
+                vistos[codigo] = true;
+                chips.push(gruposPendentes[i].chips[j]);
+            }
+        }
+        if (!chips.length) {
+            alert('Não há chips válidos para fechar o malote Correios deste posto.');
+            return false;
+        }
+        for (var k = 0; k < chips.length; k++) {
+            var dadosAtuais = obterDadosChipOperacao(chips[k]);
+            registrarAtribuicaoPendenteNoChip(chips[k], {
+                lacre_iipr: dadosAtuais ? dadosAtuais.lacre_iipr : '',
+                grupo_iipr: dadosAtuais ? dadosAtuais.grupo_iipr : '',
+                lacre_correios: lacre || (dadosAtuais ? dadosAtuais.lacre_correios : ''),
+                grupo_correios: grupoCorreios,
+                etiqueta_correios: etiqueta || (dadosAtuais ? dadosAtuais.etiqueta_correios : '')
+            });
+        }
+        var estado = obterEstadoPostoRascunho(posto);
+        estado.correios_atual = null;
+        salvarRascunhoMalotesLocal();
+        renderizarPainelMalotes();
+        atualizarColunaMaloteTradicional();
+        renderizarMapasMalotesPostos();
+        limparModoVoz('Malote Correios fechado direto na linha do posto.');
+        return true;
+    }
+
+    function salvarPendenciasDoPosto(posto) {
+        if (!posto) {
+            alert('Selecione um posto válido.');
+            return;
+        }
+        var pacotes = [];
+        var codigos = [];
+        for (var codigo in malotesRascunho.atribuicoes) {
+            if (!Object.prototype.hasOwnProperty.call(malotesRascunho.atribuicoes, codigo)) continue;
+            if (String(malotesRascunho.atribuicoes[codigo].posto || '') !== String(posto)) continue;
+            pacotes.push(malotesRascunho.atribuicoes[codigo]);
+            codigos.push(codigo);
+        }
+        if (!pacotes.length) {
+            alert('Não há vínculos pendentes para salvar neste posto.');
+            return;
+        }
+        persistirAtribuicoesLote(pacotes, function() {
+            for (var i = 0; i < codigos.length; i++) {
+                var chip = obterChipPorCodigo(codigos[i]);
+                if (!chip) continue;
+                chip.setAttribute('data-malote-pendente', '0');
+                chip.classList.remove('malote-pendente');
+                delete malotesRascunho.atribuicoes[codigos[i]];
+                atualizarVisualChipOperacao(chip);
+                var linha = document.querySelector('tr[data-codigo="' + codigos[i] + '"]');
+                if (linha) {
+                    linha.setAttribute('data-malote-pendente', '0');
+                    atualizarColunaMaloteLinha(linha);
+                }
+            }
+            salvarRascunhoMalotesLocal();
+            renderizarPainelMalotes();
+            atualizarColunaMaloteTradicional();
+            renderizarMapasMalotesPostos();
+            publicarResumoPrevia();
+        });
+    }
+
     function aplicarAtribuicaoNoChip(chip, dados) {
         if (!chip) return;
         var lacreIipr = dados && dados.lacre_iipr ? normalizarNumeroLacre(dados.lacre_iipr) : '';
@@ -4761,6 +5386,7 @@ function iniciarConferenciaPacotes() {
         chip.classList.toggle('tem-iipr', lacreIipr !== '');
         chip.classList.toggle('tem-correios', lacreCorreios !== '' || etiquetaCorreios !== '');
         chip.classList.toggle('malote-pendente', pendente);
+        atualizarVisualChipOperacao(chip);
 
         var linhaTabela = document.querySelector('tr[data-codigo="' + chip.getAttribute('data-codigo') + '"]');
         if (linhaTabela) {
@@ -4774,6 +5400,7 @@ function iniciarConferenciaPacotes() {
             linhaTabela.setAttribute('data-malote-pendente', pendente ? '1' : '0');
             atualizarColunaMaloteLinha(linhaTabela);
         }
+        renderizarMapaMalotesPosto(chip.getAttribute('data-posto') || '');
     }
 
     function obterIndiceGrupoNoPosto(posto, atributoGrupo, grupoValor) {
@@ -4920,6 +5547,7 @@ function iniciarConferenciaPacotes() {
         if (!painelMalotesChips || !painelMalotesLotes || !painelMalotesIipr) return;
 
         atualizarResumoPendenciasMalotes();
+        renderizarMapasMalotesPostos();
 
         if (!postoSelecionadoMalote) {
             if (painelMalotesSubtitulo) painelMalotesSubtitulo.textContent = 'Selecione um chip ou continue a conferência para abrir o posto atual.';
@@ -5132,16 +5760,7 @@ function iniciarConferenciaPacotes() {
 
     function obterChipsConfirmadosSemIiprDoPostoAtual() {
         if (!postoSelecionadoMalote) return [];
-        var chipsPosto = obterChipsPosto(postoSelecionadoMalote);
-        var chips = [];
-        for (var i = 0; i < chipsPosto.length; i++) {
-            var dados = obterDadosChipOperacao(chipsPosto[i]);
-            if (!dados) continue;
-            if (!dados.conferido) continue;
-            if (dados.lacre_iipr) continue;
-            chips.push(chipsPosto[i]);
-        }
-        return chips;
+        return obterChipsConfirmadosSemIiprDoPosto(postoSelecionadoMalote);
     }
 
     function obterChipsDosIiprMarcados() {
@@ -5459,6 +6078,35 @@ function iniciarConferenciaPacotes() {
     }
 
     document.addEventListener('click', function(e) {
+        var botaoFecharIiprInline = e.target && e.target.closest ? e.target.closest('.btn-inline-fechar-iipr') : null;
+        if (botaoFecharIiprInline) {
+            var postoIipr = botaoFecharIiprInline.getAttribute('data-posto') || '';
+            var campoIipr = document.querySelector('.input-inline-lacre-iipr[data-posto="' + postoIipr + '"]');
+            selecionarPostoMalote(postoIipr);
+            if (fecharMaloteIiprDoPosto(postoIipr, campoIipr ? campoIipr.value : '')) {
+                if (campoIipr) campoIipr.value = '';
+            }
+            return;
+        }
+        var botaoFecharCorreiosInline = e.target && e.target.closest ? e.target.closest('.btn-inline-fechar-correios') : null;
+        if (botaoFecharCorreiosInline) {
+            var postoCorreios = botaoFecharCorreiosInline.getAttribute('data-posto') || '';
+            var campoLacreCorreios = document.querySelector('.input-inline-lacre-correios[data-posto="' + postoCorreios + '"]');
+            var campoEtiquetaCorreios = document.querySelector('.input-inline-etiqueta-correios[data-posto="' + postoCorreios + '"]');
+            selecionarPostoMalote(postoCorreios);
+            if (fecharMaloteCorreiosDoPosto(postoCorreios, campoLacreCorreios ? campoLacreCorreios.value : '', campoEtiquetaCorreios ? campoEtiquetaCorreios.value : '')) {
+                if (campoLacreCorreios) campoLacreCorreios.value = '';
+                if (campoEtiquetaCorreios) campoEtiquetaCorreios.value = '';
+            }
+            return;
+        }
+        var botaoSalvarPostoInline = e.target && e.target.closest ? e.target.closest('.btn-inline-salvar-posto') : null;
+        if (botaoSalvarPostoInline) {
+            var postoSalvar = botaoSalvarPostoInline.getAttribute('data-posto') || '';
+            selecionarPostoMalote(postoSalvar);
+            salvarPendenciasDoPosto(postoSalvar);
+            return;
+        }
         var chip = e.target && e.target.closest ? e.target.closest('.operacao-chip') : null;
         if (chip) {
             selecionarPostoMalote(chip.getAttribute('data-posto') || '', chip.getAttribute('data-regional') || '');
@@ -5616,6 +6264,7 @@ function iniciarConferenciaPacotes() {
         var total = chips.length;
         var conferidos = 0;
         for (var i = 0; i < chips.length; i++) {
+            atualizarVisualChipOperacao(chips[i]);
             if (chips[i].getAttribute('data-conf') === '1') {
                 conferidos++;
             }
@@ -5626,6 +6275,7 @@ function iniciarConferenciaPacotes() {
         if (pacotes) pacotes.textContent = String(total);
         if (conferidosEl) conferidosEl.textContent = String(conferidos);
         if (pendentes) pendentes.textContent = String(Math.max(0, total - conferidos));
+        renderizarMapaMalotesPosto(row.getAttribute('data-posto') || '');
     }
 
     function atualizarChipOperacaoPorCodigo(codigo, confirmado) {
@@ -5638,6 +6288,7 @@ function iniciarConferenciaPacotes() {
         } else {
             chip.classList.remove('confirmado');
         }
+        atualizarVisualChipOperacao(chip);
         atualizarLinhaOperacao(chip.closest('.operacao-posto-row'));
         return chip;
     }
@@ -6354,10 +7005,16 @@ function iniciarConferenciaPacotes() {
     carregarRascunhoMalotesLocal();
     aplicarAtribuicoesPendentesDoRascunho();
 
+    var chipsOperacaoIniciais = document.querySelectorAll('.operacao-chip');
+    for (var iInit = 0; iInit < chipsOperacaoIniciais.length; iInit++) {
+        atualizarVisualChipOperacao(chipsOperacaoIniciais[iInit]);
+    }
+
     aplicarFiltroTipoVisual(obterTipoInicioSelecionado());
     atualizarResumoTodasTabelas();
     sincronizarPainelOperacao();
     atualizarColunaMaloteTradicional();
+    renderizarMapasMalotesPostos();
     renderizarDiagnosticoVoz();
     publicarResumoPrevia();
     iniciarPollingControleRemoto();
