@@ -269,11 +269,11 @@ try {
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
-        .col-destino { width: 28%; }
-        .col-posto { width: 24%; }
-        .col-iipr { width: 12%; }
-        .col-correios { width: 12%; }
-        .col-etiqueta { width: 24%; }
+        .col-destino { width: 24%; }
+        .col-posto { width: 22%; }
+        .col-iipr { width: 22%; }
+        .col-correios { width: 10%; }
+        .col-etiqueta { width: 22%; }
         .destino {
             font-weight: bold;
             letter-spacing: 0.02em;
@@ -293,6 +293,13 @@ try {
         }
         .campo-impressao[readonly] {
             cursor: default;
+        }
+        .campo-lacres-iipr {
+            resize: none;
+            overflow: hidden;
+            white-space: pre-wrap;
+            line-height: 1.3;
+            min-height: 24px;
         }
         .campo-etiqueta {
             border-bottom: 1px dashed rgba(45,43,39,0.45);
@@ -618,11 +625,26 @@ try {
                     snapshot.resumo[i] = item;
                     alterou = true;
                 }
+                if (!item.grupos_correios || !item.grupos_correios.length) {
+                    item.grupos_correios = item.grupo_correios ? [item.grupo_correios] : [];
+                    snapshot.resumo[i] = item;
+                    alterou = true;
+                }
             }
             if (alterou && persistir) {
                 salvarSnapshot(snapshot);
             }
             return snapshot;
+        }
+
+        function calcularLinhasLacres(valor) {
+            var texto = String(valor || '').trim();
+            if (!texto) return 1;
+            var segmentos = texto.split(/\s*,\s*/).filter(function(item) { return !!item; }).length;
+            var porTamanho = Math.ceil(texto.length / 24);
+            var porSegmentos = Math.ceil(segmentos / 3);
+            var linhas = Math.max(1, porTamanho, porSegmentos);
+            return Math.min(6, linhas);
         }
 
         function montarLinhas(snapshot) {
@@ -641,6 +663,7 @@ try {
                     regional: item.regional || '',
                     regional_codigo: item.regional_codigo || '',
                     grupo_correios: item.grupo_correios || '',
+                    grupos_correios: item.grupos_correios || [],
                     grupo_iipr: item.grupo_iipr || '',
                     lacre_iipr: item.lacre_iipr || '',
                     lacre_correios: item.lacre_correios || '',
@@ -698,7 +721,7 @@ try {
                 html += '<tr data-row-key="' + escapeHtml(item.row_key) + '">';
                 html += '<td class="destino">' + escapeHtml(rotuloDestino) + '</td>';
                 html += '<td><div>' + escapeHtml(item.posto_rotulo) + '</div><div class="posto-linha">Grupo Correios: ' + escapeHtml(item.grupo_correios || '-') + '</div></td>';
-                html += '<td><input class="campo-impressao" type="text" value="' + escapeHtml(item.lacre_iipr || '') + '" readonly></td>';
+                html += '<td><textarea class="campo-impressao campo-lacres-iipr" rows="' + calcularLinhasLacres(item.lacre_iipr || '') + '" readonly>' + escapeHtml(item.lacre_iipr || '') + '</textarea></td>';
                 html += '<td><input class="campo-impressao" type="text" value="' + escapeHtml(item.lacre_correios || '') + '" readonly></td>';
                 html += '<td><input class="campo-impressao campo-etiqueta" type="text" value="' + escapeHtml(item.etiqueta_correios || '') + '" data-row-key="' + escapeHtml(item.row_key) + '" data-field="etiqueta_correios" maxlength="35"></td>';
                 html += '</tr>';

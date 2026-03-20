@@ -280,6 +280,9 @@ function normalizarListaDatasPacotes($datasRaw) {
 }
 
 function montarChaveLinhaResumoPreview($linha, $indice) {
+    if (isset($linha['row_key']) && trim((string)$linha['row_key']) !== '') {
+        return trim((string)$linha['row_key']);
+    }
     $grupoCorreios = isset($linha['grupo_correios']) ? trim((string)$linha['grupo_correios']) : '';
     if ($grupoCorreios !== '') {
         return 'gc:' . $grupoCorreios;
@@ -291,6 +294,31 @@ function montarChaveLinhaResumoPreview($linha, $indice) {
     $posto = isset($linha['posto']) ? trim((string)$linha['posto']) : '';
     $regional = isset($linha['regional_codigo']) ? trim((string)$linha['regional_codigo']) : '';
     return 'ln:' . $posto . ':' . $regional . ':' . ((int)$indice);
+}
+
+function normalizarGruposResumoPreview($valor) {
+    $saida = array();
+    if (is_array($valor)) {
+        foreach ($valor as $item) {
+            $item = trim((string)$item);
+            if ($item !== '' && !in_array($item, $saida, true)) {
+                $saida[] = $item;
+            }
+        }
+        return $saida;
+    }
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return $saida;
+    }
+    $partes = explode(',', $valor);
+    foreach ($partes as $parte) {
+        $parte = trim((string)$parte);
+        if ($parte !== '' && !in_array($parte, $saida, true)) {
+            $saida[] = $parte;
+        }
+    }
+    return $saida;
 }
 
 // Conexão
@@ -483,7 +511,7 @@ try {
             }
 
             $placeholdersDatas = implode(',', array_fill(0, count($datasSql), '?'));
-            $sqlSelectLacres = "SELECT posto, lote, qtd, dataexp, usuario_lacre, lacre_iipr, grupo_iipr, lacre_correios, grupo_correios, etiqueta_correios\n                FROM conferencia_pacotes_lacres\n                WHERE grupo_correios = ? AND dataexp IN ($placeholdersDatas)\n                ORDER BY CAST(posto AS UNSIGNED), CAST(lote AS UNSIGNED), id";
+            $sqlSelectLacres = "SELECT codbar, posto, lote, qtd, dataexp, usuario_lacre, lacre_iipr, grupo_iipr, lacre_correios, grupo_correios, etiqueta_correios\n                FROM conferencia_pacotes_lacres\n                WHERE grupo_correios = ? AND dataexp IN ($placeholdersDatas)\n                ORDER BY CAST(posto AS UNSIGNED), CAST(lote AS UNSIGNED), id";
             $stSelLacres = $pdo->prepare($sqlSelectLacres);
 
             $sqlUpdateEtiqueta = "UPDATE conferencia_pacotes_lacres\n                SET etiqueta_correios = ?, usuario_lacre = ?, atualizado_em = NOW()\n                WHERE grupo_correios = ? AND dataexp IN ($placeholdersDatas)";
@@ -498,21 +526,27 @@ try {
             for ($iLinha = 0; $iLinha < count($linhasResumo); $iLinha++) {
                 $linha = is_array($linhasResumo[$iLinha]) ? $linhasResumo[$iLinha] : array();
                 $grupoCorreios = isset($linha['grupo_correios']) ? trim((string)$linha['grupo_correios']) : '';
+                $gruposCorreiosLinha = normalizarGruposResumoPreview(isset($linha['grupos_correios']) ? $linha['grupos_correios'] : $grupoCorreios);
+                if (empty($gruposCorreiosLinha) && $grupoCorreios !== '') {
+                    $gruposCorreiosLinha[] = $grupoCorreios;
+                }
                 $grupoIipr = isset($linha['grupo_iipr']) ? trim((string)$linha['grupo_iipr']) : '';
                 $postoLinha = isset($linha['posto']) ? trim((string)$linha['posto']) : '';
                 $etiquetaLinha = isset($linha['etiqueta_correios']) ? substr(trim((string)$linha['etiqueta_correios']), 0, 35) : '';
                 $lacreIiprLinha = isset($linha['lacre_iipr']) ? trim((string)$linha['lacre_iipr']) : '';
                 $lacreCorreiosLinha = isset($linha['lacre_correios']) ? trim((string)$linha['lacre_correios']) : '';
 
-                if ($grupoCorreios !== '') {
-                    $paramsUpdate = array($etiquetaLinha === '' ? null : $etiquetaLinha, $usuario, $grupoCorreios);
-                    for ($iData = 0; $iData < count($datasSql); $iData++) {
-                        $paramsUpdate[] = $datasSql[$iData];
+                if (!empty($gruposCorreiosLinha)) {
+                    for ($iGrupoUpdate = 0; $iGrupoUpdate < count($gruposCorreiosLinha); $iGrupoUpdate++) {
+                        $paramsUpdate = array($etiquetaLinha === '' ? null : $etiquetaLinha, $usuario, $gruposCorreiosLinha[$iGrupoUpdate]);
+                        for ($iData = 0; $iData < count($datasSql); $iData++) {
+                            $paramsUpdate[] = $datasSql[$iData];
+                        }
+                        $stUpdEtiqueta->execute($paramsUpdate);
                     }
-                    $stUpdEtiqueta->execute($paramsUpdate);
                 }
 
-                $chaveGrupo = $grupoCorreios !== '' ? $grupoCorreios : montarChaveLinhaResumoPreview($linha, $iLinha);
+                $chaveGrupo = !empty($gruposCorreiosLinha) ? implode('|', $gruposCorreiosLinha) : montarChaveLinhaResumoPreview($linha, $iLinha);
                 if (isset($gruposInseridos[$chaveGrupo])) {
                     continue;
                 }
@@ -520,14 +554,25 @@ try {
                 $linhasGravadas++;
 
                 $rowsLacres = array();
-                if ($grupoCorreios !== '') {
-                    $paramsSelect = array($grupoCorreios);
-                    for ($iDataSel = 0; $iDataSel < count($datasSql); $iDataSel++) {
-                        $paramsSelect[] = $datasSql[$iDataSel];
+                if (!empty($gruposCorreiosLinha)) {
+                    $rowsLacresMap = array();
+                    for ($iGrupoSel = 0; $iGrupoSel < count($gruposCorreiosLinha); $iGrupoSel++) {
+                        $paramsSelect = array($gruposCorreiosLinha[$iGrupoSel]);
+                        for ($iDataSel = 0; $iDataSel < count($datasSql); $iDataSel++) {
+                            $paramsSelect[] = $datasSql[$iDataSel];
+                        }
+                        $stSelLacres->execute($paramsSelect);
+                        $rowsGrupo = $stSelLacres->fetchAll(PDO::FETCH_ASSOC);
+                        $stSelLacres->closeCursor();
+                        for ($iRow = 0; $iRow < count($rowsGrupo); $iRow++) {
+                            $rowGrupo = $rowsGrupo[$iRow];
+                            $chaveRow = isset($rowGrupo['codbar']) && trim((string)$rowGrupo['codbar']) !== ''
+                                ? trim((string)$rowGrupo['codbar'])
+                                : (trim((string)$rowGrupo['posto']) . '|' . trim((string)$rowGrupo['lote']) . '|' . trim((string)$rowGrupo['grupo_iipr']));
+                            $rowsLacresMap[$chaveRow] = $rowGrupo;
+                        }
                     }
-                    $stSelLacres->execute($paramsSelect);
-                    $rowsLacres = $stSelLacres->fetchAll(PDO::FETCH_ASSOC);
-                    $stSelLacres->closeCursor();
+                    $rowsLacres = array_values($rowsLacresMap);
                 }
 
                 if (!empty($rowsLacres)) {
@@ -2519,6 +2564,12 @@ try {
         }
         .operacao-oficio-tabela td {
             background: rgba(8, 25, 40, 0.86);
+        }
+        .operacao-oficio-lacres {
+            white-space: normal;
+            word-break: break-word;
+            line-height: 1.35;
+            min-width: 170px;
         }
         .operacao-oficio-vazio {
             margin-top: 10px;
@@ -4666,6 +4717,26 @@ function iniciarConferenciaPacotes() {
         return partes.join(', ');
     }
 
+    function montarChaveConsolidacaoCorreios(dados) {
+        var posto = String(dados && dados.posto || '').trim();
+        var regional = String(dados && (dados.regional_codigo || dados.regional) || '').trim();
+        var lacreCorreios = String(dados && dados.lacre_correios || '').trim();
+        var etiquetaCorreios = String(dados && dados.etiqueta_correios || '').trim();
+        if (lacreCorreios || etiquetaCorreios) {
+            return ['COR', posto || '-', regional || '-', lacreCorreios || '-', etiquetaCorreios || '-'].join('|');
+        }
+        var grupoCorreios = String(dados && dados.grupo_correios || '').trim();
+        if (grupoCorreios) {
+            return ['GC', posto || '-', regional || '-', grupoCorreios].join('|');
+        }
+        var grupoIipr = String(dados && dados.grupo_iipr || '').trim();
+        if (grupoIipr) {
+            return ['GI', posto || '-', regional || '-', grupoIipr].join('|');
+        }
+        var lacreIipr = String(dados && dados.lacre_iipr || '').trim();
+        return ['LI', posto || '-', regional || '-', lacreIipr || '-'].join('|');
+    }
+
     function criarEstruturaRascunhoMalotes() {
         return { postos: {}, atribuicoes: {} };
     }
@@ -4907,7 +4978,7 @@ function iniciarConferenciaPacotes() {
                 continue;
             }
 
-            var chaveGrupo = dados.grupo_correios ? [dados.posto || '', dados.grupo_correios || '', dados.regional || ''].join('|') : [dados.posto || '', dados.grupo_iipr || '', dados.regional || ''].join('|');
+            var chaveGrupo = montarChaveConsolidacaoCorreios(dados);
             if (!grupos[chaveGrupo]) {
                 grupos[chaveGrupo] = {
                     regional: dados.regional || '',
@@ -4919,7 +4990,9 @@ function iniciarConferenciaPacotes() {
                     lacres_correios: [],
                     etiqueta_correios: '',
                     grupo_iipr: [],
-                    grupo_correios: dados.grupo_correios || ''
+                    grupo_correios: dados.grupo_correios || '',
+                    grupos_correios: [],
+                    row_key: chaveGrupo
                 };
             }
             grupos[chaveGrupo].lotes.push(dados.lote || '');
@@ -4927,6 +5000,7 @@ function iniciarConferenciaPacotes() {
             if (dados.lacre_iipr && grupos[chaveGrupo].lacres_iipr.indexOf(String(dados.lacre_iipr)) === -1) grupos[chaveGrupo].lacres_iipr.push(String(dados.lacre_iipr));
             if (dados.lacre_correios && grupos[chaveGrupo].lacres_correios.indexOf(String(dados.lacre_correios)) === -1) grupos[chaveGrupo].lacres_correios.push(String(dados.lacre_correios));
             if (dados.grupo_iipr && grupos[chaveGrupo].grupo_iipr.indexOf(dados.grupo_iipr) === -1) grupos[chaveGrupo].grupo_iipr.push(dados.grupo_iipr);
+            if (dados.grupo_correios && grupos[chaveGrupo].grupos_correios.indexOf(dados.grupo_correios) === -1) grupos[chaveGrupo].grupos_correios.push(dados.grupo_correios);
             if (!grupos[chaveGrupo].etiqueta_correios && dados.etiqueta_correios) {
                 grupos[chaveGrupo].etiqueta_correios = dados.etiqueta_correios;
             }
@@ -4945,7 +5019,9 @@ function iniciarConferenciaPacotes() {
                 lacre_correios: compactarSequenciaNumerica(grupos[chave].lacres_correios),
                 etiqueta_correios: grupos[chave].etiqueta_correios,
                 grupo_iipr: grupos[chave].grupo_iipr.join(','),
-                grupo_correios: grupos[chave].grupo_correios
+                grupo_correios: grupos[chave].grupo_correios,
+                grupos_correios: grupos[chave].grupos_correios.slice(0),
+                row_key: grupos[chave].row_key
             });
         }
 
@@ -5353,7 +5429,7 @@ function iniciarConferenciaPacotes() {
 
             if (dados.lacre_correios || dados.etiqueta_correios) {
                 gruposIipr[chaveIipr].temCorreios = true;
-                var chaveCorreios = dados.grupo_correios || ('GC|' + (dados.lacre_correios || '-') + '|' + (dados.etiqueta_correios || '-') + '|' + (dados.posto || '-'));
+                var chaveCorreios = montarChaveConsolidacaoCorreios(dados);
                 if (!gruposCorreios[chaveCorreios]) {
                     gruposCorreios[chaveCorreios] = {
                         posto: dados.posto || '',
@@ -5364,11 +5440,16 @@ function iniciarConferenciaPacotes() {
                         lacre_correios: dados.lacre_correios || '',
                         etiqueta_correios: dados.etiqueta_correios || '',
                         lotes: [],
-                        pendente: false
+                        pendente: false,
+                        grupos_correios: [],
+                        row_key: chaveCorreios
                     };
                 }
                 if (dados.lacre_iipr && gruposCorreios[chaveCorreios].lacres_iipr.indexOf(String(dados.lacre_iipr)) === -1) {
                     gruposCorreios[chaveCorreios].lacres_iipr.push(String(dados.lacre_iipr));
+                }
+                if (dados.grupo_correios && gruposCorreios[chaveCorreios].grupos_correios.indexOf(dados.grupo_correios) === -1) {
+                    gruposCorreios[chaveCorreios].grupos_correios.push(dados.grupo_correios);
                 }
                 if (dados.lote && gruposCorreios[chaveCorreios].lotes.indexOf(dados.lote) === -1) {
                     gruposCorreios[chaveCorreios].lotes.push(dados.lote);
@@ -5471,7 +5552,7 @@ function iniciarConferenciaPacotes() {
                 if ((totaisPorDestino[destino] || 0) > 1) {
                     rotuloDestino += ' - linha ' + ordemPorDestino[destino];
                 }
-                linhas.push('<tr><td>' + escapeHtml(rotuloDestino) + '</td><td>' + escapeHtml(linha.lacres_iipr || '-') + '</td><td>' + escapeHtml(linha.lacre_correios || '-') + '</td><td style="word-break:break-all;">' + escapeHtml(linha.etiqueta_correios || '-') + '</td></tr>');
+                linhas.push('<tr><td>' + escapeHtml(rotuloDestino) + '</td><td><div class="operacao-oficio-lacres">' + escapeHtml(linha.lacres_iipr || '-') + '</div></td><td>' + escapeHtml(linha.lacre_correios || '-') + '</td><td style="word-break:break-all;">' + escapeHtml(linha.etiqueta_correios || '-') + '</td></tr>');
             }
             htmlLinhasOficio = '<table class="operacao-oficio-tabela"><thead><tr><th>Regional / Linha</th><th>Lacre IIPR</th><th>Lacre Correios</th><th>Etiqueta</th></tr></thead><tbody>' + linhas.join('') + '</tbody></table>';
         } else {
