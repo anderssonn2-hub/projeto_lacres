@@ -4553,6 +4553,9 @@ function iniciarConferenciaPacotes() {
         creditosAtivos = true;
         creditosAnimando = true;
         creditosIniciadoEm = Date.now();
+        if (mensagemLeitura) {
+            mensagemLeitura.innerHTML = '<strong>Créditos finais:</strong> iniciando apresentação de encerramento.';
+        }
         garantirEstrelasCreditos();
         renderizarCreditosFinais();
 
@@ -4623,13 +4626,15 @@ function iniciarConferenciaPacotes() {
 
         if (creditosAtivos || creditosJaExibidos || timerInicioCreditos) return;
 
+        if (mensagemLeitura) {
+            mensagemLeitura.innerHTML = '<strong>Conferência finalizada:</strong> preparando créditos finais...';
+        }
+
         timerInicioCreditos = setTimeout(function() {
             timerInicioCreditos = null;
             if (!todosCorreiosConferidos()) return;
-            aguardarFilaSonsLivre(function() {
-                iniciarCreditosFinais();
-            }, 0);
-        }, 1000);
+            iniciarCreditosFinais();
+        }, 1200);
     }
 
     function aplicarInterrupcaoCreditos() {
