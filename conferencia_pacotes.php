@@ -4279,6 +4279,7 @@ function iniciarConferenciaPacotes() {
     var creditosJaExibidos = false;
     var creditosAtivos = false;
     var timerInicioCreditos = null;
+    var fimCorreiosJaDisparado = false;
     var creditosIniciadoEm = 0;
     var creditosAnimando = false;
     var timerFinalCreditos = null;
@@ -4375,28 +4376,16 @@ function iniciarConferenciaPacotes() {
         return tabelas;
     }
 
-    function todosCorreiosConferidos() {
-        // Créditos finais entram quando todos os lotes dos Correios visíveis estiverem conferidos.
-        // Lotes do Poupa Tempo não devem bloquear esse encerramento.
-        var tabelasVisiveis = obterTabelasCorreiosVisiveis();
-        if (tabelasVisiveis.length) {
-            var totalGeral = 0;
-            var conferidosGeral = 0;
-            for (var t = 0; t < tabelasVisiveis.length; t++) {
-                var titulo = obterTituloTabela(tabelasVisiveis[t]);
-                var span = titulo ? titulo.querySelector('.contagem-pacotes') : null;
-                if (!span) continue;
-                var totalTabela = parseInt(span.getAttribute('data-total') || '0', 10) || 0;
-                var conferidosTabela = parseInt(span.getAttribute('data-conferidos') || '0', 10) || 0;
-                totalGeral += totalTabela;
-                conferidosGeral += conferidosTabela;
-            }
-            if (totalGeral > 0) {
-                return conferidosGeral >= totalGeral;
-            }
+    function obterTodasLinhasCorreiosFinais() {
+        var linhas = document.querySelectorAll('table[data-view="correios"] tbody tr[data-codigo][data-ispt!="1"]');
+        if (linhas && linhas.length) {
+            return linhas;
         }
+        return document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
+    }
 
-        var linhas = obterLinhasCorreiosParaCreditos(true);
+    function todosCorreiosConferidos() {
+        var linhas = obterTodasLinhasCorreiosFinais();
         if (!linhas || !linhas.length) return false;
         for (var i = 0; i < linhas.length; i++) {
             if (!linhas[i].classList.contains('confirmado')) {
@@ -4407,23 +4396,51 @@ function iniciarConferenciaPacotes() {
     }
 
     function diagnosticoCreditosFinais() {
-        var tabelasVisiveis = obterTabelasCorreiosVisiveis();
-        var totalGeral = 0;
-        var conferidosGeral = 0;
-        for (var t = 0; t < tabelasVisiveis.length; t++) {
-            var titulo = obterTituloTabela(tabelasVisiveis[t]);
-            var span = titulo ? titulo.querySelector('.contagem-pacotes') : null;
-            if (!span) continue;
-            totalGeral += parseInt(span.getAttribute('data-total') || '0', 10) || 0;
-            conferidosGeral += parseInt(span.getAttribute('data-conferidos') || '0', 10) || 0;
+        var linhas = obterTodasLinhasCorreiosFinais();
+        var conferidos = 0;
+        for (var i = 0; i < linhas.length; i++) {
+            if (linhas[i].classList.contains('confirmado')) {
+                conferidos++;
+            }
         }
         return {
-            tabelasVisiveis: tabelasVisiveis.length,
-            totalGeral: totalGeral,
-            conferidosGeral: conferidosGeral,
+            totalLinhas: linhas.length,
+            conferidosLinhas: conferidos,
             linhasVisiveis: obterLinhasCorreiosParaCreditos(true).length,
-            todosConferidos: todosCorreiosConferidos()
+            todosConferidos: linhas.length > 0 && conferidos >= linhas.length
         };
+    }
+
+    function iniciarFimConferenciaCorreios() {
+        if (fimCorreiosJaDisparado || creditosAtivos || creditosJaExibidos) return;
+        fimCorreiosJaDisparado = true;
+
+        if (creditosDesativados()) {
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Conferência finalizada:</strong> créditos finais estão desativados no topo da tela.';
+            }
+            return;
+        }
+
+        if (timerInicioCreditos) {
+            clearTimeout(timerInicioCreditos);
+            timerInicioCreditos = null;
+        }
+
+        if (mensagemLeitura) {
+            var diagnostico = diagnosticoCreditosFinais();
+            mensagemLeitura.innerHTML = '<strong>Conferência finalizada:</strong> preparando créditos finais...' +
+                ' <span style="font-size:12px; opacity:0.8;">(' + diagnostico.conferidosLinhas + '/' + diagnostico.totalLinhas + ' linhas Correios)</span>';
+        }
+
+        timerInicioCreditos = setTimeout(function() {
+            timerInicioCreditos = null;
+            if (!todosCorreiosConferidos()) {
+                fimCorreiosJaDisparado = false;
+                return;
+            }
+            iniciarCreditosFinais();
+        }, 1500);
     }
 
     function montarResumoFinalConferencia() {
@@ -4641,6 +4658,7 @@ function iniciarConferenciaPacotes() {
                 pararCreditosFinais(true);
             }
             creditosJaExibidos = false;
+            fimCorreiosJaDisparado = false;
             return;
         }
 
@@ -4656,12 +4674,15 @@ function iniciarConferenciaPacotes() {
         if (mensagemLeitura) {
             var origemTexto = origem ? ' origem ' + escapeHtml(String(origem)) + '.' : '';
             mensagemLeitura.innerHTML = '<strong>Conferência finalizada:</strong> preparando créditos finais...' +
-                ' <span style="font-size:12px; opacity:0.8;">(' + diagnostico.conferidosGeral + '/' + diagnostico.totalGeral + ' pacotes, ' + diagnostico.tabelasVisiveis + ' tabelas visíveis)' + origemTexto + '</span>';
+                ' <span style="font-size:12px; opacity:0.8;">(' + diagnostico.conferidosLinhas + '/' + diagnostico.totalLinhas + ' linhas Correios)' + origemTexto + '</span>';
         }
 
         timerInicioCreditos = setTimeout(function() {
             timerInicioCreditos = null;
-            if (!todosCorreiosConferidos()) return;
+            if (!todosCorreiosConferidos()) {
+                fimCorreiosJaDisparado = false;
+                return;
+            }
             iniciarCreditosFinais();
         }, 1200);
     }
@@ -8319,23 +8340,16 @@ function iniciarConferenciaPacotes() {
             regionalAtual = null;
             tipoAtual = null;
             primeiroConferido = false;
+            if (tipoPacote === 'correios') {
+                setTimeout(function() {
+                    if (todosCorreiosConferidos()) {
+                        iniciarFimConferenciaCorreios();
+                    }
+                }, 800);
+            }
         }
 
         verificarConclusaoFinalCorreios('leitura');
-        if (tipoPacote === 'correios') {
-            var diagnosticoFinal = diagnosticoCreditosFinais();
-            if (diagnosticoFinal.todosConferidos && !creditosAtivos && !creditosJaExibidos && !creditosDesativados()) {
-                if (timerInicioCreditos) {
-                    clearTimeout(timerInicioCreditos);
-                    timerInicioCreditos = null;
-                }
-                setTimeout(function() {
-                    if (todosCorreiosConferidos()) {
-                        iniciarCreditosFinais();
-                    }
-                }, 300);
-            }
-        }
         finalizarProcessamento(true);
         } catch (erroProcessamentoLeitura) {
             console.error('Erro em processarLeituraCodigo:', erroProcessamentoLeitura);
