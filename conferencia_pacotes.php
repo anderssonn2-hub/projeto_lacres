@@ -4284,6 +4284,7 @@ function iniciarConferenciaPacotes() {
     var creditosAtivos = false;
     var timerInicioCreditos = null;
     var fimCorreiosJaDisparado = false;
+    var creditosIgnorarInteracaoAte = 0;
     var creditosIniciadoEm = 0;
     var creditosAnimando = false;
     var timerFinalCreditos = null;
@@ -4552,6 +4553,10 @@ function iniciarConferenciaPacotes() {
             creditosOverlay.classList.remove('ativo');
             creditosOverlay.classList.remove('final');
             creditosOverlay.setAttribute('aria-hidden', 'true');
+            creditosOverlay.style.display = '';
+            creditosOverlay.style.opacity = '';
+            creditosOverlay.style.pointerEvents = '';
+            creditosOverlay.style.zIndex = '';
         }
         if (creditosEndScreen) {
             creditosEndScreen.style.opacity = '';
@@ -4637,14 +4642,16 @@ function iniciarConferenciaPacotes() {
         }
     }
 
-    function iniciarCreditosFinais() {
-        if (creditosAtivos || creditosJaExibidos || creditosDesativados()) return;
+    function iniciarCreditosFinais(forcar) {
+        var modoForcado = !!forcar;
+        if (creditosAtivos || creditosJaExibidos || (!modoForcado && creditosDesativados())) return;
         creditosJaExibidos = true;
         creditosAtivos = true;
         creditosAnimando = true;
         creditosIniciadoEm = Date.now();
+        creditosIgnorarInteracaoAte = creditosIniciadoEm + 1200;
         if (mensagemLeitura) {
-            mensagemLeitura.innerHTML = '<strong>Créditos finais:</strong> iniciando apresentação de encerramento.';
+            mensagemLeitura.innerHTML = '<strong>Créditos finais:</strong> iniciando apresentação de encerramento' + (modoForcado ? ' em modo de teste.' : '.');
         }
         garantirEstrelasCreditos();
         renderizarCreditosFinais();
@@ -4653,6 +4660,10 @@ function iniciarConferenciaPacotes() {
             creditosOverlay.classList.add('ativo');
             creditosOverlay.classList.remove('final');
             creditosOverlay.setAttribute('aria-hidden', 'false');
+            creditosOverlay.style.display = 'block';
+            creditosOverlay.style.opacity = '1';
+            creditosOverlay.style.pointerEvents = 'auto';
+            creditosOverlay.style.zIndex = '99999';
         }
         if (creditosTrilha) {
             creditosTrilha.style.transition = 'none';
@@ -4736,6 +4747,7 @@ function iniciarConferenciaPacotes() {
 
     function aplicarInterrupcaoCreditos() {
         if (!creditosAtivos) return;
+        if (Date.now() < creditosIgnorarInteracaoAte) return;
         if ((Date.now() - creditosIniciadoEm) < 350) return;
         pararCreditosFinais(true);
     }
@@ -7914,10 +7926,14 @@ function iniciarConferenciaPacotes() {
     }
 
     if (btnTestarCreditos) {
-        btnTestarCreditos.addEventListener('click', function() {
+        btnTestarCreditos.addEventListener('click', function(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
             fimCorreiosJaDisparado = false;
             creditosJaExibidos = false;
-            iniciarCreditosFinais();
+            iniciarCreditosFinais(true);
             atualizarIndicadorCreditos();
         });
     }
