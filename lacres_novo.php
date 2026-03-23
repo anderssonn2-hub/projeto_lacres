@@ -6623,6 +6623,14 @@ function limparEtiquetasCentral() {
         window.splitCentralAtivo = false;
         splitIndexCentral = null;
         window.splitVisualIndices = [];
+        var hiddenSplitUnico = document.getElementById('central_split_index');
+        if (hiddenSplitUnico) hiddenSplitUnico.value = '';
+        var hiddenSplits = document.getElementById('central_split_indices');
+        if (hiddenSplits) hiddenSplits.value = '';
+
+        if (window.__centralSplit && typeof window.__centralSplit.clear === 'function') {
+            window.__centralSplit.clear(tabela);
+        }
 
         // Remover classes visuais das linhas da central
         var linhasCentral = document.querySelectorAll('tr.linha-central');
@@ -6630,6 +6638,7 @@ function limparEtiquetasCentral() {
             for (var g = 1; g <= 5; g++) {
                 removerClasse(linhasCentral[r], 'split-central-grupo' + g);
             }
+            removerClasse(linhasCentral[r], 'split-separator-start');
         }
 
         // Resetar estilo dos botões de split
@@ -6912,7 +6921,9 @@ function inicializarMonitoramentoAlteracoes() {
                       '.split-central-grupo2 { background-color: #e8f7ff; } ' +
                       '.split-central-grupo3 { background-color: #fff3e0; } ' +
                       '.split-central-grupo4 { background-color: #f3ffe8; } ' +
-                      '.split-central-grupo5 { background-color: #f0f4ff; }';
+                      '.split-central-grupo5 { background-color: #f0f4ff; } ' +
+                      '.split-separator-start td { border-top: 10px solid #f7f7f7 !important; box-shadow: inset 0 1px 0 #d7be57; } ' +
+                      '@media print { .split-separator-start td { border-top: 1px solid #666 !important; box-shadow: none !important; } }';
             if (styleEl.styleSheet) { styleEl.styleSheet.cssText = css; } else { styleEl.appendChild(document.createTextNode(css)); }
             var heads = document.getElementsByTagName('head');
             if (heads && heads.length) { heads[0].appendChild(styleEl); }
@@ -7126,12 +7137,15 @@ function sincronizarValoresSplit() {
     }
     if (!tabela) return;
     
-    var splitIndex = parseInt((document.getElementById('central_split_index') || {value: -1}).value, 10);
-    if (isNaN(splitIndex) || splitIndex < 0) return;
-    
     var rows = tabela.querySelectorAll('tbody tr');
     if (!rows.length) rows = tabela.querySelectorAll('tr:not(:first-child)');
     if (!rows.length) return;
+
+    var splitIndices = [];
+    if (window.__centralSplit && typeof window.__centralSplit.getIndices === 'function') {
+        splitIndices = window.__centralSplit.getIndices(rows.length);
+    }
+    if (!splitIndices.length) return;
     
     // Encontrar indices das colunas
     var ths = tabela.querySelectorAll('thead th, tr:first-child th');
@@ -7142,67 +7156,43 @@ function sincronizarValoresSplit() {
         if (texto.indexOf('etiqueta correios') >= 0) idxEtiqueta = i;
     }
     
-    // Obter valores do primeiro grupo (antes do split)
-    var valorLacreGrupo1 = '', valorEtiquetaGrupo1 = '';
-    if (rows[0]) {
-        if (idxLacre >= 0 && rows[0].children[idxLacre]) {
-            var inp = rows[0].children[idxLacre].querySelector('input');
-            if (inp) valorLacreGrupo1 = inp.value || '';
-        }
-        if (idxEtiqueta >= 0 && rows[0].children[idxEtiqueta]) {
-            var inp = rows[0].children[idxEtiqueta].querySelector('input');
-            if (inp) valorEtiquetaGrupo1 = inp.value || '';
-        }
+    var starts = [0];
+    for (var si = 0; si < splitIndices.length; si++) {
+        starts.push(splitIndices[si] + 1);
     }
-    
-    // Obter valores do segundo grupo (depois do split)
-    var valorLacreGrupo2 = '', valorEtiquetaGrupo2 = '';
-    if (splitIndex + 1 < rows.length) {
-        var primeiraLinhaGrupo2 = rows[splitIndex + 1];
-        if (idxLacre >= 0 && primeiraLinhaGrupo2.children[idxLacre]) {
-            var inp = primeiraLinhaGrupo2.children[idxLacre].querySelector('input');
-            if (inp) valorLacreGrupo2 = inp.value || '';
+
+    for (var seg = 0; seg < starts.length; seg++) {
+        var start = starts[seg];
+        var end = (seg + 1 < starts.length) ? (starts[seg + 1] - 1) : (rows.length - 1);
+        if (start < 0 || start >= rows.length || end < start) continue;
+
+        var valorLacre = '';
+        var valorEtiqueta = '';
+        var rowStart = rows[start];
+
+        if (idxLacre >= 0 && rowStart.children[idxLacre]) {
+            var inpL = rowStart.children[idxLacre].querySelector('input');
+            if (inpL) valorLacre = inpL.value || '';
         }
-        if (idxEtiqueta >= 0 && primeiraLinhaGrupo2.children[idxEtiqueta]) {
-            var inp = primeiraLinhaGrupo2.children[idxEtiqueta].querySelector('input');
-            if (inp) valorEtiquetaGrupo2 = inp.value || '';
+        if (idxEtiqueta >= 0 && rowStart.children[idxEtiqueta]) {
+            var inpE = rowStart.children[idxEtiqueta].querySelector('input');
+            if (inpE) valorEtiqueta = inpE.value || '';
         }
-    }
-    
-    // Aplicar valores para todas as linhas de cada grupo
-    for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        
-        if (i <= splitIndex) {
-            // Grupo 1: antes do split
+
+        for (var ri = start; ri <= end; ri++) {
+            var row = rows[ri];
             if (idxLacre >= 0 && row.children[idxLacre]) {
-                var inp = row.children[idxLacre].querySelector('input');
-                if (inp) {
-                    inp.value = valorLacreGrupo1;
-                    inp.setAttribute('value', valorLacreGrupo1);
+                var inpLacre = row.children[idxLacre].querySelector('input');
+                if (inpLacre) {
+                    inpLacre.value = valorLacre;
+                    inpLacre.setAttribute('value', valorLacre);
                 }
             }
             if (idxEtiqueta >= 0 && row.children[idxEtiqueta]) {
-                var inp = row.children[idxEtiqueta].querySelector('input');
-                if (inp) {
-                    inp.value = valorEtiquetaGrupo1;
-                    inp.setAttribute('value', valorEtiquetaGrupo1);
-                }
-            }
-        } else {
-            // Grupo 2: depois do split
-            if (idxLacre >= 0 && row.children[idxLacre]) {
-                var inp = row.children[idxLacre].querySelector('input');
-                if (inp) {
-                    inp.value = valorLacreGrupo2;
-                    inp.setAttribute('value', valorLacreGrupo2);
-                }
-            }
-            if (idxEtiqueta >= 0 && row.children[idxEtiqueta]) {
-                var inp = row.children[idxEtiqueta].querySelector('input');
-                if (inp) {
-                    inp.value = valorEtiquetaGrupo2;
-                    inp.setAttribute('value', valorEtiquetaGrupo2);
+                var inpEtiqueta = row.children[idxEtiqueta].querySelector('input');
+                if (inpEtiqueta) {
+                    inpEtiqueta.value = valorEtiqueta;
+                    inpEtiqueta.setAttribute('value', valorEtiqueta);
                 }
             }
         }
@@ -7287,32 +7277,42 @@ document.addEventListener("DOMContentLoaded", function() {
     // v8.11.1: indices visuais para destacar multiplos splits
     window.splitVisualIndices = window.splitVisualIndices || [];
 
-    // Aplica destaque visual nas linhas da CENTRAL de acordo com splitVisualIndices
-    function aplicarDestaqueSplits() {
-        var linhasCentral = document.querySelectorAll('tr.linha-central');
-        if (!linhasCentral) return;
-
-        // Remover classes antigas
-        for (var i = 0; i < linhasCentral.length; i++) {
-            for (var g = 1; g <= 5; g++) {
-                removerClasse(linhasCentral[i], 'split-central-grupo' + g);
-            }
+    function obterIndicesSplitCentral(total) {
+        if (window.__centralSplit && typeof window.__centralSplit.getIndices === 'function') {
+            return window.__centralSplit.getIndices(total);
         }
 
-        if (!window.splitVisualIndices || window.splitVisualIndices.length === 0) return;
+        var indices = window.splitVisualIndices || [];
+        var mapa = {};
+        var filtrados = [];
+        for (var i = 0; i < indices.length; i++) {
+            var numero = parseInt(indices[i], 10);
+            if (isNaN(numero) || numero < 0 || numero >= total - 1 || mapa[numero]) continue;
+            mapa[numero] = true;
+            filtrados.push(numero);
+        }
+        filtrados.sort(function(a, b){ return a - b; });
+        return filtrados;
+    }
 
-        // Ordenar indices e aplicar classes aos ranges abaixo de cada split
-        var indices = window.splitVisualIndices.slice(0).sort(function(a,b){return a-b;});
-        var total = linhasCentral.length;
-        for (var gi = 0; gi < indices.length; gi++) {
-            var start = indices[gi] + 1; // linhas abaixo do split
-            var end = (gi + 1 < indices.length) ? (indices[gi+1]) : (total - 1);
-            var classe = 'split-central-grupo' + (gi + 1);
-            for (var r = start; r <= end; r++) {
-                if (r >= 0 && r < total) {
-                    adicionarClasse(linhasCentral[r], classe);
-                }
+    function encontrarGrupoCentral(rowIndex, total) {
+        var indices = obterIndicesSplitCentral(total);
+        var inicio = 0;
+        var grupo = 0;
+        for (var i = 0; i < indices.length; i++) {
+            if (rowIndex <= indices[i]) {
+                return { inicio: inicio, fim: indices[i], grupo: grupo, indices: indices };
             }
+            inicio = indices[i] + 1;
+            grupo++;
+        }
+        return { inicio: inicio, fim: total - 1, grupo: grupo, indices: indices };
+    }
+
+    // Aplica destaque visual nas linhas da CENTRAL de acordo com splitVisualIndices
+    function aplicarDestaqueSplits() {
+        if (window.__centralSplit && typeof window.__centralSplit.refresh === 'function') {
+            window.__centralSplit.refresh();
         }
     }
 
@@ -7329,37 +7329,23 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         if (idx < 0) return;
 
-        // Toggle visual split: se ja existe no array, remover; senao adicionar
-        var foundPos = -1;
-        for (var z = 0; z < window.splitVisualIndices.length; z++) {
-            if (window.splitVisualIndices[z] === idx) { foundPos = z; break; }
-        }
-        if (foundPos >= 0) {
-            // remover
-            window.splitVisualIndices.splice(foundPos, 1);
-            btn.style.background = '';
-            btn.textContent = 'Split aqui';
+        if (window.__centralSplit && typeof window.__centralSplit.toggleBoundary === 'function') {
+            window.__centralSplit.toggleBoundary(idx);
+            var ativos = window.__centralSplit.getIndices(linhasCentral.length);
+            splitIndexCentral = ativos.length ? ativos[0] : null;
         } else {
-            // adicionar
-            window.splitVisualIndices.push(idx);
-            btn.style.background = '#ff9800';
-            btn.textContent = '← Split AQUI';
-        }
-
-        // Manter compatibilidade com comportamento antigo: alternar splitIndexCentral para logica de replicacao
-        if (splitIndexCentral === idx) {
-            splitIndexCentral = null;
-        } else {
-            // Limpar estilo de botoes de split antigos para que apenas o "ativo" (logica) fique destacado
-            var allSplitBtns = document.querySelectorAll('button[onclick*="definirSplitAqui"]');
-            for (var j = 0; j < allSplitBtns.length; j++) {
-                allSplitBtns[j].style.border = '';
+            var foundPos = -1;
+            for (var z = 0; z < window.splitVisualIndices.length; z++) {
+                if (window.splitVisualIndices[z] === idx) { foundPos = z; break; }
             }
-            splitIndexCentral = idx;
-            btn.style.border = '2px solid #ff9800';
+            if (foundPos >= 0) {
+                window.splitVisualIndices.splice(foundPos, 1);
+            } else {
+                window.splitVisualIndices.push(idx);
+            }
+            splitIndexCentral = window.splitVisualIndices.length ? window.splitVisualIndices[0] : null;
         }
 
-        // Aplicar destaques visuais
         aplicarDestaqueSplits();
     };
     
@@ -7379,25 +7365,15 @@ document.addEventListener("DOMContentLoaded", function() {
         var valor = campo.value;
         var selector = (tipo === 'correios') ? 'input.central-correios' : 'input.central-etiqueta';
         
-        if (splitIndexCentral === null) {
+        var grupoAtual = encontrarGrupoCentral(rowIndex, linhasCentral.length);
+        if (!grupoAtual.indices.length) {
             // No split: replicate to all CENTRAL fields of this type
             var campos = document.querySelectorAll(selector);
             for (var j = 0; j < campos.length; j++) {
                 campos[j].value = valor;
+                campos[j].setAttribute('value', valor);
             }
         } else {
-            // Split active: replicate only within the group
-            var groupStart, groupEnd;
-            if (rowIndex <= splitIndexCentral) {
-                // Editing in group 1 (before/at split): replicate to group 1 only
-                groupStart = 0;
-                groupEnd = splitIndexCentral;
-            } else {
-                // Editing in group 2 (after split): replicate to group 2 only
-                groupStart = splitIndexCentral + 1;
-                groupEnd = linhasCentral.length - 1;
-            }
-            
             // Apply to fields in the appropriate group
             var campos = document.querySelectorAll(selector);
             for (var k = 0; k < campos.length; k++) {
@@ -7411,8 +7387,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
                 
                 // Replicate if field is within the current group
-                if (fieldRowIndex >= groupStart && fieldRowIndex <= groupEnd) {
+                if (fieldRowIndex >= grupoAtual.inicio && fieldRowIndex <= grupoAtual.fim) {
                     campos[k].value = valor;
+                    campos[k].setAttribute('value', valor);
                 }
             }
         }
@@ -7422,6 +7399,9 @@ document.addEventListener("DOMContentLoaded", function() {
     var centralCorreioInputs = document.querySelectorAll('input.central-correios');
     for (var c = 0; c < centralCorreioInputs.length; c++) {
         (function(campo) {
+            campo.addEventListener('input', function() {
+                replicarValor(campo, 'correios');
+            });
             campo.addEventListener('change', function() {
                 replicarValor(campo, 'correios');
             });
@@ -7432,6 +7412,9 @@ document.addEventListener("DOMContentLoaded", function() {
     var centralEtiquetaInputs = document.querySelectorAll('input.central-etiqueta');
     for (var e = 0; e < centralEtiquetaInputs.length; e++) {
         (function(campo) {
+            campo.addEventListener('input', function() {
+                replicarValor(campo, 'etiqueta');
+            });
             campo.addEventListener('change', function() {
                 replicarValor(campo, 'etiqueta');
             });
@@ -8079,6 +8062,8 @@ $__pt_datas_join = htmlspecialchars(
 <style>
   #btnSplitCentral{margin-left:12px}
   tr.split-below{background:#fff9cc}
+    tr.split-separator-start td{border-top:10px solid #f7f7f7;box-shadow:inset 0 1px 0 #d7be57}
+    @media print{tr.split-separator-start td{border-top:1px solid #666;box-shadow:none}}
   #splitCentralModal{position:fixed; inset:0; background:rgba(0,0,0,.35); display:none;
     align-items:center; justify-content:center; z-index:9999;}
   #splitCentralModal .box{background:#fff; border-radius:10px; min-width:360px; max-width:640px;
@@ -8086,6 +8071,7 @@ $__pt_datas_join = htmlspecialchars(
   #splitCentralModal h3{margin:0 0 8px 0}
   #splitCentralModal .list{max-height:320px; overflow:auto; border:1px solid #ddd; border-radius:8px; padding:8px}
   #splitCentralModal .row{display:flex; gap:8px; align-items:center; margin:4px 0}
+    #splitCentralModal .hint{font-size:12px;color:#666;margin-bottom:10px;line-height:1.45}
   #splitCentralModal .actions{display:flex; gap:10px; justify-content:flex-end; margin-top:12px}
   #splitCentralModal button{padding:8px 12px; border-radius:6px; border:1px solid #bbb; cursor:pointer}
   #splitCentralModal .ok{background:#4caf50; color:#fff; border-color:#4caf50}
@@ -8094,7 +8080,8 @@ $__pt_datas_join = htmlspecialchars(
 
 <div id="splitCentralModal">
   <div class="box">
-    <h3>Escolha a partir de qual posto será feito o split (somente CENTRAL IIPR)</h3>
+        <h3>Selecione onde um novo malote começa na CENTRAL IIPR</h3>
+        <div class="hint">Marque um ou mais pontos de corte. Cada bloco passa a ter seu próprio display e seu próprio lacre Correios, sem interferir nos demais. Na impressão, a grade continua unificada.</div>
     <div class="list" id="splitCentralList"></div>
     <div class="actions">
       <button class="cancel" id="splitCentralCancel">Cancelar</button>
@@ -8105,6 +8092,19 @@ $__pt_datas_join = htmlspecialchars(
 
 <script>
 (function(){
+    function parseIndices(raw, total){
+        var partes = String(raw || '').split(',');
+        var mapa = {};
+        var indices = [];
+        for (var i = 0; i < partes.length; i++) {
+            var numero = parseInt(partes[i], 10);
+            if (isNaN(numero) || numero < 0 || numero >= total - 1 || mapa[numero]) continue;
+            mapa[numero] = true;
+            indices.push(numero);
+        }
+        indices.sort(function(a, b){ return a - b; });
+        return indices;
+    }
   function ensureCentralId(){
     var t = document.getElementById('tblCentralIIPR');
     if (t) return t;
@@ -8186,6 +8186,17 @@ $__pt_datas_join = htmlspecialchars(
     if (!rows.length) rows = tbl.querySelectorAll('tr:not(:first-child)');
     return rows;
   }
+    function ensureHiddenInput(id, name){
+        var hid = document.getElementById(id);
+        if (!hid) {
+            hid = document.createElement('input');
+            hid.type = 'hidden';
+            hid.id = id;
+            hid.name = name;
+            document.body.appendChild(hid);
+        }
+        return hid;
+    }
   function indexByHeader(tbl, headerText){
     var ths = tbl.querySelectorAll('thead th, tr:first-child th');
     var target = (headerText||'').toLowerCase();
@@ -8220,12 +8231,6 @@ $__pt_datas_join = htmlspecialchars(
       }
     };
   }
-  function defaults(tbl, idxL, idxE){
-    var rs = rowsOf(tbl); if (!rs.length) return {lacre:'', etiqueta:''};
-    var cL = (idxL>=0) ? rs[0].children[idxL] : null;
-    var cE = (idxE>=0) ? rs[0].children[idxE] : null;
-    return {lacre: cell(cL).get().trim(), etiqueta: cell(cE).get().trim()};
-  }
   // Funcao auxiliar para adicionar classe (compativel com navegadores antigos)
   function addClass(el, classe) {
     if (!el) return;
@@ -8239,209 +8244,109 @@ $__pt_datas_join = htmlspecialchars(
     var regex = new RegExp('\\s*' + classe, 'g');
     el.className = el.className.replace(regex, '');
   }
-  function applyAt(tbl, splitIndex){
-    var rs = rowsOf(tbl); if (!rs.length) return;
-    var idxL = indexByHeader(tbl,'lacre correios');
-    var idxE = indexByHeader(tbl,'etiqueta correios');
-    var def = defaults(tbl, idxL, idxE);
-    
-    // Primeiro, marcar visualmente o split e configurar editabilidade
-    for (var i=0;i<rs.length;i++){
-      var r = rs[i];
-      var cL = (idxL>=0) ? r.children[idxL] : null;
-      var cE = (idxE>=0) ? r.children[idxE] : null;
-      
-      if (i<=splitIndex){
-        // GRUPO 1 (acima do split)
-        removeClass(r, 'split-below');
-        if (i === 0) {
-          // Primeira linha do grupo 1: editavel (define o valor do grupo)
-          if (cL) cell(cL).set(def.lacre), cell(cL).lock(false);
-          if (cE) cell(cE).set(def.etiqueta), cell(cE).lock(false);
-        } else {
-          // Demais linhas do grupo 1: readonly, recebem o valor da primeira linha
-          if (cL) cell(cL).set(def.lacre), cell(cL).lock(true);
-          if (cE) cell(cE).set(def.etiqueta), cell(cE).lock(true);
-        }
-      }else{
-        // GRUPO 2 (abaixo do split)
-        addClass(r, 'split-below');
-        if (i === splitIndex + 1) {
-          // Primeira linha do grupo 2: editavel (define o valor do grupo)
-          if (cL) cell(cL).set(''), cell(cL).lock(false);
-          if (cE) cell(cE).set(''), cell(cE).lock(false);
-        } else {
-          // Demais linhas do grupo 2: readonly, receberao o valor da primeira linha do grupo 2
-          if (cL) cell(cL).set(''), cell(cL).lock(true);
-          if (cE) cell(cE).set(''), cell(cE).lock(true);
-        }
-      }
+    function removeSplitClasses(row){
+        removeClass(row, 'split-below');
+        removeClass(row, 'split-separator-start');
+        for (var g = 1; g <= 5; g++) removeClass(row, 'split-central-grupo' + g);
     }
-    var hid = document.getElementById('central_split_index');
-    if (!hid){
-      hid = document.createElement('input');
-      hid.type='hidden'; hid.name='central_split_index'; hid.id='central_split_index';
-      document.body.appendChild(hid);
+    function getIndices(tbl){
+        var total = rowsOf(tbl).length || 0;
+        var hidden = document.getElementById('central_split_indices');
+        var raw = hidden ? hidden.value : '';
+        var indices = parseIndices(raw, total);
+        if (!indices.length && window.splitVisualIndices && window.splitVisualIndices.length) {
+            indices = parseIndices(window.splitVisualIndices.join(','), total);
+        }
+        return indices;
     }
-    hid.value = String(splitIndex);
-    
-    // Configurar propagacao automatica para ambos os grupos
-    configurarPropagacaoGrupos(tbl, splitIndex, idxL, idxE);
-    
-    // VERSAO 3 CORRIGIDA: Aplicar valores imediatamente apos ativar split
-    // Propagar valores existentes da primeira linha de cada grupo para as demais
-    propagarValoresIniciais(tbl, splitIndex, idxL, idxE);
-  }
-  
-  // Funcao para propagar valores iniciais imediatamente apos ativar o split
-  function propagarValoresIniciais(tbl, splitIndex, idxL, idxE) {
-    var rs = rowsOf(tbl);
-    if (!rs.length) return;
-    
-    // GRUPO 1: Propagar valores da linha 0 para linhas 1 ate splitIndex
-    if (rs[0]) {
-      var valorL1 = '', valorE1 = '';
-      if (idxL >= 0 && rs[0].children[idxL]) {
-        var inp = rs[0].children[idxL].querySelector('input');
-        if (inp) valorL1 = inp.value || '';
-      }
-      if (idxE >= 0 && rs[0].children[idxE]) {
-        var inp = rs[0].children[idxE].querySelector('input');
-        if (inp) valorE1 = inp.value || '';
-      }
-      
-      for (var i = 1; i <= splitIndex && i < rs.length; i++) {
-        if (idxL >= 0 && rs[i].children[idxL]) {
-          var c = rs[i].children[idxL];
-          cell(c).set(valorL1);
-        }
-        if (idxE >= 0 && rs[i].children[idxE]) {
-          var c = rs[i].children[idxE];
-          cell(c).set(valorE1);
-        }
-      }
+    function getSegmentStarts(indices){
+        var starts = [0];
+        for (var i = 0; i < indices.length; i++) starts.push(indices[i] + 1);
+        return starts;
     }
-    
-    // GRUPO 2: Propagar valores da linha splitIndex+1 para linhas splitIndex+2 ate o final
-    var g2Start = splitIndex + 1;
-    if (g2Start < rs.length && rs[g2Start]) {
-      var valorL2 = '', valorE2 = '';
-      if (idxL >= 0 && rs[g2Start].children[idxL]) {
-        var inp = rs[g2Start].children[idxL].querySelector('input');
-        if (inp) valorL2 = inp.value || '';
-      }
-      if (idxE >= 0 && rs[g2Start].children[idxE]) {
-        var inp = rs[g2Start].children[idxE].querySelector('input');
-        if (inp) valorE2 = inp.value || '';
-      }
-      
-      for (var i = g2Start + 1; i < rs.length; i++) {
-        if (idxL >= 0 && rs[i].children[idxL]) {
-          var c = rs[i].children[idxL];
-          cell(c).set(valorL2);
+    function getSegmentMeta(rowIndex, total, indices){
+        var starts = getSegmentStarts(indices);
+        for (var i = 0; i < starts.length; i++) {
+            var start = starts[i];
+            var end = (i + 1 < starts.length) ? (starts[i + 1] - 1) : (total - 1);
+            if (rowIndex >= start && rowIndex <= end) {
+                return { start: start, end: end, group: i };
+            }
         }
-        if (idxE >= 0 && rs[i].children[idxE]) {
-          var c = rs[i].children[idxE];
-          cell(c).set(valorE2);
-        }
-      }
+        return { start: 0, end: total - 1, group: 0 };
     }
-  }
-  
-  // Funcao para propagar valores dentro de cada grupo do split
-  // VERSAO 3 CORRIGIDA: Propaga cada coluna INDEPENDENTEMENTE
-  // Re-query DOM toda vez, sem usar variavel de estado
-  
-  function configurarPropagacaoGrupos(tbl, splitIndex, idxL, idxE) {
-    // Re-query linhas da tabela toda vez
-    var rs = rowsOf(tbl);
-    if (!rs.length) return;
-    
-    // Funcao para propagar valor de UMA coluna para um grupo
-    function propagarColunaParaGrupo(colIdx, valor, startIdx, endIdx) {
-      if (colIdx < 0) return;
-      var linhas = rowsOf(tbl); // Re-query para pegar estado atual
-      for (var i = startIdx; i <= endIdx && i < linhas.length; i++) {
-        var r = linhas[i];
-        var c = r.children[colIdx];
-        if (c) cell(c).set(valor);
-      }
+    function persistIndices(indices){
+        ensureHiddenInput('central_split_index', 'central_split_index').value = indices.length ? String(indices[0]) : '';
+        ensureHiddenInput('central_split_indices', 'central_split_indices').value = indices.join(',');
+        window.splitVisualIndices = indices.slice(0);
     }
-    
-    // Funcao para criar listener com closure correta
-    function criarListener(colIdx, startIdx, endIdx) {
-      return function() {
-        propagarColunaParaGrupo(colIdx, this.value, startIdx, endIdx);
-      };
+    function updateSplitButtons(indices){
+        var botoes = document.querySelectorAll('button.btn-split-aqui');
+        for (var i = 0; i < botoes.length; i++) {
+            var btn = botoes[i];
+            var tr = btn;
+            while (tr && tr.tagName !== 'TR') tr = tr.parentNode;
+            var idx = tr ? parseInt(tr.getAttribute('data-central-index'), 10) : -1;
+            var ativo = false;
+            for (var j = 0; j < indices.length; j++) {
+                if (indices[j] === idx) { ativo = true; break; }
+            }
+            btn.style.background = ativo ? '#ff9800' : '';
+            btn.style.border = ativo ? '2px solid #ff9800' : '';
+            btn.textContent = ativo ? '← Split AQUI' : 'SPLIT';
+        }
     }
-    
-    // GRUPO 1: primeira linha (0) propaga para linhas 1 ate splitIndex
-    // Remover listeners antigos e adicionar novos
-    if (rs[0]) {
-      if (idxL >= 0 && rs[0].children[idxL]) {
-        var inpL1 = rs[0].children[idxL].querySelector('input');
-        if (inpL1) {
-          // Marcar com ID unico do split para evitar multiplos handlers
-          var splitId = 'split_' + splitIndex + '_g1_l';
-          if (inpL1.getAttribute('data-split-id') !== splitId) {
-            inpL1.setAttribute('data-split-id', splitId);
-            inpL1.addEventListener('input', criarListener(idxL, 1, splitIndex));
-          }
+    function applyAt(tbl, splitIndices){
+        var rs = rowsOf(tbl); if (!rs.length) return;
+        var idxL = indexByHeader(tbl,'lacre correios');
+        var idxE = indexByHeader(tbl,'etiqueta correios');
+        var indices = parseIndices((splitIndices || []).join(','), rs.length);
+
+        persistIndices(indices);
+
+        for (var i = 0; i < rs.length; i++) {
+            var r = rs[i];
+            var cL = (idxL >= 0) ? r.children[idxL] : null;
+            var cE = (idxE >= 0) ? r.children[idxE] : null;
+            removeSplitClasses(r);
+
+            if (!indices.length) {
+                if (cL) cell(cL).lock(false);
+                if (cE) cell(cE).lock(false);
+                continue;
+            }
+
+            var meta = getSegmentMeta(i, rs.length, indices);
+            var classeGrupo = 'split-central-grupo' + ((meta.group % 5) + 1);
+            addClass(r, classeGrupo);
+            if (meta.group > 0) addClass(r, 'split-below');
+            if (i === meta.start && meta.group > 0) addClass(r, 'split-separator-start');
+
+            var rowLeader = rs[meta.start];
+            var leaderLacre = '';
+            var leaderEtiqueta = '';
+            if (idxL >= 0 && rowLeader.children[idxL]) {
+                var inpLeaderL = rowLeader.children[idxL].querySelector('input');
+                if (inpLeaderL) leaderLacre = inpLeaderL.value || '';
+            }
+            if (idxE >= 0 && rowLeader.children[idxE]) {
+                var inpLeaderE = rowLeader.children[idxE].querySelector('input');
+                if (inpLeaderE) leaderEtiqueta = inpLeaderE.value || '';
+            }
+
+            if (i === meta.start) {
+                if (cL) cell(cL).lock(false);
+                if (cE) cell(cE).lock(false);
+            } else {
+                if (cL) { cell(cL).set(leaderLacre); cell(cL).lock(true); }
+                if (cE) { cell(cE).set(leaderEtiqueta); cell(cE).lock(true); }
+            }
         }
-      }
-      if (idxE >= 0 && rs[0].children[idxE]) {
-        var inpE1 = rs[0].children[idxE].querySelector('input');
-        if (inpE1) {
-          var splitId = 'split_' + splitIndex + '_g1_e';
-          if (inpE1.getAttribute('data-split-id') !== splitId) {
-            inpE1.setAttribute('data-split-id', splitId);
-            inpE1.addEventListener('input', criarListener(idxE, 1, splitIndex));
-          }
-        }
-      }
+
+        updateSplitButtons(indices);
     }
-    
-    // GRUPO 2: primeira linha (splitIndex+1) propaga para linhas (splitIndex+2) ate o final
-    var g2Start = splitIndex + 1;
-    if (g2Start < rs.length && rs[g2Start]) {
-      var g2End = rs.length - 1;
-      if (idxL >= 0 && rs[g2Start].children[idxL]) {
-        var inpL2 = rs[g2Start].children[idxL].querySelector('input');
-        if (inpL2) {
-          var splitId = 'split_' + splitIndex + '_g2_l';
-          if (inpL2.getAttribute('data-split-id') !== splitId) {
-            inpL2.setAttribute('data-split-id', splitId);
-            inpL2.addEventListener('input', criarListener(idxL, g2Start + 1, g2End));
-          }
-        }
-      }
-      if (idxE >= 0 && rs[g2Start].children[idxE]) {
-        var inpE2 = rs[g2Start].children[idxE].querySelector('input');
-        if (inpE2) {
-          var splitId = 'split_' + splitIndex + '_g2_e';
-          if (inpE2.getAttribute('data-split-id') !== splitId) {
-            inpE2.setAttribute('data-split-id', splitId);
-            inpE2.addEventListener('input', criarListener(idxE, g2Start + 1, g2End));
-          }
-        }
-      }
-    }
-  }
   function removeSplit(tbl){
-    var rs = rowsOf(tbl); if (!rs.length) return;
-    var idxL = indexByHeader(tbl,'lacre correios');
-    var idxE = indexByHeader(tbl,'etiqueta correios');
-    var def = defaults(tbl, idxL, idxE);
-    for (var i=0;i<rs.length;i++){
-      var r = rs[i];
-      var cL = (idxL>=0) ? r.children[idxL] : null;
-      var cE = (idxE>=0) ? r.children[idxE] : null;
-      if (cL) cell(cL).set(def.lacre), cell(cL).lock(true);
-      if (cE) cell(cE).set(def.etiqueta), cell(cE).lock(true);
-      removeClass(r, 'split-below');
-    }
-    var hid = document.getElementById('central_split_index');
-    if (hid) hid.value = '';
+        applyAt(tbl, []);
   }
   function mount(){
     var btn = ensureSplitButton();
@@ -8450,114 +8355,55 @@ $__pt_datas_join = htmlspecialchars(
       if (btn) btn.addEventListener('click', function(){ alert('Tabela da CENTRAL IIPR não encontrada (#tblCentralIIPR).'); });
       return;
     }
-    // Autofill abaixo do split (copia exatamente o valor digitado)
-(function enableAutoFillBelowSplit(){
-  var idxL = indexByHeader(tbl,'lacre correios');
-  var idxE = indexByHeader(tbl,'etiqueta correios');
-  if (idxL<0 && idxE<0) return;
-
-  // Funcao auxiliar para encontrar elemento pai pelo nome de tag (substitui closest)
-  function findParent(el, tagName) {
-    var current = el;
-    while (current && current.parentNode) {
-      current = current.parentNode;
-      if (current.tagName && current.tagName.toUpperCase() === tagName.toUpperCase()) {
-        return current;
-      }
-    }
-    return null;
-  }
-
-  // Funcao auxiliar para encontrar indice de elemento em lista (substitui indexOf)
-  function findIndex(list, element) {
-    for (var i = 0; i < list.length; i++) {
-      if (list[i] === element) return i;
-    }
-    return -1;
-  }
-
-  // Normaliza inputs das colunas-alvo (evita truncar)
-  var rs = rowsOf(tbl);
-  var colsToCheck = [idxL, idxE];
-  for (var trIdx = 0; trIdx < rs.length; trIdx++) {
-    var tr = rs[trIdx];
-    for (var colIdx = 0; colIdx < colsToCheck.length; colIdx++) {
-      var col = colsToCheck[colIdx];
-      if (col < 0) continue;
-      var td = tr.children[col]; if (!td) continue;
-      var inp = td.querySelector('input,textarea'); if (!inp) continue;
-      inp.type = 'text';
-      inp.inputMode = 'numeric';
-      inp.maxLength = (col === idxE ? 35 : 10);
-    }
-  }
-
-  // VERSAO 3: Handler global - so ativo quando NAO ha split
-  // Quando split ativo, a propagacao e feita pelos listeners especificos de configurarPropagacaoGrupos
-  tbl.addEventListener('input', function(ev){
-    var target = ev.target;
-    if (target.tagName!=='INPUT' && target.tagName!=='TEXTAREA') return;
-
-    var splitIndex = parseInt((document.getElementById('central_split_index')||{value:-1}).value,10);
-    
-    // Se ha split ativo, ignora - propagacao gerenciada por configurarPropagacaoGrupos
-    if (!isNaN(splitIndex) && splitIndex >= 0) return;
-
-    var td = findParent(target, 'td'); if (!td) return;
-    var tr = findParent(target, 'tr'); if (!tr) return;
-
-    var rowIndex = findIndex(rs, tr);
-    // Sem split: so a primeira linha propaga
-    if (rowIndex !== 0) return;
-
-    var colIndex = findIndex(tr.children, td);
-    var isCorr   = (colIndex===idxL || colIndex===idxE);
-    if (!isCorr) return;
-
-    var val = String(target.value || target.textContent || '');
-
-    for (var i=1;i<rs.length;i++){
-      var cellTarget = rs[i].children[colIndex];
-      if (!cellTarget) continue;
-      var inp = cellTarget.querySelector('input,textarea');
-
-      if (inp){
-        inp.type = 'text';
-        inp.inputMode = 'numeric';
-        inp.maxLength = (colIndex===idxE ? 35 : 10);
-        inp.value = val;
-        inp.setAttribute('value', val);
-      } else {
-        cellTarget.textContent = val;
-      }
-    }
-  });
-})();
+        window.__centralSplit = {
+            getIndices: function(total){ return parseIndices((document.getElementById('central_split_indices') || { value: (window.splitVisualIndices || []).join(',') }).value, total || rowsOf(tbl).length || 0); },
+            refresh: function(){ applyAt(tbl, getIndices(tbl)); },
+            toggleBoundary: function(index){
+                var indices = getIndices(tbl);
+                var found = -1;
+                for (var i = 0; i < indices.length; i++) {
+                    if (indices[i] === index) { found = i; break; }
+                }
+                if (found >= 0) indices.splice(found, 1); else indices.push(index);
+                applyAt(tbl, indices);
+            },
+            clear: function(){ removeSplit(tbl); },
+            getSegmentMeta: function(rowIndex, total){ return getSegmentMeta(rowIndex, total, getIndices(tbl)); }
+        };
+        applyAt(tbl, getIndices(tbl));
 
 
     if (btn){
       btn.addEventListener('click', function(){
         var rows = rowsOf(tbl);
         var labels = [];
-        for (var i=0;i<rows.length;i++){
+                for (var i=0;i<rows.length - 1;i++){
           var td = rows[i].children[0];
           var txt = (td ? (td.textContent||'').trim() : '') || ('Linha '+(i+1));
           labels.push(txt);
         }
+                var ativos = getIndices(tbl);
         var list = document.getElementById('splitCentralList');
         list.innerHTML = '';
         for (var li = 0; li < labels.length; li++) {
           var d = document.createElement('div');
           d.className = 'row';
-          d.innerHTML = '<input type="radio" name="split_row" value="'+li+'"> <span>'+labels[li]+'</span>';
+                    var marcado = false;
+                    for (var ai = 0; ai < ativos.length; ai++) {
+                        if (ativos[ai] === li) { marcado = true; break; }
+                    }
+                    d.innerHTML = '<input type="checkbox" name="split_row" value="'+li+'"'+(marcado ? ' checked' : '')+'> <span>Separar após '+labels[li]+'</span>';
           list.appendChild(d);
         }
         var modal = document.getElementById('splitCentralModal');
         document.getElementById('splitCentralCancel').onclick = function(){ modal.style.display='none'; };
         document.getElementById('splitCentralApply').onclick = function(){
-          var sel = modal.querySelector('input[name="split_row"]:checked');
-          if (!sel){ alert('Selecione o posto onde começa o segundo malote.'); return; }
-          applyAt(tbl, parseInt(sel.value,10));
+                    var selecionados = modal.querySelectorAll('input[name="split_row"]:checked');
+                    var indices = [];
+                    for (var si = 0; si < selecionados.length; si++) {
+                        indices.push(parseInt(selecionados[si].value, 10));
+                    }
+                    applyAt(tbl, indices);
           modal.style.display='none';
         };
         modal.style.display = 'flex';
