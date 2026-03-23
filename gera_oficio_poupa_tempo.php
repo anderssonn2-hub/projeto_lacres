@@ -51,6 +51,44 @@ function formatar_data_exib($d) {
     return $d;
 }
 
+function resolver_endereco_pt($pdo, $posto, &$cache) {
+    $posto = str_pad(preg_replace('/\D+/', '', (string)$posto), 3, '0', STR_PAD_LEFT);
+    if ($posto === '000') {
+        return '';
+    }
+    if (isset($cache[$posto])) {
+        return $cache[$posto];
+    }
+    $cache[$posto] = '';
+    if (!$pdo) {
+        return '';
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT endereco FROM ciRegionais WHERE LPAD(posto,3,'0') = ? AND TRIM(COALESCE(endereco, '')) <> '' ORDER BY id DESC LIMIT 1");
+        $stmt->execute(array($posto));
+        $endereco = trim((string)$stmt->fetchColumn());
+        if ($endereco !== '') {
+            $cache[$posto] = $endereco;
+            return $endereco;
+        }
+    } catch (Exception $e) {
+    }
+
+    try {
+        $stmtItens = $pdo->prepare("SELECT endereco FROM ciDespachoItens WHERE posto = ? AND TRIM(COALESCE(endereco, '')) <> '' ORDER BY id DESC LIMIT 1");
+        $stmtItens->execute(array($posto));
+        $enderecoItens = trim((string)$stmtItens->fetchColumn());
+        if ($enderecoItens !== '') {
+            $cache[$posto] = $enderecoItens;
+            return $enderecoItens;
+        }
+    } catch (Exception $e2) {
+    }
+
+    return '';
+}
+
 $erro = '';
 $datas_norm = array();
 $datas_exib = array();
@@ -95,17 +133,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gerar_oficio_pt'])) {
 
         $payload = array();
         while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $enderecoAtual = trim((string)$r['endereco']);
+            if ($enderecoAtual === '') {
+                static $cacheEnderecoSelecao = array();
+                $enderecoAtual = resolver_endereco_pt($pdo_controle, $r['codigo'], $cacheEnderecoSelecao);
+            }
             $payload[] = array(
                 'codigo'     => (string)$r['codigo'],
                 'nome'       => (string)$r['nome'],
                 'quantidade' => (int)$r['quantidade'],
                 'lacre'      => '',
-                'endereco'   => (string)$r['endereco']
+                'endereco'   => $enderecoAtual
             );
         }
 
         $payload_json = json_encode($payload ?: array(), JSON_UNESCAPED_UNICODE);
         $datas_join = implode(',', $datas_norm);
+        $postos_join = implode(',', $postos_sel);
         ?>
         <!DOCTYPE html>
         <html lang="pt-BR">
@@ -126,6 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gerar_oficio_pt'])) {
                 <form id="oficioPTForm" method="post" action="modelo_oficio_poupa_tempo.php" target="_blank">
                     <input type="hidden" name="acao" value="oficio_poupatempo" />
                     <input type="hidden" name="pt_datas" value="<?php echo e($datas_join); ?>" />
+                    <input type="hidden" name="pt_postos_sel" value="<?php echo e($postos_join); ?>" />
                     <input type="hidden" name="<?php echo e(session_name()); ?>" value="<?php echo e(session_id()); ?>" />
                     <textarea name="poupatempo_payload" style="display:none;"><?php echo e($payload_json ?: '[]'); ?></textarea>
                     <button type="submit" class="btn">Abrir modelo</button>
@@ -184,6 +229,7 @@ if ($data_inicial_cal !== '' || $data_final_cal !== '' || $datas_alternadas !== 
 
     if (!empty($datas_norm)) {
         $ph = implode(',', array_fill(0, count($datas_norm), '?'));
+        $cacheEnderecosLista = array();
         $sql = "
             SELECT 
                 LPAD(c.posto,3,'0') AS codigo,
@@ -204,6 +250,12 @@ if ($data_inicial_cal !== '' || $data_final_cal !== '' || $datas_alternadas !== 
         $stmt = $pdo_controle->prepare($sql);
         $stmt->execute($datas_norm);
         $postos_pt = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($postos_pt as $idx => $postoItem) {
+            $enderecoItem = trim((string)$postoItem['endereco']);
+            if ($enderecoItem === '') {
+                $postos_pt[$idx]['endereco'] = resolver_endereco_pt($pdo_controle, $postoItem['codigo'], $cacheEnderecosLista);
+            }
+        }
     }
 }
 ?>
