@@ -3456,8 +3456,6 @@ try {
             <input type="checkbox" id="desativarCreditosFinais">
             Desativar animação final (créditos)
         </label>
-        <button type="button" id="btnTestarCreditos" style="margin-top:10px; width:100%; border:none; border-radius:10px; padding:10px 12px; font-weight:700; background:#ffe082; color:#3e2723; cursor:pointer;">Testar créditos agora</button>
-        <div id="indicadorCreditos" style="margin-top:8px; font-size:12px; color:#fff; opacity:0.92; line-height:1.4;"></div>
     </div>
 
 </div>
@@ -3684,7 +3682,7 @@ try {
     </div>
 </div>
 
-<div class="painel-malotes" id="painelMalotesChips">
+<div class="painel-malotes" id="painelMalotesChips" style="display:none;">
     <div class="painel-malotes-topo">
         <div>
             <h3>Malotes por lote no modo chips</h3>
@@ -4184,8 +4182,6 @@ function iniciarConferenciaPacotes() {
     var usuarioInputModal = document.getElementById("usuario_conf_modal");
     var btnConfirmarUsuario = document.getElementById("btnConfirmarUsuario");
     var btnSomenteVisualizar = document.getElementById("btnSomenteVisualizar");
-    var btnTestarCreditos = document.getElementById('btnTestarCreditos');
-    var indicadorCreditos = document.getElementById('indicadorCreditos');
     var btnAtivarConferencia = document.getElementById("btnAtivarConferencia");
     var overlayTipo = document.getElementById("overlayTipo");
     var usuarioAtual = '';
@@ -4448,48 +4444,6 @@ function iniciarConferenciaPacotes() {
         }, 1500);
     }
 
-    function atualizarIndicadorCreditos() {
-        if (!indicadorCreditos) return;
-        var diagnostico = diagnosticoCreditosFinais();
-        var status = diagnostico.todosConferidos ? 'pronto para disparar' : 'aguardando conclusão';
-        if (creditosAtivos) {
-            status = 'créditos em exibição';
-        } else if (creditosJaExibidos) {
-            status = 'créditos já disparados';
-        } else if (creditosDesativados()) {
-            status = 'créditos desativados';
-        }
-        indicadorCreditos.innerHTML = 'Créditos: <strong>' + status + '</strong><br>' +
-            'Linhas Correios: ' + diagnostico.conferidosLinhas + '/' + diagnostico.totalLinhas;
-    }
-
-    function agendarVerificacaoCreditosPorMutacao() {
-        if (agendarVerificacaoCreditosPorMutacao._timer) {
-            clearTimeout(agendarVerificacaoCreditosPorMutacao._timer);
-        }
-        agendarVerificacaoCreditosPorMutacao._timer = setTimeout(function() {
-            agendarVerificacaoCreditosPorMutacao._timer = null;
-            atualizarIndicadorCreditos();
-            if (todosCorreiosConferidos()) {
-                iniciarFimConferenciaCorreios();
-            }
-        }, 250);
-    }
-
-    function instalarObservadorCreditos() {
-        var tabelas = document.getElementById('tabelas');
-        if (!tabelas || !window.MutationObserver) return;
-        var observer = new MutationObserver(function() {
-            agendarVerificacaoCreditosPorMutacao();
-        });
-        observer.observe(tabelas, {
-            subtree: true,
-            childList: true,
-            attributes: true,
-            attributeFilter: ['class', 'style', 'data-conf']
-        });
-        agendarVerificacaoCreditosPorMutacao();
-    }
 
     function montarResumoFinalConferencia() {
         var linhas = obterLinhasCorreiosParaCreditos(true);
@@ -7921,20 +7875,6 @@ function iniciarConferenciaPacotes() {
             if (creditosDesativados()) {
                 pararCreditosFinais();
             }
-            atualizarIndicadorCreditos();
-        });
-    }
-
-    if (btnTestarCreditos) {
-        btnTestarCreditos.addEventListener('click', function(e) {
-            if (e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            fimCorreiosJaDisparado = false;
-            creditosJaExibidos = false;
-            iniciarCreditosFinais(true);
-            atualizarIndicadorCreditos();
         });
     }
 
@@ -8016,8 +7956,6 @@ function iniciarConferenciaPacotes() {
     publicarResumoPrevia();
     iniciarPollingControleRemoto();
     verificarConclusaoFinalCorreios('inicializacao');
-    atualizarIndicadorCreditos();
-    instalarObservadorCreditos();
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
