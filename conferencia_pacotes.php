@@ -376,9 +376,15 @@ try {
         posto INT(3) NOT NULL,
         quantidade INT(5) NOT NULL,
         producao_de DATE NOT NULL,
+        triado_por VARCHAR(15) NOT NULL DEFAULT '',
         triado_em DATETIME NOT NULL,
         PRIMARY KEY (id)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    $colsTriadoPor = $pdo->query("SHOW COLUMNS FROM lotes_na_estante LIKE 'triado_por'")->fetchAll();
+    if (count($colsTriadoPor) === 0) {
+        $pdo->exec("ALTER TABLE lotes_na_estante ADD COLUMN triado_por VARCHAR(15) NOT NULL DEFAULT '' AFTER producao_de");
+    }
 
     // v9.25.9: Vinculo fino entre lote conferido e malotes/lacres usados no modo chips
     $pdo->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_lacres (
@@ -4259,7 +4265,7 @@ function iniciarConferenciaPacotes() {
     var storageUsuarioKey = 'conferencia_responsavel';
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
-    var storageCreditosKey = 'conferencia_desativar_creditos_finais';
+    var storageCreditosKey = 'conferencia_desativar_creditos_finais__0_9_25_16';
     var previewStorageKey  = 'conferencia_previa_malotes_v1';
     var storageMalotesRascunhoKey = 'conferencia_malotes_rascunho_v2::' + ((datasFiltroSql && datasFiltroSql.length) ? datasFiltroSql.join(',') : 'hoje');
     var controleCanal = <?php echo json_encode($controle_canal); ?>;
@@ -4398,6 +4404,26 @@ function iniciarConferenciaPacotes() {
             }
         }
         return true;
+    }
+
+    function diagnosticoCreditosFinais() {
+        var tabelasVisiveis = obterTabelasCorreiosVisiveis();
+        var totalGeral = 0;
+        var conferidosGeral = 0;
+        for (var t = 0; t < tabelasVisiveis.length; t++) {
+            var titulo = obterTituloTabela(tabelasVisiveis[t]);
+            var span = titulo ? titulo.querySelector('.contagem-pacotes') : null;
+            if (!span) continue;
+            totalGeral += parseInt(span.getAttribute('data-total') || '0', 10) || 0;
+            conferidosGeral += parseInt(span.getAttribute('data-conferidos') || '0', 10) || 0;
+        }
+        return {
+            tabelasVisiveis: tabelasVisiveis.length,
+            totalGeral: totalGeral,
+            conferidosGeral: conferidosGeral,
+            linhasVisiveis: obterLinhasCorreiosParaCreditos(true).length,
+            todosConferidos: todosCorreiosConferidos()
+        };
     }
 
     function montarResumoFinalConferencia() {
@@ -4604,8 +4630,9 @@ function iniciarConferenciaPacotes() {
         }, 250);
     }
 
-    function verificarConclusaoFinalCorreios() {
-        if (!todosCorreiosConferidos()) {
+    function verificarConclusaoFinalCorreios(origem) {
+        var diagnostico = diagnosticoCreditosFinais();
+        if (!diagnostico.todosConferidos) {
             if (timerInicioCreditos) {
                 clearTimeout(timerInicioCreditos);
                 timerInicioCreditos = null;
@@ -4627,7 +4654,9 @@ function iniciarConferenciaPacotes() {
         if (creditosAtivos || creditosJaExibidos || timerInicioCreditos) return;
 
         if (mensagemLeitura) {
-            mensagemLeitura.innerHTML = '<strong>Conferência finalizada:</strong> preparando créditos finais...';
+            var origemTexto = origem ? ' origem ' + escapeHtml(String(origem)) + '.' : '';
+            mensagemLeitura.innerHTML = '<strong>Conferência finalizada:</strong> preparando créditos finais...' +
+                ' <span style="font-size:12px; opacity:0.8;">(' + diagnostico.conferidosGeral + '/' + diagnostico.totalGeral + ' pacotes, ' + diagnostico.tabelasVisiveis + ' tabelas visíveis)' + origemTexto + '</span>';
         }
 
         timerInicioCreditos = setTimeout(function() {
@@ -7892,7 +7921,7 @@ function iniciarConferenciaPacotes() {
     renderizarDiagnosticoVoz();
     publicarResumoPrevia();
     iniciarPollingControleRemoto();
-    verificarConclusaoFinalCorreios();
+    verificarConclusaoFinalCorreios('inicializacao');
     
     // Função para salvar conferência via AJAX
     function salvarConferencia(lote, regional, posto, dataexp, qtd, codbar, usuario) {
@@ -8292,7 +8321,21 @@ function iniciarConferenciaPacotes() {
             primeiroConferido = false;
         }
 
-        verificarConclusaoFinalCorreios();
+        verificarConclusaoFinalCorreios('leitura');
+        if (tipoPacote === 'correios') {
+            var diagnosticoFinal = diagnosticoCreditosFinais();
+            if (diagnosticoFinal.todosConferidos && !creditosAtivos && !creditosJaExibidos && !creditosDesativados()) {
+                if (timerInicioCreditos) {
+                    clearTimeout(timerInicioCreditos);
+                    timerInicioCreditos = null;
+                }
+                setTimeout(function() {
+                    if (todosCorreiosConferidos()) {
+                        iniciarCreditosFinais();
+                    }
+                }, 300);
+            }
+        }
         finalizarProcessamento(true);
         } catch (erroProcessamentoLeitura) {
             console.error('Erro em processarLeituraCodigo:', erroProcessamentoLeitura);

@@ -1,5 +1,5 @@
 <?php
-/* encontra_posto.php — v0.9.25.8
+/* encontra_posto.php — v0.9.25.16
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
  * Registra leituras para controle da estante.
@@ -126,9 +126,19 @@ try {
         posto INT(3) NOT NULL,
         quantidade INT(5) NOT NULL,
         producao_de DATE NOT NULL,
+        triado_por VARCHAR(15) NOT NULL DEFAULT '',
         triado_em DATETIME NOT NULL,
         PRIMARY KEY (id)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    try {
+        $stmtTriadoPor = $pdo->query("SHOW COLUMNS FROM lotes_na_estante LIKE 'triado_por'");
+        if (!$stmtTriadoPor->fetch(PDO::FETCH_ASSOC)) {
+            $pdo->exec("ALTER TABLE lotes_na_estante ADD COLUMN triado_por VARCHAR(15) NOT NULL DEFAULT '' AFTER producao_de");
+        }
+    } catch (Exception $e) {
+        // ignore
+    }
 
     if (isset($_POST['ajax_estante_status'])) {
         header('Content-Type: application/json');
@@ -224,7 +234,7 @@ try {
             $stmtSemTot->execute(array_merge($params_estante, $params_upload));
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
 
-            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_em
+            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_por, triado_em
                 FROM lotes_na_estante
                 $whereEstante
                 ORDER BY triado_em DESC, id DESC
@@ -236,6 +246,7 @@ try {
                     'posto' => $row['posto'],
                     'regional' => $row['regional'],
                     'producao_de' => $row['producao_de'],
+                    'triado_por' => $row['triado_por'],
                     'triado_em' => $row['triado_em']
                 );
             }
@@ -250,6 +261,9 @@ try {
     if (isset($_POST['ajax_buscar_posto'])) {
         header('Content-Type: application/json');
         $codbar = isset($_POST['codbar']) ? trim($_POST['codbar']) : '';
+        $triado_por = isset($_POST['triado_por']) ? strtoupper(trim($_POST['triado_por'])) : '';
+        $triado_por = preg_replace('/[^A-Z0-9 ]+/', '', $triado_por);
+        $triado_por = trim(substr($triado_por, 0, 15));
         $codbar_limpo = preg_replace('/\D+/', '', $codbar);
         $datas_alvo = parseDatasAlvo(isset($_POST['datas_alvo']) ? $_POST['datas_alvo'] : '');
         $data_ini = normalizarDataIso(isset($_POST['data_ini']) ? $_POST['data_ini'] : '');
@@ -272,6 +286,10 @@ try {
 
         if (!preg_match('/^\d{19}$/', $codbar_limpo)) {
             die(json_encode(array('success' => false, 'erro' => 'Codigo de barras invalido (19 digitos)')));
+        }
+
+        if ($triado_por === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Informe o nome do responsavel pela triagem')));
         }
 
         $lote = substr($codbar_limpo, 0, 8);
@@ -369,13 +387,14 @@ try {
             $stmtCheck = $pdo->prepare("SELECT id FROM lotes_na_estante WHERE lote = ? LIMIT 1");
             $stmtCheck->execute(array((int)$lote));
             if (!$stmtCheck->fetch()) {
-                $stmtIns = $pdo->prepare("INSERT INTO lotes_na_estante (lote, regional, posto, quantidade, producao_de, triado_em) VALUES (?,?,?,?,?,NOW())");
+                $stmtIns = $pdo->prepare("INSERT INTO lotes_na_estante (lote, regional, posto, quantidade, producao_de, triado_por, triado_em) VALUES (?,?,?,?,?,?,NOW())");
                 $stmtIns->execute(array(
                     (int)$lote,
                     (int)$regional_real,
                     (int)$posto_num,
                     (int)$quantidade,
-                    $data_alvo
+                    $data_alvo,
+                    $triado_por
                 ));
                 $estante_novo = true;
             }
@@ -454,7 +473,7 @@ try {
             $stmtSemTot->execute(array_merge($params_estante, $params_upload));
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
 
-            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_em
+            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_por, triado_em
                 FROM lotes_na_estante
                 $whereEstante
                 ORDER BY triado_em DESC, id DESC
@@ -466,6 +485,7 @@ try {
                     'posto' => $row['posto'],
                     'regional' => $row['regional'],
                     'producao_de' => $row['producao_de'],
+                    'triado_por' => $row['triado_por'],
                     'triado_em' => $row['triado_em']
                 );
             }
@@ -497,6 +517,7 @@ try {
             'layout' => $layout,
             'status_estante' => $status_estante,
             'data_alvo' => $data_alvo,
+            'triado_por' => $triado_por,
             'data_producao' => $data_producao ? date('d-m-Y', strtotime($data_producao)) : null
         )));
     }
@@ -513,7 +534,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto v0.9.25.8 - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.25.16 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -819,8 +840,8 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.25.8</span>
-        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.8</span>
+        <span class="versao">v0.9.25.16</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.16</span>
         <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">
@@ -841,6 +862,7 @@ try {
         <label>Codigo de Barras do Pacote (19 digitos):</label>
         <input type="text" id="input_codbar" placeholder="Escaneie ou digite o codigo..." autocomplete="off" autofocus>
         <div id="indicadorFoco" style="margin-top:8px; font-size:13px; font-weight:700; color:#4caf50;">Pronto para leitura</div>
+        <div id="responsavelTriagemInfo" style="margin-top:10px; font-size:13px; font-weight:700; color:#1a237e;"></div>
     </div>
 
     <div class="painel-datas">
@@ -913,6 +935,8 @@ try {
 
 <script>
 var vozAtiva = true;
+var versaoSistema = '0.9.25.16';
+var storageResponsavelTriagemKey = 'estante_responsavel_triagem_v0_9_25_16';
 var estanteLayout = { correios: {}, poupatempo: {}, totais: {} };
 var estanteView = 'todas';
 var contTotal = 0;
@@ -1054,6 +1078,50 @@ function atualizarIndicadorFoco() {
     }
 }
 
+function nomeResponsavelTriagemValido(valor) {
+    return /^[A-Za-z0-9 ]{3,15}$/.test(String(valor || '').trim());
+}
+
+function obterResponsavelTriagem() {
+    try {
+        return (localStorage.getItem(storageResponsavelTriagemKey) || '').trim();
+    } catch (e) {
+        return '';
+    }
+}
+
+function atualizarInfoResponsavelTriagem() {
+    var alvo = document.getElementById('responsavelTriagemInfo');
+    if (!alvo) return;
+    var nome = obterResponsavelTriagem();
+    alvo.textContent = nome ? 'Responsavel pela triagem: ' + nome + ' • versao ' + versaoSistema : 'Responsavel pela triagem nao informado';
+    alvo.style.color = nome ? '#1a237e' : '#b71c1c';
+}
+
+function garantirResponsavelTriagem() {
+    var atual = obterResponsavelTriagem();
+    if (nomeResponsavelTriagemValido(atual)) {
+        atualizarInfoResponsavelTriagem();
+        return atual;
+    }
+    while (true) {
+        var informado = window.prompt('Informe o nome do responsavel pela triagem (maximo 15 caracteres):', atual || '');
+        if (informado === null) {
+            atualizarInfoResponsavelTriagem();
+            return '';
+        }
+        informado = String(informado || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, '').trim().substr(0, 15);
+        if (nomeResponsavelTriagemValido(informado)) {
+            try {
+                localStorage.setItem(storageResponsavelTriagemKey, informado);
+            } catch (e) {}
+            atualizarInfoResponsavelTriagem();
+            return informado;
+        }
+        window.alert('Informe entre 3 e 15 caracteres usando letras, numeros e espacos.');
+    }
+}
+
 function processarCodigoBruto(valor) {
     var val = (valor || '').replace(/\D+/g, '');
     if (val.length < 19) {
@@ -1153,6 +1221,11 @@ function buscarPosto(codbar) {
     if (!dataFim) {
         dataFim = dataIni;
     }
+    var responsavelTriagem = garantirResponsavelTriagem();
+    if (!responsavelTriagem) {
+        exibirErro('Informe o responsavel pela triagem para continuar');
+        return;
+    }
     if (dataIni > dataFim) {
         var tmp = dataIni;
         dataIni = dataFim;
@@ -1186,7 +1259,7 @@ function buscarPosto(codbar) {
             finalizarLeitura();
         }
     };
-    xhr.send('ajax_buscar_posto=1&codbar=' + encodeURIComponent(codbar) + '&data_ini=' + encodeURIComponent(dataIni) + '&data_fim=' + encodeURIComponent(dataFim));
+    xhr.send('ajax_buscar_posto=1&codbar=' + encodeURIComponent(codbar) + '&data_ini=' + encodeURIComponent(dataIni) + '&data_fim=' + encodeURIComponent(dataFim) + '&triado_por=' + encodeURIComponent(responsavelTriagem));
 }
 
 function exibirResultado(dados) {
@@ -1299,6 +1372,20 @@ function exibirResultado(dados) {
         linhaData.appendChild(labelData);
         linhaData.appendChild(valorData);
         body.appendChild(linhaData);
+    }
+
+    if (dados.triado_por) {
+        var linhaTriadoPor = document.createElement('div');
+        linhaTriadoPor.className = 'info-linha';
+        var labelTriadoPor = document.createElement('span');
+        labelTriadoPor.className = 'info-label';
+        labelTriadoPor.textContent = 'Triado por';
+        var valorTriadoPor = document.createElement('span');
+        valorTriadoPor.className = 'info-valor';
+        valorTriadoPor.textContent = dados.triado_por;
+        linhaTriadoPor.appendChild(labelTriadoPor);
+        linhaTriadoPor.appendChild(valorTriadoPor);
+        body.appendChild(linhaTriadoPor);
     }
 
     div.style.display = 'block';
@@ -1661,6 +1748,8 @@ if (btnCancelar) {
 atualizarBannerDatas();
 confirmarPeriodoAtual();
 fecharModalDatas();
+atualizarInfoResponsavelTriagem();
+garantirResponsavelTriagem();
 var toggleBtns = document.querySelectorAll('#estantesToggle button[data-view]');
 for (var i = 0; i < toggleBtns.length; i++) {
     toggleBtns[i].addEventListener('click', function() {

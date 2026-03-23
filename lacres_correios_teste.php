@@ -1,12 +1,12 @@
 <?php
-// lacres_correios_teste.php — v0.9.25.3
+// lacres_correios_teste.php — v0.9.25.16
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lacres Correios (em teste) v0.9.25.3</title>
+    <title>Lacres Correios (em teste) v0.9.25.16</title>
     <style>
         :root {
             --bg: #f6f3ef;
@@ -176,7 +176,7 @@
             <div>
                 <div class="title">Lacres Correios (em teste)</div>
                 <div class="meta">
-                    <span class="pill">v0.9.25.3</span>
+                    <span class="pill">v0.9.25.16</span>
                     <span>Planilha simplificada de lacres e etiquetas</span>
                 </div>
             </div>
