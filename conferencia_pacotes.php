@@ -4353,9 +4353,43 @@ function iniciarConferenciaPacotes() {
         return linhas;
     }
 
+    function obterTabelasCorreiosVisiveis() {
+        var todas = document.querySelectorAll('#tabelas table[data-view="correios"]');
+        var tabelas = [];
+        for (var i = 0; i < todas.length; i++) {
+            if (elementoVisivelNaTela(todas[i])) {
+                tabelas.push(todas[i]);
+            }
+        }
+        if (!tabelas.length) {
+            for (var j = 0; j < todas.length; j++) {
+                tabelas.push(todas[j]);
+            }
+        }
+        return tabelas;
+    }
+
     function todosCorreiosConferidos() {
         // Créditos finais entram quando todos os lotes dos Correios visíveis estiverem conferidos.
         // Lotes do Poupa Tempo não devem bloquear esse encerramento.
+        var tabelasVisiveis = obterTabelasCorreiosVisiveis();
+        if (tabelasVisiveis.length) {
+            var totalGeral = 0;
+            var conferidosGeral = 0;
+            for (var t = 0; t < tabelasVisiveis.length; t++) {
+                var titulo = obterTituloTabela(tabelasVisiveis[t]);
+                var span = titulo ? titulo.querySelector('.contagem-pacotes') : null;
+                if (!span) continue;
+                var totalTabela = parseInt(span.getAttribute('data-total') || '0', 10) || 0;
+                var conferidosTabela = parseInt(span.getAttribute('data-conferidos') || '0', 10) || 0;
+                totalGeral += totalTabela;
+                conferidosGeral += conferidosTabela;
+            }
+            if (totalGeral > 0) {
+                return conferidosGeral >= totalGeral;
+            }
+        }
+
         var linhas = obterLinhasCorreiosParaCreditos(true);
         if (!linhas || !linhas.length) return false;
         for (var i = 0; i < linhas.length; i++) {
