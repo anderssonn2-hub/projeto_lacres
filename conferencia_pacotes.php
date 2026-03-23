@@ -4327,10 +4327,36 @@ function iniciarConferenciaPacotes() {
 
 
 
+    function elementoVisivelNaTela(el) {
+        if (!el) return false;
+        if (el.offsetParent !== null) return true;
+        if (typeof window.getComputedStyle === 'function') {
+            var estilo = window.getComputedStyle(el);
+            if (estilo && estilo.display === 'none') return false;
+            if (estilo && estilo.visibility === 'hidden') return false;
+        }
+        return !!(el.getClientRects && el.getClientRects().length);
+    }
+
+    function obterLinhasCorreiosParaCreditos(somenteVisiveis) {
+        var selector = 'table[data-view="correios"] tbody tr[data-codigo][data-ispt!="1"]';
+        var todas = document.querySelectorAll(selector);
+        var linhas = [];
+        for (var i = 0; i < todas.length; i++) {
+            if (!somenteVisiveis || elementoVisivelNaTela(todas[i])) {
+                linhas.push(todas[i]);
+            }
+        }
+        if (!linhas.length && somenteVisiveis) {
+            return obterLinhasCorreiosParaCreditos(false);
+        }
+        return linhas;
+    }
+
     function todosCorreiosConferidos() {
-        // Créditos finais entram quando todos os lotes dos Correios estiverem conferidos.
+        // Créditos finais entram quando todos os lotes dos Correios visíveis estiverem conferidos.
         // Lotes do Poupa Tempo não devem bloquear esse encerramento.
-        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
+        var linhas = obterLinhasCorreiosParaCreditos(true);
         if (!linhas || !linhas.length) return false;
         for (var i = 0; i < linhas.length; i++) {
             if (!linhas[i].classList.contains('confirmado')) {
@@ -4341,7 +4367,7 @@ function iniciarConferenciaPacotes() {
     }
 
     function montarResumoFinalConferencia() {
-        var linhas = document.querySelectorAll('tbody tr[data-codigo][data-ispt!="1"]');
+        var linhas = obterLinhasCorreiosParaCreditos(true);
         var totalPacotes = linhas.length;
         var postos = {};
         var regionais = {};
