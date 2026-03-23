@@ -2196,15 +2196,6 @@ try {
             font-weight: 700;
             margin-left: 8px;
         }
-        .topo-status {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            z-index: 1200;
-        }
         .versao {
             background: #28a745;
             color: white;
@@ -2213,6 +2204,12 @@ try {
             font-size: 13px;
             font-weight: 700;
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .versao-fixa {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1200;
         }
         .cards-resumo {
             display: grid;
@@ -3098,30 +3095,35 @@ try {
         }
         .btn-toggle:hover { transform: translateY(-1px); }
         .btn-toggle.ativo { background: #0d2f4f; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.16); }
-        #indicador-dias {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 10px 12px;
-            width: 280px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        }
-        #indicador-dias.collapsed .indicador-conteudo { display: none; }
-        .indicador-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            cursor: pointer;
+        .btn-voltar-topo {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            width: 46px;
+            height: 46px;
+            border: none;
+            border-radius: 999px;
+            background: #0d2f4f;
+            color: #fff;
+            font-size: 22px;
             font-weight: 700;
-            color: #333;
-            font-size: 13px;
+            box-shadow: 0 8px 18px rgba(13,47,79,0.28);
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 5000;
+            transition: transform .15s ease, opacity .15s ease, background .15s ease;
+            opacity: 0.92;
         }
-        .badge-data { display:inline-block; padding:4px 8px; border-radius:6px; font-size:11px; margin:2px 4px 2px 0; }
-        .badge-data.conferida { background:#28a745; color:#fff; }
-        .badge-data.pendente { background:#ffc107; color:#333; font-weight:bold; }
-        .badge-dia { display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:16px; margin-left:6px; background:#343a40; color:#fff; font-size:9px; border-radius:3px; padding:0 4px; }
-        .indicador-toggle { font-size: 14px; color: #666; }
+        .btn-voltar-topo.visivel {
+            display: inline-flex;
+        }
+        .btn-voltar-topo:hover {
+            transform: translateY(-2px);
+            background: #154d7a;
+            opacity: 1;
+        }
         .usuario-badge {
             display:inline-block;
             padding:6px 10px;
@@ -3305,8 +3307,7 @@ try {
         }
         @media (max-width: 768px) {
             body { padding: 12px; padding-top: 20px; }
-            .topo-status { position: static; flex-direction: column; align-items: stretch; }
-            #indicador-dias { width: 100%; }
+            .versao-fixa { top: 8px; left: 8px; }
             .barras-topo { grid-template-columns: 1fr; }
             .radio-box { padding: 10px 12px; }
             #codigo_barras { max-width: 100%; font-size: 18px; }
@@ -3345,51 +3346,7 @@ try {
     </style>
 </head>
 <body>
-<div class="topo-status">
-    <div class="versao">v0.9.25.16</div>
-    <div id="indicador-dias" class="collapsed">
-        <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
-            <span>📅 Status de Conferências</span>
-            <span class="indicador-toggle">▼</span>
-        </div>
-        <div class="indicador-conteudo">
-            <div style="margin:10px 0;">
-                <strong style="color:#28a745;font-size:12px;">✓ Últimas Conferências:</strong><br>
-                <div style="margin-top:5px;">
-                    <?php 
-                    $ultimas_cinco = array_slice($dias_com_conferencia, 0, 5);
-                    if (!empty($ultimas_cinco)) {
-                        foreach ($ultimas_cinco as $data) {
-                            $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
-                            $badge_label = !empty($label_dia) ? " <span class='badge-dia'>$label_dia</span>" : '';
-                            echo '<span class="badge-data conferida">' . htmlspecialchars($data) . $badge_label . '</span>';
-                        }
-                    } else {
-                        echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
-                    }
-                    ?>
-                </div>
-            </div>
-            <div style="margin:10px 0;">
-                <strong style="color:#ffc107;font-size:12px;">⚠ Conferências Pendentes:</strong><br>
-                <div style="margin-top:5px;">
-                    <?php 
-                    $ultimas_pendentes = array_slice($dias_sem_conferencia, 0, 5);
-                    if (!empty($ultimas_pendentes)) {
-                        foreach ($ultimas_pendentes as $data) {
-                            $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
-                            $badge_label = !empty($label_dia) ? " <span class='badge-dia'>$label_dia</span>" : '';
-                            echo '<span class="badge-data pendente">' . htmlspecialchars($data) . $badge_label . '</span>';
-                        }
-                    } else {
-                        echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
-                    }
-                    ?>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="versao versao-fixa">v0.9.25.16</div>
 
 <h2>📋 Conferência de Pacotes v0.9.25.16</h2>
 
@@ -4131,6 +4088,8 @@ if (empty($regionais_data)) {
     <div class="creditos-dica">mova o mouse, pressione uma tecla ou toque na tela para fechar</div>
     <div class="creditos-end-screen" id="creditosEndScreen">THE END<div class="creditos-end-hint">qualquer interação fecha os créditos</div></div>
 </div>
+
+<button type="button" class="btn-voltar-topo" id="btnVoltarTopo" aria-label="Voltar ao topo" title="Voltar ao topo">↑</button>
 
 <script>
 // ========================================
@@ -8484,16 +8443,6 @@ function iniciarConferenciaPacotes() {
         }
     });
 
-    window.toggleIndicadorDias = function() {
-        var el = document.getElementById('indicador-dias');
-        if (!el) return;
-        if (el.classList.contains('collapsed')) {
-            el.classList.remove('collapsed');
-        } else {
-            el.classList.add('collapsed');
-        }
-    };
-
     function atualizarMapaBloqueados() {
         postosBloqueadosMap = {};
         for (var i = 0; i < postosBloqueados.length; i++) {
@@ -8611,6 +8560,26 @@ if (document.readyState === 'loading') {
 } else {
     iniciarConferenciaPacotes();
 }
+
+(function() {
+    var btnVoltarTopo = document.getElementById('btnVoltarTopo');
+    if (!btnVoltarTopo) return;
+
+    function atualizarBotaoVoltarTopo() {
+        if (window.scrollY > 220) {
+            btnVoltarTopo.classList.add('visivel');
+        } else {
+            btnVoltarTopo.classList.remove('visivel');
+        }
+    }
+
+    btnVoltarTopo.addEventListener('click', function() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    window.addEventListener('scroll', atualizarBotaoVoltarTopo, { passive: true });
+    atualizarBotaoVoltarTopo();
+})();
 </script>
 
 <script>
