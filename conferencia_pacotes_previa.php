@@ -513,6 +513,14 @@ try {
                 display: block;
             }
             .quadro-logo,
+            .info-cliente-box,
+            .documento-meta,
+            .subtitulo-quadro,
+            .texto-abertura,
+            .texto-rodape-lotes {
+                display: none !important;
+            }
+            .quadro-logo,
             .info-cliente-box {
                 break-inside: avoid;
             }
@@ -941,12 +949,6 @@ try {
             html += '<thead>';
             html += '<tr class="linha-secao">';
             html += '<th class="col-posto">' + escapeHtml(secao) + '</th>';
-            html += '<th class="col-iipr">Lacre IIPR</th>';
-            html += '<th class="col-correios">Lacre Correios</th>';
-            html += '<th class="col-etiqueta">Etiqueta Correios</th>';
-            html += '</tr>';
-            html += '<tr>';
-            html += '<th class="col-posto">' + escapeHtml(obterTituloPrimeiraColuna(secao)) + '</th>';
             html += '<th class="col-iipr">Lacre IIPR</th>';
             html += '<th class="col-correios">Lacre Correios</th>';
             html += '<th class="col-etiqueta">Etiqueta Correios</th>';

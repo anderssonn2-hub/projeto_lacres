@@ -4057,11 +4057,15 @@ function iniciarConferenciaPacotes() {
 
     function obterChaveResumoPrevia(item, indice) {
         if (!item) return 'idx:' + indice;
-        if (item.row_key) return String(item.row_key);
         var tipo = String(item.contexto_tipo || 'posto');
         var contexto = String(item.contexto_chave || item.posto || item.regional_codigo || indice);
         var grupo = String(item.grupo_correios || item.grupo_iipr || '');
         return [tipo, contexto, grupo].join('|');
+    }
+
+    function valorResumoPreenchido(valor) {
+        var texto = String(valor == null ? '' : valor).trim();
+        return texto !== '' && texto !== '0';
     }
 
     function mesclarSnapshotPreviaComAnterior(snapshot) {
@@ -4087,13 +4091,13 @@ function iniciarConferenciaPacotes() {
             var itemAnteriorMesmo = mapaAnterior[obterChaveResumoPrevia(itemNovo, j)] || null;
             if (!itemAnteriorMesmo) continue;
 
-            if (!itemNovo.lacre_iipr && itemAnteriorMesmo.lacre_iipr) {
+            if (!valorResumoPreenchido(itemNovo.lacre_iipr) && valorResumoPreenchido(itemAnteriorMesmo.lacre_iipr)) {
                 itemNovo.lacre_iipr = itemAnteriorMesmo.lacre_iipr;
             }
-            if (!itemNovo.lacre_correios && itemAnteriorMesmo.lacre_correios) {
+            if (!valorResumoPreenchido(itemNovo.lacre_correios) && valorResumoPreenchido(itemAnteriorMesmo.lacre_correios)) {
                 itemNovo.lacre_correios = itemAnteriorMesmo.lacre_correios;
             }
-            if (!itemNovo.etiqueta_correios && itemAnteriorMesmo.etiqueta_correios) {
+            if (!valorResumoPreenchido(itemNovo.etiqueta_correios) && valorResumoPreenchido(itemAnteriorMesmo.etiqueta_correios)) {
                 itemNovo.etiqueta_correios = itemAnteriorMesmo.etiqueta_correios;
             }
             snapshot.resumo[j] = itemNovo;
