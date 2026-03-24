@@ -531,6 +531,8 @@ try {
     (function() {
         var nomesPostos = <?php echo json_encode($nomesPostos); ?> || {};
         var ultimoOficioInicial = <?php echo (int)$ultimoOficioCorreios; ?> || 0;
+        var paramsUrl = new URLSearchParams(window.location.search || '');
+        var canalControle = paramsUrl.get('canal_controle') || 'principal';
         var storageKey = 'conferencia_previa_malotes_v1';
         var areaGrade = document.getElementById('areaGrade');
         var statusNumeroRotulo = document.getElementById('statusNumeroRotulo');
@@ -594,6 +596,55 @@ try {
                     channel.postMessage(snapshot);
                 } catch (e2) {}
             }
+        }
+
+        function normalizarRegionalTexto(valor) {
+            var digitos = String(valor || '').replace(/\D+/g, '');
+            if (!digitos) return '';
+            return digitos.padStart(3, '0');
+        }
+
+        function aplicarEstadoRemotoAoSnapshot(snapshot, estado) {
+            if (!snapshot || !snapshot.resumo || !snapshot.resumo.length || !estado) return snapshot;
+            var regionalAtiva = normalizarRegionalTexto(estado.regional || '');
+            if (!regionalAtiva) return snapshot;
+            var alterou = false;
+            for (var i = 0; i < snapshot.resumo.length; i++) {
+                var item = snapshot.resumo[i] || {};
+                var regionalItem = normalizarRegionalTexto(item.regional_codigo || item.contexto_chave || item.regional || '');
+                if (regionalItem !== regionalAtiva) continue;
+                if (estado.lacre_iipr && item.lacre_iipr !== estado.lacre_iipr) {
+                    item.lacre_iipr = String(estado.lacre_iipr || '').trim();
+                    alterou = true;
+                }
+                if (estado.lacre_correios && item.lacre_correios !== estado.lacre_correios) {
+                    item.lacre_correios = String(estado.lacre_correios || '').trim();
+                    alterou = true;
+                }
+                if (estado.etiqueta_correios && item.etiqueta_correios !== estado.etiqueta_correios) {
+                    item.etiqueta_correios = String(estado.etiqueta_correios || '').trim();
+                    alterou = true;
+                }
+                snapshot.resumo[i] = item;
+            }
+            if (alterou) {
+                salvarSnapshot(snapshot);
+            }
+            return snapshot;
+        }
+
+        function sincronizarComEstadoRemoto() {
+            fetch('conferencia_pacotes.php?ler_estado_remoto_ajax=1&canal=' + encodeURIComponent(canalControle), { cache: 'no-store' })
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    var estado = data && data.estado ? data.estado : null;
+                    if (!estado) return;
+                    var snapshot = lerSnapshot();
+                    if (!snapshot) return;
+                    snapshot = aplicarEstadoRemotoAoSnapshot(snapshot, estado);
+                    renderizarQuandoPossivel(snapshot);
+                })
+                .catch(function() {});
         }
 
         function nomeSecao(item) {
@@ -967,6 +1018,8 @@ try {
         window.setInterval(function() {
             renderizarQuandoPossivel(lerSnapshot());
         }, 2000);
+        sincronizarComEstadoRemoto();
+        window.setInterval(sincronizarComEstadoRemoto, 1200);
     })();
     </script>
 </body>

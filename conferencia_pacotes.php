@@ -3863,7 +3863,7 @@ function iniciarConferenciaPacotes() {
     }
 
     function abrirPreviaMalotes() {
-        previewWindowRef = window.open('conferencia_pacotes_previa.php', '_blank');
+        previewWindowRef = window.open('conferencia_pacotes_previa.php?canal_controle=' + encodeURIComponent(controleCanal || 'principal'), '_blank');
         if (previewWindowRef) {
             if (statusPreviaMalotes) {
                 statusPreviaMalotes.textContent = 'Prévia aberta. Arraste a janela para a segunda tela.';

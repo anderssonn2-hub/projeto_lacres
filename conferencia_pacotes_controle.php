@@ -220,6 +220,7 @@ if ($controle_canal === '') {
         var inputLacreCorreiosRemoto = document.getElementById('inputLacreCorreiosRemoto');
         var inputEtiquetaCorreiosRemoto = document.getElementById('inputEtiquetaCorreiosRemoto');
         var toques = {};
+        var ultimoEstadoRemoto = null;
 
         function normalizarNumero(valor, limite) {
             return String(valor || '').replace(/\D+/g, '').slice(0, limite || 35);
@@ -229,6 +230,44 @@ if ($controle_canal === '') {
             if (!statusEnvio) return;
             statusEnvio.textContent = texto;
             statusEnvio.className = 'status' + (tipo ? ' ' + tipo : '');
+        }
+
+        function obterResumoEstadoAtual() {
+            if (ultimoEstadoRemoto && ultimoEstadoRemoto.resumo) {
+                return String(ultimoEstadoRemoto.resumo || '');
+            }
+            return estadoResumo ? String(estadoResumo.textContent || '') : '';
+        }
+
+        function publicarEstadoDigitado(acao, payload) {
+            var formData = new FormData();
+            formData.append('atualizar_estado_remoto_ajax', '1');
+            formData.append('canal', canal);
+            formData.append('usuario', ultimoEstadoRemoto && ultimoEstadoRemoto.usuario ? ultimoEstadoRemoto.usuario : '');
+            formData.append('posto', ultimoEstadoRemoto && ultimoEstadoRemoto.posto ? ultimoEstadoRemoto.posto : '');
+            formData.append('regional', ultimoEstadoRemoto && ultimoEstadoRemoto.regional ? ultimoEstadoRemoto.regional : (estadoRegional ? estadoRegional.textContent : ''));
+            formData.append('resumo', obterResumoEstadoAtual());
+            formData.append('lacre_iipr', acao === 'atribuir_iipr' ? payload.valor : (ultimoEstadoRemoto && ultimoEstadoRemoto.lacre_iipr ? ultimoEstadoRemoto.lacre_iipr : ''));
+            formData.append('lacre_correios', acao === 'atribuir_correios' ? payload.valor : (ultimoEstadoRemoto && ultimoEstadoRemoto.lacre_correios ? ultimoEstadoRemoto.lacre_correios : ''));
+            formData.append('etiqueta_correios', acao === 'atribuir_display' ? payload.valorAux : (ultimoEstadoRemoto && ultimoEstadoRemoto.etiqueta_correios ? ultimoEstadoRemoto.etiqueta_correios : ''));
+
+            return fetch('conferencia_pacotes.php', { method: 'POST', body: formData })
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    if (!data || !data.success) {
+                        throw new Error('Falha ao publicar estado remoto');
+                    }
+                    ultimoEstadoRemoto = ultimoEstadoRemoto || {};
+                    ultimoEstadoRemoto.regional = ultimoEstadoRemoto.regional || (estadoRegional ? estadoRegional.textContent : '');
+                    ultimoEstadoRemoto.resumo = obterResumoEstadoAtual();
+                    if (acao === 'atribuir_iipr') {
+                        ultimoEstadoRemoto.lacre_iipr = payload.valor;
+                    } else if (acao === 'atribuir_correios') {
+                        ultimoEstadoRemoto.lacre_correios = payload.valor;
+                    } else if (acao === 'atribuir_display') {
+                        ultimoEstadoRemoto.etiqueta_correios = payload.valorAux;
+                    }
+                });
         }
 
         function montarPayload(acao) {
@@ -287,10 +326,15 @@ if ($controle_canal === '') {
                         atualizarStatus('Falha ao enviar operação.', 'erro');
                         return;
                     }
-                    if (acao === 'atribuir_iipr' && inputLacreIiprRemoto) inputLacreIiprRemoto.value = '';
-                    if (acao === 'atribuir_correios' && inputLacreCorreiosRemoto) inputLacreCorreiosRemoto.value = '';
-                    if (acao === 'atribuir_display' && inputEtiquetaCorreiosRemoto) inputEtiquetaCorreiosRemoto.value = '';
-                    atualizarStatus('Operação enviada: ' + acao.replace(/_/g, ' '), 'ok');
+                    return publicarEstadoDigitado(acao, payload)
+                        .catch(function() {})
+                        .then(function() {
+                            if (acao === 'atribuir_iipr' && inputLacreIiprRemoto) inputLacreIiprRemoto.value = '';
+                            if (acao === 'atribuir_correios' && inputLacreCorreiosRemoto) inputLacreCorreiosRemoto.value = '';
+                            if (acao === 'atribuir_display' && inputEtiquetaCorreiosRemoto) inputEtiquetaCorreiosRemoto.value = '';
+                            atualizarStatus('Operação enviada: ' + acao.replace(/_/g, ' '), 'ok');
+                            carregarEstado();
+                        });
                 })
                 .catch(function() {
                     atualizarStatus('Erro de comunicação com a conferência.', 'erro');
@@ -329,6 +373,7 @@ if ($controle_canal === '') {
                 .then(function(resp) { return resp.json(); })
                 .then(function(data) {
                     var estado = data && data.estado ? data.estado : null;
+                    ultimoEstadoRemoto = estado;
                     if (!estado) {
                         estadoRegional.textContent = '-';
                         estadoAtualizado.textContent = '-';
