@@ -3929,7 +3929,7 @@ function iniciarConferenciaPacotes() {
             if (!grupos[chaveGrupo]) {
                 grupos[chaveGrupo] = {
                     regional: dados.regional || '',
-                    regional_codigo: contextoResumo.chave || dados.regional_codigo || '',
+                    regional_codigo: dados.regional_codigo || dados.regional || '',
                     posto: dados.posto || '',
                     contexto_tipo: contextoResumo.tipo || '',
                     contexto_chave: chaveResumo,
@@ -3956,6 +3956,7 @@ function iniciarConferenciaPacotes() {
         for (var chave in grupos) {
             if (!Object.prototype.hasOwnProperty.call(grupos, chave)) continue;
             resumo.push({
+                row_key: 'ctx:' + String(grupos[chave].contexto_tipo || 'posto') + ':' + String(grupos[chave].contexto_chave || grupos[chave].posto || chave),
                 regional: grupos[chave].regional,
                 regional_codigo: grupos[chave].regional_codigo,
                 posto: grupos[chave].posto,
@@ -4054,8 +4055,56 @@ function iniciarConferenciaPacotes() {
         };
     }
 
+    function obterChaveResumoPrevia(item, indice) {
+        if (!item) return 'idx:' + indice;
+        if (item.row_key) return String(item.row_key);
+        var tipo = String(item.contexto_tipo || 'posto');
+        var contexto = String(item.contexto_chave || item.posto || item.regional_codigo || indice);
+        var grupo = String(item.grupo_correios || item.grupo_iipr || '');
+        return [tipo, contexto, grupo].join('|');
+    }
+
+    function mesclarSnapshotPreviaComAnterior(snapshot) {
+        if (!snapshot || !snapshot.resumo || !snapshot.resumo.length) return snapshot;
+        var anterior = null;
+        try {
+            anterior = JSON.parse(localStorage.getItem(previewStorageKey) || 'null');
+        } catch (e) {
+            anterior = null;
+        }
+        if (!anterior || !anterior.resumo || !anterior.resumo.length) {
+            return snapshot;
+        }
+
+        var mapaAnterior = {};
+        for (var i = 0; i < anterior.resumo.length; i++) {
+            var itemAnterior = anterior.resumo[i] || {};
+            mapaAnterior[obterChaveResumoPrevia(itemAnterior, i)] = itemAnterior;
+        }
+
+        for (var j = 0; j < snapshot.resumo.length; j++) {
+            var itemNovo = snapshot.resumo[j] || {};
+            var itemAnteriorMesmo = mapaAnterior[obterChaveResumoPrevia(itemNovo, j)] || null;
+            if (!itemAnteriorMesmo) continue;
+
+            if (!itemNovo.lacre_iipr && itemAnteriorMesmo.lacre_iipr) {
+                itemNovo.lacre_iipr = itemAnteriorMesmo.lacre_iipr;
+            }
+            if (!itemNovo.lacre_correios && itemAnteriorMesmo.lacre_correios) {
+                itemNovo.lacre_correios = itemAnteriorMesmo.lacre_correios;
+            }
+            if (!itemNovo.etiqueta_correios && itemAnteriorMesmo.etiqueta_correios) {
+                itemNovo.etiqueta_correios = itemAnteriorMesmo.etiqueta_correios;
+            }
+            snapshot.resumo[j] = itemNovo;
+        }
+
+        return snapshot;
+    }
+
     function publicarResumoPrevia() {
         var snapshot = montarResumoPreviaMalotes();
+        snapshot = mesclarSnapshotPreviaComAnterior(snapshot);
         try {
             localStorage.setItem(previewStorageKey, JSON.stringify(snapshot));
         } catch (e1) {}
