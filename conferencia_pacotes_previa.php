@@ -146,6 +146,56 @@ try {
             padding: 16px 16px 24px;
             position: relative;
         }
+        .quadro-logo {
+            border: 1px solid #000;
+            padding: 10px 14px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .quadro-logo img {
+            height: 60px;
+            width: auto;
+            flex: 0 0 auto;
+        }
+        .quadro-logo-texto {
+            font-size: 14px;
+            line-height: 1.05;
+            color: #000;
+        }
+        .quadro-logo-texto strong {
+            display: block;
+        }
+        .info-cliente-box {
+            border: 1px solid #000;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 132px;
+            gap: 12px;
+            align-items: center;
+        }
+        .info-cliente-texto p {
+            margin: 0 0 8px;
+            font-size: 13px;
+            color: #000;
+            line-height: 1.25;
+        }
+        .info-cliente-texto p:last-child {
+            margin-bottom: 0;
+        }
+        .numero-box {
+            border: 1px solid #000;
+            min-height: 74px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #000;
+            background: #fff;
+        }
         .documento::before {
             content: '';
             position: absolute;
@@ -154,11 +204,7 @@ try {
             pointer-events: none;
         }
         .cabecalho {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) 132px;
-            gap: 10px;
-            align-items: start;
-            margin-bottom: 10px;
+            display: none;
         }
         .cabecalho-bloco {
             border: 1px solid var(--grade);
@@ -246,16 +292,6 @@ try {
             margin-bottom: 14px;
             page-break-inside: avoid;
         }
-        .secao-titulo {
-            padding: 4px 8px;
-            border: 1px solid var(--grade);
-            border-bottom: 0;
-            background: #efefef;
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -272,6 +308,18 @@ try {
             background: #f3f3f3;
             font-family: Arial, sans-serif;
             font-size: 10px;
+            text-transform: none;
+        }
+        .linha-secao th {
+            background: #f3f3f3;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: left;
+            text-transform: uppercase;
+        }
+        .linha-secao th:not(:first-child) {
+            text-align: center;
+            font-size: 11px;
             text-transform: none;
         }
         .col-posto { width: 34%; text-align: left; }
@@ -412,6 +460,14 @@ try {
             justify-content: flex-end;
         }
         @media (max-width: 900px) {
+            .quadro-logo,
+            .info-cliente-box {
+                grid-template-columns: 1fr;
+                display: block;
+            }
+            .numero-box {
+                margin-top: 10px;
+            }
             .cabecalho {
                 grid-template-columns: 1fr;
             }
@@ -455,6 +511,10 @@ try {
             .info-cliente-impressao,
             .footer-impressao {
                 display: block;
+            }
+            .quadro-logo,
+            .info-cliente-box {
+                break-inside: avoid;
             }
             .campo-impressao {
                 appearance: none;
@@ -519,6 +579,22 @@ try {
         <div class="aviso" id="caixaAviso"></div>
 
         <div class="documento">
+            <div class="quadro-logo">
+                <img src="logo_celepar.png" alt="Celepar">
+                <div class="quadro-logo-texto">
+                    <strong>CELEPAR – TECNOLOGIA DA INFORMAÇÃO E COMUNICAÇÃO DO PARANÁ</strong>
+                    COMPROVANTE DE ENTREGA DE SERVIÇOS
+                </div>
+            </div>
+
+            <div class="info-cliente-box">
+                <div class="info-cliente-texto">
+                    <p><strong>CLIENTE:</strong> CORREIO - <strong>END.</strong>R: JOÃO NEGRÃO, 1251 - CENTRO - CURITIBA PARANÁ</p>
+                    <p><strong>SISTEMA:</strong> SIV -- <strong>SETOR:</strong> EXPEDIÇÃO</p>
+                </div>
+                <div class="numero-box" id="numeroOficioBox">Nº Prévia</div>
+            </div>
+
             <div class="info-cliente-impressao">
                 <p><strong>CLIENTE:</strong> CORREIO - <strong>END.</strong>R: JOÃO NEGRÃO, 1251 - CENTRO - CURITIBA PARANÁ</p>
                 <p><strong>SISTEMA:</strong> SIV -- <strong>SETOR:</strong> EXPEDIÇÃO</p>
@@ -613,6 +689,7 @@ try {
         var textoPeriodo = document.getElementById('textoPeriodo');
         var textoUsuario = document.getElementById('textoUsuario');
         var numeroOficio = document.getElementById('numeroOficio');
+        var numeroOficioBox = document.getElementById('numeroOficioBox');
         var numeroRodape = document.getElementById('numeroRodape');
         var textoRodapeLotes = document.getElementById('textoRodapeLotes');
         var assinaturaEsquerda = document.getElementById('assinaturaEsquerda');
@@ -860,14 +937,21 @@ try {
         function montarTabela(secao, linhas) {
             var html = '';
             html += '<div class="secao">';
-            html += '<div class="secao-titulo">' + escapeHtml(secao) + '</div>';
             html += '<table>';
-            html += '<thead><tr>';
+            html += '<thead>';
+            html += '<tr class="linha-secao">';
+            html += '<th class="col-posto">' + escapeHtml(secao) + '</th>';
+            html += '<th class="col-iipr">Lacre IIPR</th>';
+            html += '<th class="col-correios">Lacre Correios</th>';
+            html += '<th class="col-etiqueta">Etiqueta Correios</th>';
+            html += '</tr>';
+            html += '<tr>';
             html += '<th class="col-posto">' + escapeHtml(obterTituloPrimeiraColuna(secao)) + '</th>';
             html += '<th class="col-iipr">Lacre IIPR</th>';
             html += '<th class="col-correios">Lacre Correios</th>';
             html += '<th class="col-etiqueta">Etiqueta Correios</th>';
-            html += '</tr></thead><tbody>';
+            html += '</tr>';
+            html += '</thead><tbody>';
 
             for (var i = 0; i < linhas.length; i++) {
                 var item = linhas[i];
@@ -906,11 +990,13 @@ try {
 
             if (numeroAtual > 0) {
                 numeroOficio.textContent = '#' + numeroAtual;
+                if (numeroOficioBox) numeroOficioBox.textContent = 'Nº #' + numeroAtual;
                 numeroRodape.textContent = 'Documento gravado';
                 statusNumeroRotulo.textContent = 'Número gravado:';
                 statusNumeroValor.textContent = '#' + String(numeroAtual);
             } else {
                 numeroOficio.textContent = 'Prévia';
+                if (numeroOficioBox) numeroOficioBox.textContent = 'Nº Prévia';
                 numeroRodape.textContent = estadoOficio.ultimoConhecido > 0 ? ('Último existente: ' + estadoOficio.ultimoConhecido) : 'Grave para numerar';
                 statusNumeroRotulo.textContent = 'Número:';
                 statusNumeroValor.textContent = 'Prévia';
