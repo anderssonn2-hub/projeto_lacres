@@ -331,7 +331,7 @@ try {
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<title>Consulta de Producao de Cedulas - Versao 0.9.25.16</title>
+<title>Consulta de Producao de Cedulas - Versao 0.9.25.17</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -583,7 +583,7 @@ try {
 
 <div class="container">
     <a href="inicio.php" class="btn-voltar-inicio">← Inicio</a>
-    <h1>Consulta de Producao de Cedulas - Versao 0.9.25.16</h1>
+    <h1>Consulta de Producao de Cedulas - Versao 0.9.25.17</h1>
     
     <!-- Painel de Filtros (Versao 6: periodo, usuario com dropdown, link PDF) -->
     <div class="painel">

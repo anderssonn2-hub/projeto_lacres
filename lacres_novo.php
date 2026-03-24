@@ -4894,6 +4894,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         
         /* v9.8.0: Status de Conferência recolhível */
         #indicador-dias {
+            display: none !important;
             position: fixed;
             top: 10px;
             right: 10px;
@@ -5095,7 +5096,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 0.9.25.10</div>
+<div class="version-info">Versão 0.9.25.17</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">

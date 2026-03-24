@@ -2507,48 +2507,6 @@ try {
 <body>
 <div class="topo-status">
     <div class="versao">v0.9.25.17</div>
-    <div id="indicador-dias" class="collapsed">
-        <div class="indicador-header" onclick="toggleIndicadorDias()" title="Recolher/Expandir">
-            <span>📅 Status de Conferências</span>
-            <span class="indicador-toggle">▼</span>
-        </div>
-        <div class="indicador-conteudo">
-            <div style="margin:10px 0;">
-                <strong style="color:#28a745;font-size:12px;">✓ Últimas Conferências:</strong><br>
-                <div style="margin-top:5px;">
-                    <?php 
-                    $ultimas_cinco = array_slice($dias_com_conferencia, 0, 5);
-                    if (!empty($ultimas_cinco)) {
-                        foreach ($ultimas_cinco as $data) {
-                            $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
-                            $badge_label = !empty($label_dia) ? " <span class='badge-dia'>$label_dia</span>" : '';
-                            echo '<span class="badge-data conferida">' . htmlspecialchars($data) . $badge_label . '</span>';
-                        }
-                    } else {
-                        echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
-                    }
-                    ?>
-                </div>
-            </div>
-            <div style="margin:10px 0;">
-                <strong style="color:#ffc107;font-size:12px;">⚠ Conferências Pendentes:</strong><br>
-                <div style="margin-top:5px;">
-                    <?php 
-                    $ultimas_pendentes = array_slice($dias_sem_conferencia, 0, 5);
-                    if (!empty($ultimas_pendentes)) {
-                        foreach ($ultimas_pendentes as $data) {
-                            $label_dia = isset($metadados_dias[$data]) ? $metadados_dias[$data]['label'] : '';
-                            $badge_label = !empty($label_dia) ? " <span class='badge-dia'>$label_dia</span>" : '';
-                            echo '<span class="badge-data pendente">' . htmlspecialchars($data) . $badge_label . '</span>';
-                        }
-                    } else {
-                        echo '<span style="color:#999;font-size:11px;">Nenhuma</span>';
-                    }
-                    ?>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <h2>📋 Conferência de Pacotes v0.9.25.17</h2>
@@ -2921,7 +2879,7 @@ try {
         </div>
     </div>
     <div class="painel-malotes-ajuda">
-        Primeiro confirme os lotes em verde. Nas regionais, selecione os lotes que entraram no mesmo malote IIPR da regional e atribua um único lacre IIPR ao conjunto. Quando souber o malote maior dos Correios, marque um ou mais malotes IIPR já fechados e aplique o mesmo lacre Correios e a mesma etiqueta.
+        Primeiro confirme os lotes em verde. Nas regionais, você pode marcar lotes manualmente ou simplesmente deixar toda a regional verde e informar o lacre IIPR: se nada estiver marcado, o sistema usa todos os lotes confirmados e ainda sem IIPR do contexto atual. Quando souber o malote maior dos Correios, marque um ou mais malotes IIPR já fechados e aplique o mesmo lacre Correios e a mesma etiqueta.
     </div>
 </div>
 
@@ -4469,6 +4427,18 @@ function iniciarConferenciaPacotes() {
         return chips;
     }
 
+    function obterChipsConfirmadosSemIiprNoContexto() {
+        var chips = obterChipsPorContextoMalote();
+        var selecionados = [];
+        for (var i = 0; i < chips.length; i++) {
+            var dados = obterDadosChipOperacao(chips[i]);
+            if (!dados || !dados.conferido) continue;
+            if (dados.lacre_iipr) continue;
+            selecionados.push(chips[i]);
+        }
+        return selecionados;
+    }
+
     function obterChipsDosIiprMarcados() {
         var checks = painelMalotesIipr ? painelMalotesIipr.querySelectorAll('.check-malote-iipr:checked') : [];
         var chips = [];
@@ -4499,7 +4469,10 @@ function iniciarConferenciaPacotes() {
                 return;
             }
             if (!chips.length) {
-                alert('Selecione os lotes que entraram no mesmo malote IIPR.');
+                chips = obterChipsConfirmadosSemIiprNoContexto();
+            }
+            if (!chips.length) {
+                alert('Selecione os lotes que entraram no mesmo malote IIPR ou deixe o contexto todo conferido em verde para usar automaticamente os lotes ainda sem IIPR.');
                 return;
             }
 
@@ -4990,6 +4963,27 @@ function iniciarConferenciaPacotes() {
         filaSons.push(som);
         if (!tocando) {
             tocarProximoSom();
+        }
+    }
+
+    function tocarBeepLeitura() {
+        if (!beep) return;
+        if (muteBeep && muteBeep.checked) return;
+        try {
+            beep.pause();
+        } catch (e1) {}
+        try {
+            beep.currentTime = 0;
+            var playPromise = beep.play();
+            if (playPromise && playPromise.catch) {
+                playPromise.catch(function() {
+                    try {
+                        enfileirarSom(beep);
+                    } catch (e2) {}
+                });
+            }
+        } catch (e3) {
+            enfileirarSom(beep);
         }
     }
 
@@ -5741,9 +5735,7 @@ function iniciarConferenciaPacotes() {
         }
         atualizarResumoTabela(linha.closest('table'));
 
-        if (!muteBeep || !muteBeep.checked) {
-            enfileirarSom(beep);
-        }
+        tocarBeepLeitura();
         if (somAlerta) {
             enfileirarSom(somAlerta);
         }

@@ -8,7 +8,7 @@ if ($controle_canal === '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Controle Simplificado dos Malotes v0.9.25.16</title>
+    <title>Controle Simplificado dos Malotes v0.9.25.17</title>
     <style>
         :root {
             --bg: #eef3f9;

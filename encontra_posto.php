@@ -1,5 +1,5 @@
 <?php
-/* encontra_posto.php — v0.9.25.8
+/* encontra_posto.php — v0.9.25.17
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
  * Registra leituras para controle da estante.
@@ -513,7 +513,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto v0.9.25.8 - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.25.17 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -819,8 +819,8 @@ try {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.25.8</span>
-        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.8</span>
+        <span class="versao">v0.9.25.17</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.17</span>
         <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">
