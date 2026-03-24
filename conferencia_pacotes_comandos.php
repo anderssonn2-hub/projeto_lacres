@@ -1,25 +1,32 @@
 <?php
 $comandos = array(
     array(
-        'titulo' => 'Armar Lacre IIPR',
+        'titulo' => 'Lacre IIPR',
+        'subtitulo' => 'Ativa a leitura do lacre IIPR',
         'codigo' => '990000000000000000001',
-        'descricao' => 'Leia este código e em seguida leia o lacre IIPR que deve ser aplicado na regional atual.'
+        'descricao' => 'Leia este código e depois leia o lacre IIPR que será aplicado na regional atual.',
+        'classe' => 'iipr'
     ),
     array(
-        'titulo' => 'Armar Lacre Correios',
+        'titulo' => 'Lacre Correios',
+        'subtitulo' => 'Ativa a leitura do lacre Correios',
         'codigo' => '990000000000000000002',
-        'descricao' => 'Leia este código e em seguida leia o lacre Correios que fecha o malote maior da regional atual.'
+        'descricao' => 'Leia este código e depois leia o lacre Correios do malote maior da regional.',
+        'classe' => 'correios'
     ),
     array(
-        'titulo' => 'Armar Etiqueta Correios',
+        'titulo' => 'Display Correios',
+        'subtitulo' => 'Ativa a leitura da etiqueta Correios',
         'codigo' => '990000000000000000003',
-        'descricao' => 'Leia este código e em seguida leia a etiqueta de 35 dígitos do malote Correios aberto.'
-    ),
-    array(
-        'titulo' => 'Cancelar Comando',
-        'codigo' => '990000000000000000009',
-        'descricao' => 'Cancela o modo de comando atual caso tenha sido armado por engano.'
+        'descricao' => 'Leia este código e depois leia a etiqueta de 35 dígitos do malote Correios aberto.',
+        'classe' => 'display'
     )
+);
+
+$cancelar = array(
+    'titulo' => 'Cancelar comando',
+    'codigo' => '990000000000000000009',
+    'descricao' => 'Opcional. Use apenas se precisar limpar o modo armado atual.'
 );
 ?><!DOCTYPE html>
 <html lang="pt-BR">
@@ -32,11 +39,11 @@ $comandos = array(
         body {
             margin: 0;
             font-family: "Trebuchet MS", Verdana, sans-serif;
-            background: #f3f6fb;
-            color: #17324d;
+            background: #f2f2f2;
+            color: #1f1f1f;
         }
         .pagina {
-            max-width: 1120px;
+            max-width: 1280px;
             margin: 0 auto;
             padding: 24px 18px 40px;
         }
@@ -51,17 +58,18 @@ $comandos = array(
         .topo h1 {
             margin: 0;
             font-size: 28px;
+            text-transform: uppercase;
         }
         .topo p {
             margin: 8px 0 0;
             max-width: 760px;
             line-height: 1.6;
-            color: #4c6278;
+            color: #505050;
         }
         .btn-imprimir {
             border: 0;
-            border-radius: 12px;
-            background: #0f766e;
+            border-radius: 6px;
+            background: #169b41;
             color: #fff;
             font-weight: 700;
             padding: 12px 18px;
@@ -69,57 +77,116 @@ $comandos = array(
         }
         .grade {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 18px;
         }
         .card {
             background: #fff;
-            border: 1px solid #d7e0ea;
-            border-radius: 16px;
-            padding: 18px;
-            box-shadow: 0 12px 24px rgba(23, 50, 77, 0.08);
+            border: 1px solid #151515;
+            border-radius: 0;
+            padding: 14px 14px 18px;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+            min-height: 720px;
+            display: flex;
+            flex-direction: column;
         }
         .card h2 {
-            margin: 0 0 8px;
-            font-size: 20px;
+            margin: 0;
+            font-size: 24px;
+            text-transform: uppercase;
+            text-align: center;
+        }
+        .subtitulo-card {
+            margin: 4px 0 8px;
+            font-size: 12px;
+            text-transform: uppercase;
+            text-align: center;
+            color: #5b5b5b;
+            letter-spacing: 0.04em;
         }
         .descricao {
-            min-height: 44px;
-            margin: 0 0 14px;
-            color: #5e7286;
+            min-height: 48px;
+            margin: 0 0 10px;
+            color: #4a4a4a;
             font-size: 14px;
             line-height: 1.5;
+            text-align: center;
         }
         .codigo {
             margin-top: 12px;
-            font-size: 13px;
+            font-size: 20px;
             letter-spacing: 0.12em;
-            color: #17324d;
+            color: #111;
             word-break: break-all;
             text-align: center;
+            font-family: "Courier New", monospace;
+            font-weight: bold;
         }
         .barcode-wrap {
             background: #fff;
-            border: 1px dashed #c2cfdb;
-            border-radius: 12px;
-            padding: 14px 12px 8px;
-            min-height: 132px;
+            border: 1px solid #000;
+            padding: 14px 8px 8px;
+            min-height: 520px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: auto;
         }
         .barcode-wrap svg {
             display: block;
-            width: 100%;
-            height: 86px;
+            width: 160px;
+            height: 460px;
+        }
+        .card.iipr { background: linear-gradient(180deg, #ffffff 0%, #f8fff9 100%); }
+        .card.correios { background: linear-gradient(180deg, #ffffff 0%, #fffdfa 100%); }
+        .card.display { background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%); }
+        .cancelar {
+            margin-top: 20px;
+            border: 1px solid #222;
+            background: #fff;
+            padding: 14px;
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            gap: 16px;
+            align-items: center;
+        }
+        .cancelar-titulo {
+            font-size: 18px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .cancelar-texto {
+            color: #4f4f4f;
+            line-height: 1.5;
+        }
+        .cancelar-codigo {
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            font-size: 18px;
+            margin-top: 6px;
         }
         .rodape {
             margin-top: 18px;
             padding: 14px 16px;
-            border-radius: 14px;
-            background: #e9f6f4;
-            color: #0f4f4a;
+            border: 1px solid #bfbfbf;
+            background: #f9f9f9;
+            color: #303030;
             line-height: 1.6;
         }
         @media (max-width: 760px) {
             .grade {
+                grid-template-columns: 1fr;
+            }
+            .card {
+                min-height: auto;
+            }
+            .barcode-wrap {
+                min-height: 360px;
+            }
+            .barcode-wrap svg {
+                height: 320px;
+            }
+            .cancelar {
                 grid-template-columns: 1fr;
             }
         }
@@ -138,6 +205,9 @@ $comandos = array(
                 box-shadow: none;
                 break-inside: avoid;
             }
+            .barcode-wrap {
+                min-height: 500px;
+            }
         }
     </style>
 </head>
@@ -146,26 +216,35 @@ $comandos = array(
         <div class="topo">
             <div>
                 <h1>Folha de comandos</h1>
-                <p>Use estes códigos para operar a página de conferência sem o painel inferior. A leitura do comando arma a ação. A leitura seguinte informa o lacre ou a etiqueta para a regional atual.</p>
+                <p>Imprima e deixe estes três comandos na bancada. A leitura do código arma a ação na tela principal. A leitura seguinte informa o lacre IIPR, o lacre Correios ou a etiqueta de display da regional atual.</p>
             </div>
             <button type="button" class="btn-imprimir" onclick="window.print()">Imprimir folha</button>
         </div>
 
         <div class="grade">
             <?php foreach ($comandos as $item): ?>
-            <section class="card">
+            <section class="card <?php echo htmlspecialchars($item['classe'], ENT_QUOTES, 'UTF-8'); ?>">
                 <h2><?php echo htmlspecialchars($item['titulo'], ENT_QUOTES, 'UTF-8'); ?></h2>
+                <div class="subtitulo-card"><?php echo htmlspecialchars($item['subtitulo'], ENT_QUOTES, 'UTF-8'); ?></div>
                 <p class="descricao"><?php echo htmlspecialchars($item['descricao'], ENT_QUOTES, 'UTF-8'); ?></p>
                 <div class="barcode-wrap">
                     <svg class="barcode" data-code="<?php echo htmlspecialchars($item['codigo'], ENT_QUOTES, 'UTF-8'); ?>" role="img" aria-label="Código <?php echo htmlspecialchars($item['codigo'], ENT_QUOTES, 'UTF-8'); ?>"></svg>
-                    <div class="codigo"><?php echo htmlspecialchars($item['codigo'], ENT_QUOTES, 'UTF-8'); ?></div>
                 </div>
+                <div class="codigo"><?php echo htmlspecialchars($item['codigo'], ENT_QUOTES, 'UTF-8'); ?></div>
             </section>
             <?php endforeach; ?>
         </div>
 
+        <section class="cancelar">
+            <div>
+                <div class="cancelar-titulo"><?php echo htmlspecialchars($cancelar['titulo'], ENT_QUOTES, 'UTF-8'); ?></div>
+                <div class="cancelar-codigo"><?php echo htmlspecialchars($cancelar['codigo'], ENT_QUOTES, 'UTF-8'); ?></div>
+            </div>
+            <div class="cancelar-texto"><?php echo htmlspecialchars($cancelar['descricao'], ENT_QUOTES, 'UTF-8'); ?></div>
+        </section>
+
         <div class="rodape">
-            Sequência de uso: 1) leia o comando, 2) leia o valor do lacre ou da etiqueta, 3) confira a confirmação sonora/visual na tela principal. O código de cancelamento limpa o modo armado atual.
+            Sequência de uso: 1) leia o comando vertical, 2) leia o lacre ou a etiqueta correspondente, 3) confira a confirmação sonora e visual na conferência. Os três códigos principais substituem os botões de ação do controle remoto na bancada.
         </div>
     </div>
 
@@ -216,7 +295,14 @@ $comandos = array(
                 cursor += 2;
             }
 
-            svg.setAttribute('viewBox', '0 0 ' + (cursor + 12) + ' 90');
+            var grupo = document.createElementNS(ns, 'g');
+            while (svg.firstChild) {
+                grupo.appendChild(svg.firstChild);
+            }
+            grupo.setAttribute('transform', 'translate(0 ' + (cursor + 12) + ') rotate(-90)');
+            svg.appendChild(grupo);
+
+            svg.setAttribute('viewBox', '0 0 90 ' + (cursor + 12));
             svg.setAttribute('preserveAspectRatio', 'none');
         }
 

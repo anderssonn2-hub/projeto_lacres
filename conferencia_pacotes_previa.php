@@ -25,23 +25,25 @@ try {
     <style>
         * { box-sizing: border-box; }
         :root {
-            --papel: #f4efe4;
-            --papel-sombra: #d8d0c0;
-            --tinta: #171717;
-            --tinta-suave: #5a574f;
-            --grade: #2d2b27;
-            --tarja: #ebe4d2;
-            --destaque: #193c2d;
-            --destaque-claro: #2f6a50;
+            --papel: #f7f7f7;
+            --papel-sombra: #d7d7d7;
+            --tinta: #161616;
+            --tinta-suave: #5e5e5e;
+            --grade: #1f1f1f;
+            --tarja: #ececec;
+            --destaque: #169b41;
+            --destaque-claro: #127a33;
             --aviso: #b46a13;
             --erro: #972d2d;
+            --cinza-botao: #747b84;
+            --cinza-botao-hover: #656c75;
         }
         html, body {
             margin: 0;
             padding: 0;
-            background: #ece8de;
+            background: #ececec;
             color: var(--tinta);
-            font-family: Georgia, "Times New Roman", serif;
+            font-family: Arial, Helvetica, sans-serif;
         }
         .pagina {
             min-height: 100vh;
@@ -62,12 +64,13 @@ try {
             gap: 4px;
         }
         .titulo-pagina {
-            font-size: 24px;
-            letter-spacing: 0.06em;
+            font-size: 22px;
+            letter-spacing: 0.04em;
             text-transform: uppercase;
+            font-weight: bold;
         }
         .subtitulo-pagina {
-            font-size: 13px;
+            font-size: 12px;
             color: var(--tinta-suave);
             letter-spacing: 0.04em;
             text-transform: uppercase;
@@ -78,26 +81,25 @@ try {
             flex-wrap: wrap;
         }
         .btn {
-            border: 1px solid var(--grade);
-            background: rgba(255,255,255,0.72);
-            color: var(--tinta);
+            border: 0;
+            border-radius: 4px;
+            background: var(--cinza-botao);
+            color: #fff;
             padding: 11px 18px;
-            font-size: 13px;
+            font-size: 14px;
             font-family: Arial, sans-serif;
             font-weight: bold;
-            letter-spacing: 0.03em;
-            text-transform: uppercase;
+            letter-spacing: 0.01em;
             cursor: pointer;
             transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
         }
         .btn:hover {
             transform: translateY(-1px);
-            background: #fff;
+            background: var(--cinza-botao-hover);
         }
         .btn-principal {
             background: var(--destaque);
             color: #fff;
-            border-color: var(--destaque);
         }
         .btn-principal:hover {
             background: var(--destaque-claro);
@@ -114,7 +116,7 @@ try {
         }
         .status-item {
             padding: 8px 12px;
-            background: rgba(255,255,255,0.62);
+            background: rgba(255,255,255,0.92);
             border: 1px solid rgba(45,43,39,0.18);
         }
         .status-item strong {
@@ -137,26 +139,26 @@ try {
             color: var(--erro);
         }
         .documento {
-            max-width: 1080px;
+            max-width: 1180px;
             margin: 0 auto;
             background: #fff;
-            box-shadow: 0 12px 32px rgba(24, 23, 19, 0.14);
-            padding: 28px 28px 34px;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+            padding: 20px 20px 28px;
             position: relative;
         }
         .documento::before {
             content: '';
             position: absolute;
             inset: 10px;
-            border: 1px solid rgba(45,43,39,0.1);
+            border: 1px solid rgba(45,43,39,0.08);
             pointer-events: none;
         }
         .cabecalho {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 180px;
-            gap: 24px;
+            grid-template-columns: minmax(0, 1fr) 150px;
+            gap: 14px;
             align-items: start;
-            margin-bottom: 22px;
+            margin-bottom: 14px;
         }
         .cabecalho-bloco {
             border: 1px solid var(--grade);
@@ -164,26 +166,26 @@ try {
         }
         .cabecalho-linha {
             display: grid;
-            grid-template-columns: 124px 1fr;
+            grid-template-columns: 110px 1fr;
             border-bottom: 1px solid rgba(45,43,39,0.4);
-            min-height: 44px;
+            min-height: 38px;
         }
         .cabecalho-linha:last-child {
             border-bottom: 0;
         }
         .cabecalho-rotulo {
-            padding: 10px 12px;
+            padding: 8px 10px;
             font-family: Arial, sans-serif;
             font-size: 11px;
             font-weight: bold;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.04em;
             text-transform: uppercase;
             border-right: 1px solid rgba(45,43,39,0.4);
-            background: #f4f1ea;
+            background: #efefef;
         }
         .cabecalho-valor {
-            padding: 10px 14px;
-            font-size: 14px;
+            padding: 8px 12px;
+            font-size: 13px;
             line-height: 1.35;
         }
         .numero-oficio {
@@ -195,22 +197,24 @@ try {
             background: #fff;
         }
         .numero-topo {
-            padding: 12px 14px 6px;
+            padding: 10px 10px 6px;
             font-family: Arial, sans-serif;
             font-size: 11px;
             font-weight: bold;
-            letter-spacing: 0.12em;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
             text-align: center;
+            background: #efefef;
         }
         .numero-valor {
-            padding: 10px 14px 4px;
+            padding: 12px 10px 4px;
             text-align: center;
-            font-size: 46px;
+            font-size: 38px;
             line-height: 1;
+            font-family: Georgia, "Times New Roman", serif;
         }
         .numero-rodape {
-            padding: 10px 14px 14px;
+            padding: 8px 10px 12px;
             font-family: Arial, sans-serif;
             font-size: 11px;
             text-align: center;
@@ -222,14 +226,14 @@ try {
             justify-content: space-between;
             gap: 14px;
             flex-wrap: wrap;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             font-family: Arial, sans-serif;
             font-size: 12px;
             color: var(--tinta-suave);
         }
         .texto-abertura {
             margin-bottom: 12px;
-            font-size: 13px;
+            font-size: 12px;
             line-height: 1.5;
             text-align: left;
         }
@@ -238,14 +242,13 @@ try {
             page-break-inside: avoid;
         }
         .secao-titulo {
-            padding: 7px 12px;
+            padding: 4px 8px;
             border: 1px solid var(--grade);
             border-bottom: 0;
             background: #efefef;
             font-family: Arial, sans-serif;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: bold;
-            letter-spacing: 0.1em;
             text-transform: uppercase;
         }
         table {
@@ -256,54 +259,47 @@ try {
         }
         th, td {
             border: 1px solid var(--grade);
-            padding: 8px 10px;
-            font-size: 13px;
+            padding: 3px 5px;
+            font-size: 12px;
             vertical-align: middle;
         }
         thead th {
             background: #f3f3f3;
             font-family: Arial, sans-serif;
             font-size: 11px;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
+            text-transform: none;
         }
-        .col-posto { width: 32%; }
-        .col-iipr { width: 28%; }
+        .col-posto { width: 38%; text-align: left; }
+        .col-iipr { width: 14%; }
         .col-correios { width: 14%; }
-        .col-etiqueta { width: 26%; }
+        .col-etiqueta { width: 34%; }
         .destino {
-            font-weight: bold;
-            letter-spacing: 0.02em;
-        }
-        .posto-linha {
-            color: var(--tinta-suave);
+            font-size: 13px;
         }
         .campo-impressao {
             width: 100%;
-            border: 0;
-            background: transparent;
+            border: 1px solid #8f8f8f;
+            background: #fdfdfd;
             color: var(--tinta);
-            font-size: 13px;
-            font-family: Georgia, "Times New Roman", serif;
-            padding: 0;
+            font-size: 12px;
+            font-family: "Courier New", monospace;
+            padding: 2px 6px;
             outline: none;
+            height: 22px;
+            text-align: center;
         }
         .campo-impressao[readonly] {
             cursor: default;
         }
         .campo-lacres-iipr {
-            resize: none;
-            overflow: hidden;
-            white-space: pre-wrap;
-            line-height: 1.3;
-            min-height: 24px;
+            font-family: "Courier New", monospace;
         }
         .campo-etiqueta {
-            border-bottom: 1px dashed rgba(45,43,39,0.45);
-            padding-bottom: 2px;
+            text-align: left;
         }
         .campo-etiqueta:focus {
-            border-bottom-color: var(--destaque);
+            border-color: var(--destaque);
+            box-shadow: 0 0 0 1px rgba(22,155,65,0.15);
         }
         .rodape {
             margin-top: 28px;
@@ -325,7 +321,7 @@ try {
         .vazio {
             border: 1px dashed rgba(45,43,39,0.4);
             padding: 28px;
-            background: rgba(255,255,255,0.42);
+            background: rgba(255,255,255,0.9);
             text-align: center;
             font-family: Arial, sans-serif;
             font-size: 14px;
@@ -444,11 +440,11 @@ try {
         <div class="barra-acoes">
             <div class="barra-esquerda">
                 <div class="titulo-pagina">Prévia do Ofício dos Correios</div>
-                <div class="subtitulo-pagina">Documento operacional gerado a partir dos malotes fechados na conferência</div>
+                <div class="subtitulo-pagina">Modelo editável para gravar e imprimir o ofício final dos Correios</div>
             </div>
             <div class="acoes">
-                <button type="button" class="btn" id="btnImprimir">Apenas Imprimir</button>
                 <button type="button" class="btn btn-principal" id="btnGravarImprimir">Gravar e Imprimir Correios</button>
+                <button type="button" class="btn" id="btnImprimir">Apenas Imprimir</button>
             </div>
         </div>
 
@@ -471,7 +467,7 @@ try {
                     </div>
                     <div class="cabecalho-linha">
                         <div class="cabecalho-rotulo">Referência</div>
-                        <div class="cabecalho-valor">Conferência de pacotes e fechamento de malotes de despacho</div>
+                        <div class="cabecalho-valor">Ofício consolidado de lacres e etiquetas dos malotes expedidos</div>
                     </div>
                     <div class="cabecalho-linha">
                         <div class="cabecalho-rotulo">Período</div>
@@ -495,7 +491,7 @@ try {
             </div>
 
             <div class="texto-abertura">
-                Encaminhamos abaixo a composição final dos malotes de despacho dos Correios, já consolidada por destino de ofício. As etiquetas podem ser ajustadas diretamente nesta prévia antes da gravação definitiva do número do ofício.
+                Segue abaixo o modelo do ofício dos Correios já montado com base nos malotes conferidos. Antes de gravar, os campos de lacre IIPR, lacre Correios e etiqueta Correios podem ser ajustados manualmente nesta própria grade.
             </div>
 
             <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
