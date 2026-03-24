@@ -7,7 +7,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Início - Projeto Lacres v0.9.25.14</title>
+  <title>Início - Projeto Lacres v0.9.25.8</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -96,7 +96,6 @@
     .btn-cons { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
     .btn-devol { background: linear-gradient(135deg, #ff6f00 0%, #ffb300 100%); }
 
-
     @media (max-width: 900px) {
       body { padding: 18px; }
       .quadrants { grid-template-columns: 1fr; }
@@ -110,7 +109,7 @@
         <h1>Projeto Lacres</h1>
         <div class="sub">Selecione um tema e inicie sua rotina.</div>
       </div>
-      <div class="version">v0.9.25.14</div>
+      <div class="version">v0.9.25.8</div>
     </div>
 
     <div class="quadrants">
@@ -169,14 +168,7 @@
           </a>
         </div>
       </section>
-    </div><!-- /.quadrants -->
-
-  </div><!-- /.page -->
+    </div>
+  </div>
 </body>
-<script>
-(function() {
-  var USUARIO_KEY = 'conferencia_responsavel';
-  // (Funcionalidade simplificada sem turnos)
-})();
-</script>
 </html>

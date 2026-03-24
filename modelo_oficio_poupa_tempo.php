@@ -14,7 +14,7 @@
    
     v9.24.2: Impressao e rodape (18/02/2026)
     - [CORRIGIDO] Impressao/PDF apenas das folhas marcadas
-    - [CORRIGIDO] Rodape: "Produzido por" e "CELEPAR" + "CELEPAR-POUPA-TEMPO"
+    - [CORRIGIDO] Rodape: "Produzido por" e "CELEPAR" + "IIPR-POUPA-TEMPO"
 
     v9.21.5: Ajustes Finais de Layout e UX (29/01/2026)
    - [CORRIGIDO] ✅ Rodapé reduzido para caber na página (padding menor)
@@ -202,76 +202,6 @@ if (!isset($_SESSION)) {
 
 function e($s){
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
-}
-
-function normalizarPostosSelecionadosPt($valor) {
-    $postos = array();
-    if (is_array($valor)) {
-        $itens = $valor;
-    } else {
-        $itens = explode(',', (string)$valor);
-    }
-    foreach ($itens as $item) {
-        $item = preg_replace('/\D+/', '', (string)$item);
-        if ($item === '') {
-            continue;
-        }
-        $item = str_pad($item, 3, '0', STR_PAD_LEFT);
-        if (!in_array($item, $postos, true)) {
-            $postos[] = $item;
-        }
-    }
-    return $postos;
-}
-
-function resolverEnderecoPostoPt($pdo, $posto, &$cache) {
-    $posto = str_pad(preg_replace('/\D+/', '', (string)$posto), 3, '0', STR_PAD_LEFT);
-    if ($posto === '000') {
-        return '';
-    }
-    if (isset($cache[$posto])) {
-        return $cache[$posto];
-    }
-    $cache[$posto] = '';
-    if (!$pdo) {
-        return '';
-    }
-
-    try {
-        $sql = "SELECT endereco
-                  FROM ciRegionais
-                 WHERE LPAD(posto,3,'0') = ?
-                   AND TRIM(COALESCE(endereco, '')) <> ''
-                 ORDER BY id DESC
-                 LIMIT 1";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(array($posto));
-        $endereco = trim((string)$stmt->fetchColumn());
-        if ($endereco !== '') {
-            $cache[$posto] = $endereco;
-            return $endereco;
-        }
-    } catch (Exception $e) {
-    }
-
-    try {
-        $sqlItens = "SELECT endereco
-                       FROM ciDespachoItens
-                      WHERE posto = ?
-                        AND TRIM(COALESCE(endereco, '')) <> ''
-                      ORDER BY id DESC
-                      LIMIT 1";
-        $stmtItens = $pdo->prepare($sqlItens);
-        $stmtItens->execute(array($posto));
-        $enderecoItens = trim((string)$stmtItens->fetchColumn());
-        if ($enderecoItens !== '') {
-            $cache[$posto] = $enderecoItens;
-            return $enderecoItens;
-        }
-    } catch (Exception $e2) {
-    }
-
-    return '';
 }
 
 /* ============================================================
@@ -740,21 +670,22 @@ if (!empty($datasStr)) {
 }
 
 if (isset($_POST['pt_postos_sel'])) {
-    $postosSelecionados = normalizarPostosSelecionadosPt($_POST['pt_postos_sel']);
-} elseif (isset($_GET['pt_postos_sel'])) {
-    $postosSelecionados = normalizarPostosSelecionadosPt($_GET['pt_postos_sel']);
+    $rawSel = $_POST['pt_postos_sel'];
+    if (is_array($rawSel)) {
+        $tmpSel = $rawSel;
+    } else {
+        $tmpSel = explode(',', (string)$rawSel);
+    }
+    foreach ($tmpSel as $ps) {
+        $ps = preg_replace('/\D+/', '', (string)$ps);
+        if ($ps === '') continue;
+        $postosSelecionados[] = str_pad($ps, 3, '0', STR_PAD_LEFT);
+    }
+    $postosSelecionados = array_values(array_unique($postosSelecionados));
 }
 
-$filtrarNaoConferidos =
-    (isset($_POST['pt_filtro_nao_conferidos']) && $_POST['pt_filtro_nao_conferidos'] === '1') ||
-    (isset($_POST['pt_filtrar_nao_conferidos']) && $_POST['pt_filtrar_nao_conferidos'] === '1') ||
-    (isset($_GET['pt_filtro_nao_conferidos']) && $_GET['pt_filtro_nao_conferidos'] === '1') ||
-    (isset($_GET['pt_filtrar_nao_conferidos']) && $_GET['pt_filtrar_nao_conferidos'] === '1');
-$filtrarSemOficio =
-    (isset($_POST['pt_filtro_sem_oficio']) && $_POST['pt_filtro_sem_oficio'] === '1') ||
-    (isset($_POST['pt_filtrar_sem_oficio']) && $_POST['pt_filtrar_sem_oficio'] === '1') ||
-    (isset($_GET['pt_filtro_sem_oficio']) && $_GET['pt_filtro_sem_oficio'] === '1') ||
-    (isset($_GET['pt_filtrar_sem_oficio']) && $_GET['pt_filtrar_sem_oficio'] === '1');
+$filtrarNaoConferidos = isset($_POST['pt_filtro_nao_conferidos']) && $_POST['pt_filtro_nao_conferidos'] === '1';
+$filtrarSemOficio = isset($_POST['pt_filtro_sem_oficio']) && $_POST['pt_filtro_sem_oficio'] === '1';
 
 /* ============================================================
    DEBUG opcional – acessar com ?debug_pt=1
@@ -787,7 +718,6 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
 
     $in = "'" . implode("','", array_map('strval', $datasNorm)) . "'";
     $filtroPostosSql = '';
-    $cacheEnderecosPt = array();
     if (!empty($postosSelecionados)) {
         $filtroPostosSql = " AND LPAD(c.posto,3,'0') IN ('" . implode("','", $postosSelecionados) . "') ";
     }
@@ -824,9 +754,6 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
             $endereco = trim((string)$r['endereco']);
             $usuario  = isset($r['usuario']) ? trim((string)$r['usuario']) : '';
             $data_carga = isset($r['data_carga']) ? trim((string)$r['data_carga']) : '';
-            if ($endereco === '') {
-                $endereco = resolverEnderecoPostoPt($pdo_controle, $codigo, $cacheEnderecosPt);
-            }
 
             // v9.8.2: Agrupar por posto e acumular lotes
             if (!isset($postosPorCodigo[$codigo])) {
@@ -838,8 +765,6 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
                     'lotes'    => array(),  // Array de lotes individuais
                     'qtd_total' => 0
                 );
-            } elseif ($postosPorCodigo[$codigo]['endereco'] === '' && $endereco !== '') {
-                $postosPorCodigo[$codigo]['endereco'] = $endereco;
             }
             
             // Adiciona lote individual
@@ -927,14 +852,6 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
                     $postosPorCodigo[$pc]['qtd_total'] = $qtdTotal;
                 } else {
                     unset($postosPorCodigo[$pc]);
-                }
-            }
-        }
-
-        if (!empty($postosSelecionados)) {
-            foreach (array_keys($postosPorCodigo) as $codigoFiltrar) {
-                if (!in_array($codigoFiltrar, $postosSelecionados, true)) {
-                    unset($postosPorCodigo[$codigoFiltrar]);
                 }
             }
         }
@@ -2296,7 +2213,7 @@ if (document.readyState === 'loading') {
             </div>
                         <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
                             <div style="margin-bottom:3px;">______________________________</div>
-                            <div style="font-size:12px;"><strong>CELEPAR-POUPA-TEMPO - Data:</strong> <?php echo date('d-m-Y'); ?></div>
+                            <div style="font-size:12px;"><strong>IIPR-POUPA-TEMPO - Data:</strong> <?php echo date('d-m-Y'); ?></div>
                         </div>
           </div>
         </div>
