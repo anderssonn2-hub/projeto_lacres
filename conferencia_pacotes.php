@@ -3634,6 +3634,26 @@ function iniciarConferenciaPacotes() {
         return montarContextoMalote('posto', postoCodigo, postoCodigo ? ('Posto ' + postoCodigo) : rotuloGrupo);
     }
 
+    function obterContextoMaloteDeRegistroTabela(linha) {
+        if (!linha) return montarContextoMalote('', '', '');
+        var isPt = linha.getAttribute('data-ispt') === '1';
+        var postoCodigo = formatarCodigoComZeros(linha.getAttribute('data-posto') || '', 3);
+        var regionalCodigo = formatarCodigoComZeros(linha.getAttribute('data-regional-real') || linha.getAttribute('data-regional') || '', 3);
+        if (isPt) {
+            return montarContextoMalote('posto', postoCodigo, postoCodigo ? ('Posto ' + postoCodigo) : 'Posto');
+        }
+        if (ehRegionalOperacional(regionalCodigo)) {
+            return montarContextoMalote('regional', regionalCodigo, 'Regional ' + regionalCodigo);
+        }
+        if (postoCodigo) {
+            return montarContextoMalote('posto', postoCodigo, 'Posto ' + postoCodigo);
+        }
+        if (regionalCodigo) {
+            return montarContextoMalote('regional', regionalCodigo, 'Regional ' + regionalCodigo);
+        }
+        return montarContextoMalote('', '', '');
+    }
+
     function normalizarTextoVoz(texto) {
         return String(texto || '')
             .toLowerCase()
@@ -4993,6 +5013,12 @@ function iniciarConferenciaPacotes() {
             abrirModalChipDetalhe(chip);
             return;
         }
+        var linhaTabela = e.target && e.target.closest ? e.target.closest('tr.linha-conferencia') : null;
+        if (linhaTabela) {
+            selecionarContextoMalote(obterContextoMaloteDeRegistroTabela(linhaTabela));
+            destacarChipOperacao(linhaTabela.getAttribute('data-codigo') || '');
+            return;
+        }
         var linhaPosto = e.target && e.target.closest ? e.target.closest('.operacao-posto-row') : null;
         if (linhaPosto) {
             selecionarContextoMalote(obterContextoMaloteDeLinha(linhaPosto));
@@ -6113,6 +6139,7 @@ function iniciarConferenciaPacotes() {
         linha.setAttribute('data-conferido-em', conferidoAgora);
         var tdConf = linha.querySelector('.col-conferido-em');
         if (tdConf) tdConf.textContent = conferidoAgora;
+        selecionarContextoMalote(obterContextoMaloteDeRegistroTabela(linha));
         var chipPrincipal = atualizarChipOperacaoPorCodigo(linha.getAttribute('data-codigo') || valor, true);
         if (chipPrincipal) {
             chipPrincipal.setAttribute('data-conferido-em', conferidoAgora);
@@ -6200,6 +6227,8 @@ function iniciarConferenciaPacotes() {
             regionalAtual = null;
             tipoAtual = null;
             primeiroConferido = false;
+            ultimaRegionalLida = null;
+            ultimoTipoLido = null;
         }
 
         finalizarProcessamento(true);
@@ -6310,6 +6339,8 @@ function iniciarConferenciaPacotes() {
             regionalAtual = null;
             tipoAtual = null; // v9.2: Reseta tipo
             primeiroConferido = false; // v9.2: Reseta flag
+            ultimaRegionalLida = null;
+            ultimoTipoLido = null;
             valoresDigitadosPorContexto = {};
             ultimoLacreIiprAplicado = '';
             ultimoLacreCorreiosAplicado = '';

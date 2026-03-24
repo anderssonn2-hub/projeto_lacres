@@ -162,7 +162,7 @@ if ($controle_canal === '') {
             <div class="status" id="statusEnvio">Aguardando operação.</div>
             <div class="estado-grid">
                 <div class="estado-item">
-                    <div class="label">Regional ativa</div>
+                    <div class="label">Contexto em conferência</div>
                     <div class="valor" id="estadoRegional">-</div>
                 </div>
                 <div class="estado-item">
@@ -380,7 +380,7 @@ if ($controle_canal === '') {
                         estadoResumo.textContent = 'Aguardando contexto conferido no PC.';
                         return;
                     }
-                    estadoRegional.textContent = estado.regional || '-';
+                    estadoRegional.textContent = estado.posto || estado.regional || '-';
                     estadoAtualizado.textContent = estado.atualizado_em || '-';
                     estadoResumo.textContent = estado.resumo || 'A prévia vai espelhar os lacres do contexto atual.';
                 })
