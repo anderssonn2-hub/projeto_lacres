@@ -1379,7 +1379,11 @@ try {
                     ORDER BY l.lote");
                 $stmtSem->execute(array_merge($params_estante, $params_upload));
                 while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
-                    $estante_lotes_sem_upload[] = $row['lote'];
+                    $estante_lotes_sem_upload[] = array(
+                        'lote' => isset($row['lote']) ? $row['lote'] : '',
+                        'posto' => isset($row['posto']) ? $row['posto'] : '',
+                        'regional' => isset($row['regional']) ? $row['regional'] : ''
+                    );
                     $posto_sem_upload = isset($row['posto']) ? $row['posto'] : '';
                     if ($posto_sem_upload !== '') {
                         if (!isset($estante_sem_upload_por_posto[$posto_sem_upload])) {
@@ -2656,8 +2660,13 @@ try {
             $limite = 50;
             $total_lotes = count($estante_lotes_sem_upload);
             $mostrar = array_slice($estante_lotes_sem_upload, 0, $limite);
-            foreach ($mostrar as $lote) {
-                echo '<span class="lote-badge">' . e($lote) . '</span>';
+            foreach ($mostrar as $itemSemUpload) {
+                $loteBadge = isset($itemSemUpload['lote']) ? $itemSemUpload['lote'] : '';
+                $regionalBadge = isset($itemSemUpload['regional']) ? $itemSemUpload['regional'] : '';
+                $postoBadge = isset($itemSemUpload['posto']) ? $itemSemUpload['posto'] : '';
+                $tituloBadge = 'Lote ' . $loteBadge;
+                $detalheBadge = trim('Regional ' . $regionalBadge . ' | Posto ' . $postoBadge, ' |');
+                echo '<span class="lote-badge" title="' . e($tituloBadge . ' - ' . $detalheBadge) . '">' . e($loteBadge) . ' <small>R ' . e($regionalBadge) . ' • P ' . e($postoBadge) . '</small></span>';
             }
             if ($total_lotes > $limite) {
                 echo '<span class="lote-badge">+ ' . e($total_lotes - $limite) . ' outros</span>';
@@ -3475,6 +3484,7 @@ function iniciarConferenciaPacotes() {
     var ultimoLacreIiprAplicado = '';
     var ultimoLacreCorreiosAplicado = '';
     var ultimaEtiquetaCorreiosAplicada = '';
+    var valoresDigitadosPorContexto = {};
     var comandosCodigoBarras = {
         '990000000000000000001': { tipo: 'iipr', mensagem: 'Aguardando leitura do lacre IIPR.' },
         '990000000000000000002': { tipo: 'correios_lacre', mensagem: 'Aguardando leitura do lacre Correios.' },
@@ -3983,6 +3993,21 @@ function iniciarConferenciaPacotes() {
             });
         }
 
+        for (var r = 0; r < resumo.length; r++) {
+            var chaveContextoResumo = String(resumo[r].contexto_tipo || '') + '|' + String(resumo[r].contexto_chave || '');
+            var digitado = valoresDigitadosPorContexto[chaveContextoResumo] || null;
+            if (!digitado) continue;
+            if (digitado.lacre_iipr) {
+                resumo[r].lacre_iipr = digitado.lacre_iipr;
+            }
+            if (digitado.lacre_correios) {
+                resumo[r].lacre_correios = digitado.lacre_correios;
+            }
+            if (digitado.etiqueta_correios) {
+                resumo[r].etiqueta_correios = digitado.etiqueta_correios;
+            }
+        }
+
         resumo.sort(function(a, b) {
             var regA = parseInt(a.regional_codigo || 0, 10) || 0;
             var regB = parseInt(b.regional_codigo || 0, 10) || 0;
@@ -4291,6 +4316,36 @@ function iniciarConferenciaPacotes() {
         publicarEstadoRemoto();
     }
 
+    function obterChaveContextoAtual() {
+        if (!tipoContextoSelecionadoMalote || !contextoSelecionadoMalote) return '';
+        return String(tipoContextoSelecionadoMalote) + '|' + String(contextoSelecionadoMalote);
+    }
+
+    function registrarValorDigitadoNoContexto(tipo, valor) {
+        var chave = obterChaveContextoAtual();
+        if (!chave) return;
+        if (!valoresDigitadosPorContexto[chave]) {
+            valoresDigitadosPorContexto[chave] = {
+                lacre_iipr: '',
+                lacre_correios: '',
+                etiqueta_correios: ''
+            };
+        }
+        if (tipo === 'iipr') {
+            valoresDigitadosPorContexto[chave].lacre_iipr = valor || '';
+        } else if (tipo === 'correios_lacre') {
+            valoresDigitadosPorContexto[chave].lacre_correios = valor || '';
+        } else if (tipo === 'correios_etiqueta') {
+            valoresDigitadosPorContexto[chave].etiqueta_correios = valor || '';
+        }
+    }
+
+    function sincronizarValorDigitadoNaPrevia(tipo, valor) {
+        registrarValorDigitadoNoContexto(tipo, valor);
+        atualizarMemoriaMalotes(tipo, valor);
+        publicarResumoPrevia();
+    }
+
     function garantirContextoMaloteAtual() {
         if (!contextoSelecionadoMalote && regionalAtual && ehRegionalOperacional(regionalAtual)) {
             selecionarContextoMalote(montarContextoMalote('regional', regionalAtual, 'Regional ' + regionalAtual));
@@ -4312,6 +4367,7 @@ function iniciarConferenciaPacotes() {
             mostrarConfirmacao('Nenhuma regional ativa foi identificada para o lacre IIPR.', true);
             return false;
         }
+        sincronizarValorDigitadoNaPrevia('iipr', lacreIipr);
         chips = obterChipsConfirmadosSemIiprNoContexto();
         if (!chips.length) {
             mostrarConfirmacao('O contexto atual não possui lotes confirmados sem lacre IIPR.', true);
@@ -4347,7 +4403,6 @@ function iniciarConferenciaPacotes() {
                     atualizado_lacre: agora
                 });
             }
-            atualizarMemoriaMalotes('iipr', lacreIipr);
             limparModoVoz('Lacre IIPR atribuído' + (origem ? ' por ' + origem : '') + '.');
         });
         return true;
@@ -4367,6 +4422,7 @@ function iniciarConferenciaPacotes() {
             mostrarConfirmacao('Nenhuma regional ativa foi identificada para o lacre Correios.', true);
             return false;
         }
+        sincronizarValorDigitadoNaPrevia('correios_lacre', lacreCorreios);
         gruposMarcados = obterGruposIiprSemCorreiosNoContexto();
         if (!gruposMarcados.length) {
             mostrarConfirmacao('O contexto atual não possui malotes IIPR aguardando lacre Correios.', true);
@@ -4402,7 +4458,6 @@ function iniciarConferenciaPacotes() {
                     atualizado_lacre: agora
                 });
             }
-            atualizarMemoriaMalotes('correios_lacre', lacreCorreios);
             limparModoVoz('Lacre Correios atribuído' + (origem ? ' por ' + origem : '') + '.');
         });
         return true;
@@ -4420,6 +4475,7 @@ function iniciarConferenciaPacotes() {
             mostrarConfirmacao('Nenhuma regional ativa foi identificada para a etiqueta Correios.', true);
             return false;
         }
+        sincronizarValorDigitadoNaPrevia('correios_etiqueta', etiquetaCorreios);
         grupoAberto = obterGrupoCorreiosAbertoAtual();
         if (!grupoAberto || !grupoAberto.chips || !grupoAberto.chips.length) {
             mostrarConfirmacao('Não há malote Correios aberto neste contexto para receber a etiqueta.', true);
@@ -4454,7 +4510,6 @@ function iniciarConferenciaPacotes() {
                     atualizado_lacre: agora
                 });
             }
-            atualizarMemoriaMalotes('correios_etiqueta', etiquetaCorreios);
             limparModoVoz('Etiqueta Correios atribuída' + (origem ? ' por ' + origem : '') + '.');
         });
         return true;
@@ -6255,6 +6310,10 @@ function iniciarConferenciaPacotes() {
             regionalAtual = null;
             tipoAtual = null; // v9.2: Reseta tipo
             primeiroConferido = false; // v9.2: Reseta flag
+            valoresDigitadosPorContexto = {};
+            ultimoLacreIiprAplicado = '';
+            ultimoLacreCorreiosAplicado = '';
+            ultimaEtiquetaCorreiosAplicada = '';
             input.value = "";
             input.focus();
             contextoSelecionadoMalote = '';

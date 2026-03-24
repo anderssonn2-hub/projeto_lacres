@@ -71,7 +71,7 @@ if ($controle_canal === '') {
         .status.erro { background: #fff1f2; color: #9f1239; }
         .estado-grid {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
             margin-top: 12px;
         }
@@ -162,10 +162,6 @@ if ($controle_canal === '') {
             <div class="status" id="statusEnvio">Aguardando operação.</div>
             <div class="estado-grid">
                 <div class="estado-item">
-                    <div class="label">Contexto atual</div>
-                    <div class="valor" id="estadoPosto">-</div>
-                </div>
-                <div class="estado-item">
                     <div class="label">Regional ativa</div>
                     <div class="valor" id="estadoRegional">-</div>
                 </div>
@@ -217,7 +213,6 @@ if ($controle_canal === '') {
     (function() {
         var canal = <?php echo json_encode($controle_canal); ?> || 'principal';
         var statusEnvio = document.getElementById('statusEnvio');
-        var estadoPosto = document.getElementById('estadoPosto');
         var estadoRegional = document.getElementById('estadoRegional');
         var estadoResumo = document.getElementById('estadoResumo');
         var estadoAtualizado = document.getElementById('estadoAtualizado');
@@ -335,13 +330,11 @@ if ($controle_canal === '') {
                 .then(function(data) {
                     var estado = data && data.estado ? data.estado : null;
                     if (!estado) {
-                        estadoPosto.textContent = '-';
                         estadoRegional.textContent = '-';
                         estadoAtualizado.textContent = '-';
                         estadoResumo.textContent = 'Aguardando contexto conferido no PC.';
                         return;
                     }
-                    estadoPosto.textContent = estado.posto || '-';
                     estadoRegional.textContent = estado.regional || '-';
                     estadoAtualizado.textContent = estado.atualizado_em || '-';
                     estadoResumo.textContent = estado.resumo || 'A prévia vai espelhar os lacres do contexto atual.';
