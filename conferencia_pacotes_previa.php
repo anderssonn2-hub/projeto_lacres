@@ -651,7 +651,11 @@ try {
                 var postoPadrao = posto && /^\d+$/.test(posto) ? posto.padStart(3, '0') : posto;
                 var contextoTipo = String(item.contexto_tipo || '').trim();
                 var contextoRotulo = String(item.contexto_rotulo || '').trim();
+                var regionalCodigo = String(item.regional_codigo || '').trim();
                 var destinoRotulo = contextoRotulo;
+                if (!destinoRotulo && contextoTipo === 'regional' && regionalCodigo) {
+                    destinoRotulo = 'Regional ' + regionalCodigo.padStart(3, '0');
+                }
                 if (!destinoRotulo) {
                     destinoRotulo = postoPadrao && nomesPostos[postoPadrao] ? (postoPadrao + ' - ' + nomesPostos[postoPadrao]) : (postoPadrao ? ('Posto ' + postoPadrao) : 'Sem posto');
                 }
@@ -690,13 +694,17 @@ try {
             return linhas;
         }
 
+        function obterTituloPrimeiraColuna(secao) {
+            return secao === 'REGIONAIS' ? 'Regionais' : 'Posto';
+        }
+
         function montarTabela(secao, linhas) {
             var html = '';
             html += '<div class="secao">';
             html += '<div class="secao-titulo">' + escapeHtml(secao) + '</div>';
             html += '<table>';
             html += '<thead><tr>';
-            html += '<th class="col-posto">Posto</th>';
+            html += '<th class="col-posto">' + escapeHtml(obterTituloPrimeiraColuna(secao)) + '</th>';
             html += '<th class="col-iipr">Lacre IIPR</th>';
             html += '<th class="col-correios">Lacre Correios</th>';
             html += '<th class="col-etiqueta">Etiqueta Correios</th>';
@@ -706,9 +714,9 @@ try {
                 var item = linhas[i];
                 html += '<tr data-row-key="' + escapeHtml(item.row_key) + '">';
                 html += '<td><div class="destino">' + escapeHtml(item.posto_rotulo) + '</div></td>';
-                html += '<td><textarea class="campo-impressao campo-lacres-iipr" rows="' + calcularLinhasLacres(item.lacre_iipr || '') + '" readonly>' + escapeHtml(item.lacre_iipr || '') + '</textarea></td>';
-                html += '<td><input class="campo-impressao" type="text" value="' + escapeHtml(item.lacre_correios || '') + '" readonly></td>';
-                html += '<td><input class="campo-impressao campo-etiqueta" type="text" value="' + escapeHtml(item.etiqueta_correios || '') + '" data-row-key="' + escapeHtml(item.row_key) + '" data-field="etiqueta_correios" maxlength="35"></td>';
+                html += '<td><div class="campo-impressao campo-lacres-iipr">' + escapeHtml(item.lacre_iipr || '-') + '</div></td>';
+                html += '<td><div class="campo-impressao">' + escapeHtml(item.lacre_correios || '-') + '</div></td>';
+                html += '<td><div class="campo-impressao">' + escapeHtml(item.etiqueta_correios || '-') + '</div></td>';
                 html += '</tr>';
             }
 

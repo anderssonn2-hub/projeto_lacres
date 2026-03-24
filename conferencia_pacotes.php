@@ -2819,95 +2819,6 @@ try {
     </div>
 </div>
 
-<div class="painel-malotes" id="painelMalotesChips">
-    <div class="painel-malotes-topo">
-        <div>
-            <h3>Malotes por regional no modo chips</h3>
-            <div class="sub" id="painelMalotesSubtitulo">Selecione um chip ou continue a conferência para abrir a regional atual.</div>
-        </div>
-        <div class="painel-malotes-resumo">
-            <div class="painel-malotes-badge">Confirmados<strong id="malotesResumoConfirmados">0</strong></div>
-            <div class="painel-malotes-badge">Com IIPR<strong id="malotesResumoIipr">0</strong></div>
-            <div class="painel-malotes-badge">Com Correios<strong id="malotesResumoCorreios">0</strong></div>
-        </div>
-    </div>
-    <div class="painel-malotes-utilitarios">
-        <div class="painel-voz" id="painelVozMalotes">
-            <div class="painel-voz-topo">
-                <div>
-                    <h4>Comando de voz</h4>
-                    <div class="painel-voz-sub" id="statusVozComando">Microfone desligado.</div>
-                </div>
-                <button type="button" class="btn-voz-toggle" id="btnAlternarVozMalotes">Ativar microfone</button>
-            </div>
-            <div class="voz-status-pill" id="vozCampoAtual">Nenhum campo armado.</div>
-            <div class="painel-voz-dicas">Diga frases como fechar malote IIPR, fechar malote Correios, etiqueta Correios, salvar malote IIPR, salvar malote Correios ou cancelar comando.</div>
-            <div class="painel-voz-diagnostico" id="painelDiagnosticoVoz">
-                <strong>Diagnóstico de voz</strong>
-                Clique em Ativar microfone para testar a compatibilidade deste navegador.
-            </div>
-        </div>
-        <div class="painel-controle-remoto" id="painelControleRemoto">
-            <div class="painel-controle-topo">
-                <div>
-                    <h4>Controle remoto por celular</h4>
-                    <div class="painel-controle-sub" id="statusControleRemoto">Use o celular como painel de comandos para lacres e etiqueta.</div>
-                </div>
-                <button type="button" class="btn-controle-remoto" id="btnAbrirControleRemoto">Abrir controle</button>
-            </div>
-            <div class="controle-canal-badge">Canal: <?php echo e($controle_canal); ?></div>
-            <div class="painel-controle-dicas">Abra a página de controle remoto no celular com o mesmo canal. Nela você toca três vezes nos botões para enviar ações como salvar malote IIPR, salvar malote Correios e limpar vínculos.</div>
-        </div>
-        <div class="painel-previsao-malotes" id="painelPrevisaoMalotes">
-            <div class="painel-previsao-topo">
-                <div>
-                    <h4>Prévia ao vivo do ofício</h4>
-                    <div class="painel-previsao-sub" id="statusPreviaMalotes">Sincronização local pronta para a segunda tela.</div>
-                </div>
-                <button type="button" class="btn-previsao-malotes" id="btnAbrirPreviaMalotes">Abrir prévia</button>
-            </div>
-            <div class="painel-previsao-dicas">Abra a prévia em outro monitor. Ela recebe o resumo consolidado conforme os malotes vão sendo fechados no modo chips.</div>
-        </div>
-    </div>
-    <div class="painel-malotes-grid">
-        <div class="painel-malotes-coluna">
-            <h4>Lotes confirmados do contexto atual</h4>
-            <div id="painelMalotesLotes" class="painel-malotes-vazio">Nenhuma regional selecionada.</div>
-            <div class="painel-malotes-form">
-                <div>
-                    <label for="inputLacreIiprMalote">Lacre IIPR do malote atual</label>
-                    <input type="text" id="inputLacreIiprMalote" maxlength="12" placeholder="Ex.: 51115">
-                </div>
-                <div class="painel-malotes-acoes">
-                    <button type="button" class="btn-malote-iipr" id="btnSalvarMaloteIipr">Atribuir Lacre IIPR aos lotes marcados</button>
-                    <button type="button" class="btn-malote-limpar" id="btnLimparMaloteLote">Limpar vínculo dos lotes marcados</button>
-                </div>
-            </div>
-        </div>
-        <div class="painel-malotes-coluna">
-            <h4>Malotes IIPR já fechados</h4>
-            <div id="painelMalotesIipr" class="painel-malotes-vazio">Os malotes IIPR aparecerão aqui depois do primeiro fechamento.</div>
-            <div class="painel-malotes-form">
-                <div>
-                    <label for="inputLacreCorreiosMalote">Lacre Correios do malote maior</label>
-                    <input type="text" id="inputLacreCorreiosMalote" maxlength="12" placeholder="Ex.: 51119">
-                </div>
-                <div>
-                    <label for="inputEtiquetaCorreiosMalote">Etiqueta dos Correios</label>
-                    <input type="text" id="inputEtiquetaCorreiosMalote" maxlength="35" placeholder="Ex.: 87051030441050000104648810000101292">
-                </div>
-                <div class="painel-malotes-acoes">
-                    <button type="button" class="btn-malote-correios" id="btnSalvarMaloteCorreios">Atribuir Lacre Correios</button>
-                    <button type="button" class="btn-malote-correios" id="btnSalvarEtiquetaCorreios">Atribuir Display Correios</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="painel-malotes-ajuda">
-        Primeiro confirme os lotes em verde. Nas regionais, você pode marcar lotes manualmente ou simplesmente deixar toda a regional verde e informar o lacre IIPR: se nada estiver marcado, o sistema usa todos os lotes confirmados e ainda sem IIPR do contexto atual. Quando souber o malote maior dos Correios, marque um ou mais malotes IIPR já fechados e aplique o mesmo lacre Correios e a mesma etiqueta.
-    </div>
-</div>
-
 </div>
 
     <script>
@@ -3561,6 +3472,15 @@ function iniciarConferenciaPacotes() {
     var vozModoAtual = '';
     var vozReinicioManual = false;
     var pollingRemotoAtivo = false;
+    var ultimoLacreIiprAplicado = '';
+    var ultimoLacreCorreiosAplicado = '';
+    var ultimaEtiquetaCorreiosAplicada = '';
+    var comandosCodigoBarras = {
+        '990000000000000000001': { tipo: 'iipr', mensagem: 'Aguardando leitura do lacre IIPR.' },
+        '990000000000000000002': { tipo: 'correios_lacre', mensagem: 'Aguardando leitura do lacre Correios.' },
+        '990000000000000000003': { tipo: 'correios_etiqueta', mensagem: 'Aguardando leitura da etiqueta Correios.' },
+        '990000000000000000009': { tipo: 'cancelar', mensagem: 'Comando cancelado.' }
+    };
 
     if (window.BroadcastChannel) {
         try {
@@ -3868,23 +3788,26 @@ function iniciarConferenciaPacotes() {
     }
 
     function preencherCampoPorVoz(valor) {
-        var input = obterInputPorModoVoz(vozModoAtual);
-        if (!input) {
-            atualizarStatusVoz('Nenhum campo de voz está armado no momento.', 'erro');
-            return false;
-        }
         var limite = vozModoAtual === 'correios_etiqueta' ? 35 : 12;
         var valorFinal = String(valor || '').replace(/\D+/g, '').slice(0, limite);
         if (!valorFinal) {
             atualizarStatusVoz('Nenhum dígito válido foi reconhecido.', 'erro');
             return false;
         }
-        input.value = valorFinal;
-        input.focus();
-        atualizarCampoVoz('Campo preenchido por voz: ' + valorFinal, 'aguardando');
-        atualizarStatusVoz('Valor recebido. Você pode salvar pelo botão ou por voz.', 'escutando');
-        falarTexto('valor preenchido');
-        return true;
+        if (vozModoAtual === 'iipr') {
+            aplicarLacreIiprNoContexto(valorFinal, 'voz');
+            return true;
+        }
+        if (vozModoAtual === 'correios_lacre') {
+            aplicarLacreCorreiosNoContexto(valorFinal, 'voz');
+            return true;
+        }
+        if (vozModoAtual === 'correios_etiqueta') {
+            aplicarEtiquetaCorreiosNoContexto(valorFinal, 'voz');
+            return true;
+        }
+        atualizarStatusVoz('Nenhum campo de voz está armado no momento.', 'erro');
+        return false;
     }
 
     function compactarSequenciaNumerica(valores) {
@@ -4083,11 +4006,15 @@ function iniciarConferenciaPacotes() {
             return;
         }
         if (comando.indexOf('salvar malote iipr') !== -1 || comando.indexOf('gravar malote iipr') !== -1) {
-            if (btnSalvarMaloteIipr) btnSalvarMaloteIipr.click();
+            if (ultimoLacreIiprAplicado) {
+                aplicarLacreIiprNoContexto(ultimoLacreIiprAplicado, 'voz');
+            }
             return;
         }
         if (comando.indexOf('salvar malote correios') !== -1 || comando.indexOf('gravar malote correios') !== -1 || comando.indexOf('vincular malote correios') !== -1) {
-            if (btnSalvarMaloteCorreios) btnSalvarMaloteCorreios.click();
+            if (ultimoLacreCorreiosAplicado) {
+                aplicarLacreCorreiosNoContexto(ultimoLacreCorreiosAplicado, 'voz');
+            }
             return;
         }
         if (comando.indexOf('fechar malote iipr') !== -1 || comando.indexOf('lacre iipr') !== -1) {
@@ -4321,131 +4248,212 @@ function iniciarConferenciaPacotes() {
             });
     }
 
-    function renderizarPainelMalotes() {
-        if (!painelMalotesChips || !painelMalotesLotes || !painelMalotesIipr) return;
-
-        if (!contextoSelecionadoMalote || !tipoContextoSelecionadoMalote) {
-            if (painelMalotesSubtitulo) painelMalotesSubtitulo.textContent = 'Selecione um chip ou continue a conferência para abrir a regional atual.';
-            if (painelMalotesLotes) painelMalotesLotes.className = 'painel-malotes-vazio';
-            if (painelMalotesLotes) painelMalotesLotes.innerHTML = 'Nenhuma regional selecionada.';
-            if (painelMalotesIipr) painelMalotesIipr.className = 'painel-malotes-vazio';
-            if (painelMalotesIipr) painelMalotesIipr.innerHTML = 'Os malotes IIPR aparecerão aqui depois do primeiro fechamento.';
-            if (malotesResumoConfirmados) malotesResumoConfirmados.textContent = '0';
-            if (malotesResumoIipr) malotesResumoIipr.textContent = '0';
-            if (malotesResumoCorreios) malotesResumoCorreios.textContent = '0';
-            publicarResumoPrevia();
-            publicarEstadoRemoto();
-            return;
+    function atualizarMemoriaMalotes(tipo, valor) {
+        if (tipo === 'iipr') {
+            ultimoLacreIiprAplicado = valor || '';
+        } else if (tipo === 'correios_lacre') {
+            ultimoLacreCorreiosAplicado = valor || '';
+        } else if (tipo === 'correios_etiqueta') {
+            ultimaEtiquetaCorreiosAplicada = valor || '';
         }
+        publicarEstadoRemoto();
+    }
 
-        var chips = obterChipsPorContextoMalote();
+    function garantirContextoMaloteAtual() {
+        if (!contextoSelecionadoMalote && regionalAtual && ehRegionalOperacional(regionalAtual)) {
+            selecionarContextoMalote(montarContextoMalote('regional', regionalAtual, 'Regional ' + regionalAtual));
+        }
+        return !!(contextoSelecionadoMalote && tipoContextoSelecionadoMalote);
+    }
+
+    function aplicarLacreIiprNoContexto(valorLacre, origem) {
+        var lacreIipr = normalizarNumeroLacre(valorLacre || '');
+        var chips = [];
+        var contextoAtual = null;
+        var grupoIipr = '';
+        var pacotes = [];
+        if (!lacreIipr) {
+            mostrarConfirmacao('Informe o lacre IIPR antes de atribuir.', true);
+            return false;
+        }
+        if (!garantirContextoMaloteAtual()) {
+            mostrarConfirmacao('Nenhuma regional ativa foi identificada para o lacre IIPR.', true);
+            return false;
+        }
+        chips = obterChipsConfirmadosSemIiprNoContexto();
         if (!chips.length) {
-            if (painelMalotesLotes) painelMalotesLotes.className = 'painel-malotes-vazio';
-            if (painelMalotesLotes) painelMalotesLotes.innerHTML = 'Nenhum pacote localizado para o contexto selecionado no painel de chips.';
-            publicarResumoPrevia();
-            publicarEstadoRemoto();
-            return;
+            mostrarConfirmacao('O contexto atual não possui lotes confirmados sem lacre IIPR.', true);
+            return false;
         }
-
-        var primeiro = obterDadosChipOperacao(chips[0]);
-        if (primeiro && primeiro.isPT) {
-            if (painelMalotesSubtitulo) painelMalotesSubtitulo.textContent = (rotuloContextoSelecionadoMalote || 'Este contexto') + ' pertence ao Poupa Tempo. O painel de malotes vale apenas para Correios.';
-            if (painelMalotesLotes) painelMalotesLotes.className = 'painel-malotes-vazio';
-            if (painelMalotesLotes) painelMalotesLotes.innerHTML = 'Selecione um posto dos Correios para atribuir malotes.';
-            if (painelMalotesIipr) painelMalotesIipr.className = 'painel-malotes-vazio';
-            if (painelMalotesIipr) painelMalotesIipr.innerHTML = 'Sem uso para o fluxo Poupa Tempo.';
-            if (malotesResumoConfirmados) malotesResumoConfirmados.textContent = '0';
-            if (malotesResumoIipr) malotesResumoIipr.textContent = '0';
-            if (malotesResumoCorreios) malotesResumoCorreios.textContent = '0';
-            publicarResumoPrevia();
-            publicarEstadoRemoto();
-            return;
-        }
-
-        var confirmados = [];
-        var comIipr = 0;
-        var comCorreios = 0;
-        var gruposIipr = {};
-        var linhasHtml = [];
+        contextoAtual = montarContextoMalote(tipoContextoSelecionadoMalote, contextoSelecionadoMalote, rotuloContextoSelecionadoMalote);
+        grupoIipr = 'GI_' + (contextoAtual.tipo === 'regional' ? ('R' + contextoAtual.chave) : ('P' + contextoAtual.chave)) + '_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
 
         for (var i = 0; i < chips.length; i++) {
-            var dados = obterDadosChipOperacao(chips[i]);
-            if (!dados) continue;
-            if (!dados.conferido) continue;
-            confirmados.push({ chip: chips[i], dados: dados });
-            if (dados.lacre_iipr) comIipr++;
-            if (dados.lacre_correios || dados.etiqueta_correios) comCorreios++;
-            if (dados.lacre_iipr) {
-                var chaveGrupoIipr = dados.grupo_iipr || ('LACRE_' + dados.lacre_iipr);
-                if (!gruposIipr[chaveGrupoIipr]) {
-                    gruposIipr[chaveGrupoIipr] = { chave: chaveGrupoIipr, lacre_iipr: dados.lacre_iipr, chips: [], lacre_correios: '', etiqueta_correios: '' };
-                }
-                gruposIipr[chaveGrupoIipr].chips.push(chips[i]);
-                if (!gruposIipr[chaveGrupoIipr].lacre_correios && dados.lacre_correios) {
-                    gruposIipr[chaveGrupoIipr].lacre_correios = dados.lacre_correios;
-                }
-                if (!gruposIipr[chaveGrupoIipr].etiqueta_correios && dados.etiqueta_correios) {
-                    gruposIipr[chaveGrupoIipr].etiqueta_correios = dados.etiqueta_correios;
-                }
+            var contextoChip = obterContextoMaloteDeChip(chips[i]);
+            if (contextoChip.tipo !== contextoAtual.tipo || contextoChip.chave !== contextoAtual.chave) {
+                continue;
             }
-            linhasHtml.push(
-                '<tr>' +
-                    '<td><input type="checkbox" class="check-malote-lote" data-codigo="' + escapeHtml(dados.codigo) + '"></td>' +
-                    '<td>' + escapeHtml(dados.lote) + '</td>' +
-                    '<td>' + escapeHtml(dados.posto) + '</td>' +
-                    '<td>' + escapeHtml(dados.qtd) + '</td>' +
-                    '<td>' + escapeHtml(dados.lacre_iipr || '-') + '</td>' +
-                    '<td>' + escapeHtml(dados.lacre_correios || '-') + '</td>' +
-                    '<td style="word-break:break-all;">' + escapeHtml(dados.etiqueta_correios || '-') + '</td>' +
-                    '<td><span class="malote-status ' + (dados.lacre_correios || dados.etiqueta_correios ? 'correios' : (dados.lacre_iipr ? 'iipr' : 'pendente')) + '">' +
-                        (dados.lacre_correios || dados.etiqueta_correios ? 'Fechado Correios' : (dados.lacre_iipr ? 'Fechado IIPR' : 'Sem lacre')) +
-                    '</span></td>' +
-                '</tr>'
-            );
+            var payload = montarPacoteParaPersistencia(chips[i], { lacre_iipr: lacreIipr, grupo_iipr: grupoIipr });
+            if (payload) pacotes.push(payload);
+        }
+        if (!pacotes.length) {
+            mostrarConfirmacao('Os lotes confirmados não pertencem ao contexto atual.', true);
+            return false;
         }
 
-        if (painelMalotesSubtitulo) {
-            painelMalotesSubtitulo.textContent = (rotuloContextoSelecionadoMalote || primeiro.regional || 'Correios') + ' • ' + confirmados.length + ' lote(s) confirmado(s) no contexto atual';
-        }
-        if (malotesResumoConfirmados) malotesResumoConfirmados.textContent = String(confirmados.length);
-        if (malotesResumoIipr) malotesResumoIipr.textContent = String(comIipr);
-        if (malotesResumoCorreios) malotesResumoCorreios.textContent = String(comCorreios);
-
-        if (!confirmados.length) {
-            painelMalotesLotes.className = 'painel-malotes-vazio';
-            painelMalotesLotes.innerHTML = 'Este contexto ainda não possui lotes confirmados em verde.';
-        } else {
-            painelMalotesLotes.className = '';
-            painelMalotesLotes.innerHTML = '<table class="tabela-malotes"><thead><tr><th></th><th>Lote</th><th>Posto</th><th>Qtd</th><th>Lacre IIPR</th><th>Lacre Correios</th><th>Etiqueta Correios</th><th>Status</th></tr></thead><tbody>' + linhasHtml.join('') + '</tbody></table>';
-        }
-
-        var htmlGrupos = [];
-        for (var lacre in gruposIipr) {
-            if (!Object.prototype.hasOwnProperty.call(gruposIipr, lacre)) continue;
-            var grupo = gruposIipr[lacre];
-            var lotesAgrupados = [];
-            for (var j = 0; j < grupo.chips.length; j++) {
-                lotesAgrupados.push(grupo.chips[j].getAttribute('data-lote') || '');
+        persistirAtribuicoesLote(pacotes, function() {
+            var agora = formatarDataHoraAtual();
+            for (var j = 0; j < chips.length; j++) {
+                var dadosAtuais = obterDadosChipOperacao(chips[j]);
+                aplicarAtribuicaoNoChip(chips[j], {
+                    lacre_iipr: lacreIipr,
+                    grupo_iipr: grupoIipr,
+                    lacre_correios: dadosAtuais ? dadosAtuais.lacre_correios : '',
+                    grupo_correios: dadosAtuais ? dadosAtuais.grupo_correios : '',
+                    etiqueta_correios: dadosAtuais ? dadosAtuais.etiqueta_correios : '',
+                    usuario_lacre: usuarioAtual,
+                    atualizado_lacre: agora
+                });
             }
-            htmlGrupos.push(
-                '<tr>' +
-                    '<td><input type="checkbox" class="check-malote-iipr" data-lacre-iipr="' + escapeHtml(grupo.lacre_iipr) + '" data-grupo-iipr="' + escapeHtml(grupo.chave) + '"></td>' +
-                    '<td>' + escapeHtml(grupo.lacre_iipr) + '</td>' +
-                    '<td>' + escapeHtml(lotesAgrupados.join(', ')) + '</td>' +
-                    '<td>' + escapeHtml(grupo.lacre_correios || '-') + '</td>' +
-                    '<td style="word-break:break-all;">' + escapeHtml(grupo.etiqueta_correios || '-') + '</td>' +
-                '</tr>'
-            );
+            atualizarMemoriaMalotes('iipr', lacreIipr);
+            limparModoVoz('Lacre IIPR atribuído' + (origem ? ' por ' + origem : '') + '.');
+        });
+        return true;
+    }
+
+    function aplicarLacreCorreiosNoContexto(valorLacre, origem) {
+        var lacreCorreios = normalizarNumeroLacre(valorLacre || '');
+        var gruposMarcados = [];
+        var grupoCorreios = '';
+        var chips = [];
+        var pacotes = [];
+        if (!lacreCorreios) {
+            mostrarConfirmacao('Informe o lacre Correios antes de atribuir.', true);
+            return false;
+        }
+        if (!garantirContextoMaloteAtual()) {
+            mostrarConfirmacao('Nenhuma regional ativa foi identificada para o lacre Correios.', true);
+            return false;
+        }
+        gruposMarcados = obterGruposIiprSemCorreiosNoContexto();
+        if (!gruposMarcados.length) {
+            mostrarConfirmacao('O contexto atual não possui malotes IIPR aguardando lacre Correios.', true);
+            return false;
         }
 
-        if (!htmlGrupos.length) {
-            painelMalotesIipr.className = 'painel-malotes-vazio';
-            painelMalotesIipr.innerHTML = 'Os malotes IIPR aparecerão aqui depois do primeiro fechamento.';
-        } else {
-            painelMalotesIipr.className = '';
-            painelMalotesIipr.innerHTML = '<table class="tabela-malotes"><thead><tr><th></th><th>Lacre IIPR</th><th>Lotes</th><th>Lacre Correios</th><th>Etiqueta Correios</th></tr></thead><tbody>' + htmlGrupos.join('') + '</tbody></table>';
+        grupoCorreios = 'GC_' + (tipoContextoSelecionadoMalote === 'regional' ? ('R' + contextoSelecionadoMalote) : ('P' + contextoSelecionadoMalote)) + '_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+        chips = obterChipsPorGrupoIipr(gruposMarcados);
+        for (var i = 0; i < chips.length; i++) {
+            var payload = montarPacoteParaPersistencia(chips[i], {
+                lacre_correios: lacreCorreios,
+                grupo_correios: grupoCorreios,
+                etiqueta_correios: ''
+            });
+            if (payload) pacotes.push(payload);
+        }
+        if (!pacotes.length) {
+            mostrarConfirmacao('Nenhum lote elegível foi encontrado para o lacre Correios.', true);
+            return false;
         }
 
+        persistirAtribuicoesLote(pacotes, function() {
+            var agora = formatarDataHoraAtual();
+            for (var j = 0; j < chips.length; j++) {
+                var dadosAtuais = obterDadosChipOperacao(chips[j]);
+                aplicarAtribuicaoNoChip(chips[j], {
+                    lacre_iipr: dadosAtuais ? dadosAtuais.lacre_iipr : '',
+                    grupo_iipr: dadosAtuais ? dadosAtuais.grupo_iipr : '',
+                    lacre_correios: lacreCorreios,
+                    grupo_correios: grupoCorreios,
+                    etiqueta_correios: dadosAtuais ? dadosAtuais.etiqueta_correios : '',
+                    usuario_lacre: usuarioAtual,
+                    atualizado_lacre: agora
+                });
+            }
+            atualizarMemoriaMalotes('correios_lacre', lacreCorreios);
+            limparModoVoz('Lacre Correios atribuído' + (origem ? ' por ' + origem : '') + '.');
+        });
+        return true;
+    }
+
+    function aplicarEtiquetaCorreiosNoContexto(valorEtiqueta, origem) {
+        var etiquetaCorreios = String(valorEtiqueta || '').replace(/\D+/g, '').slice(0, 35);
+        var grupoAberto = null;
+        var pacotes = [];
+        if (!etiquetaCorreios) {
+            mostrarConfirmacao('Informe a etiqueta Correios antes de atribuir.', true);
+            return false;
+        }
+        if (!garantirContextoMaloteAtual()) {
+            mostrarConfirmacao('Nenhuma regional ativa foi identificada para a etiqueta Correios.', true);
+            return false;
+        }
+        grupoAberto = obterGrupoCorreiosAbertoAtual();
+        if (!grupoAberto || !grupoAberto.chips || !grupoAberto.chips.length) {
+            mostrarConfirmacao('Não há malote Correios aberto neste contexto para receber a etiqueta.', true);
+            return false;
+        }
+
+        for (var i = 0; i < grupoAberto.chips.length; i++) {
+            var dadosGrupo = obterDadosChipOperacao(grupoAberto.chips[i]);
+            var payload = montarPacoteParaPersistencia(grupoAberto.chips[i], {
+                lacre_correios: dadosGrupo ? dadosGrupo.lacre_correios : grupoAberto.lacre_correios,
+                grupo_correios: dadosGrupo ? dadosGrupo.grupo_correios : grupoAberto.grupo_correios,
+                etiqueta_correios: etiquetaCorreios
+            });
+            if (payload) pacotes.push(payload);
+        }
+        if (!pacotes.length) {
+            mostrarConfirmacao('Nenhum lote elegível foi encontrado para a etiqueta Correios.', true);
+            return false;
+        }
+
+        persistirAtribuicoesLote(pacotes, function() {
+            var agora = formatarDataHoraAtual();
+            for (var j = 0; j < grupoAberto.chips.length; j++) {
+                var dadosAtuais = obterDadosChipOperacao(grupoAberto.chips[j]);
+                aplicarAtribuicaoNoChip(grupoAberto.chips[j], {
+                    lacre_iipr: dadosAtuais ? dadosAtuais.lacre_iipr : '',
+                    grupo_iipr: dadosAtuais ? dadosAtuais.grupo_iipr : '',
+                    lacre_correios: dadosAtuais ? dadosAtuais.lacre_correios : grupoAberto.lacre_correios,
+                    grupo_correios: dadosAtuais ? dadosAtuais.grupo_correios : grupoAberto.grupo_correios,
+                    etiqueta_correios: etiquetaCorreios,
+                    usuario_lacre: usuarioAtual,
+                    atualizado_lacre: agora
+                });
+            }
+            atualizarMemoriaMalotes('correios_etiqueta', etiquetaCorreios);
+            limparModoVoz('Etiqueta Correios atribuída' + (origem ? ' por ' + origem : '') + '.');
+        });
+        return true;
+    }
+
+    function processarCodigoDeComando(valorBruto) {
+        var codigo = String(valorBruto || '').replace(/\D+/g, '');
+        var comando = comandosCodigoBarras[codigo] || null;
+        if (!comando) return false;
+        if (comando.tipo === 'cancelar') {
+            limparModoVoz(comando.mensagem);
+            if (mensagemLeitura) {
+                mensagemLeitura.innerHTML = '<strong>Comando:</strong> ' + comando.mensagem;
+            }
+            falarTexto('comando cancelado');
+            return true;
+        }
+        definirModoVoz(comando.tipo, comando.mensagem);
+        if (mensagemLeitura) {
+            mensagemLeitura.innerHTML = '<strong>Comando:</strong> ' + comando.mensagem;
+        }
+        return true;
+    }
+
+    function processarValorDeComando(valorBruto) {
+        var valor = String(valorBruto || '').replace(/\D+/g, '');
+        if (!vozModoAtual || !valor) return false;
+        return preencherCampoPorVoz(valor);
+    }
+
+    function renderizarPainelMalotes() {
         publicarResumoPrevia();
         publicarEstadoRemoto();
     }
@@ -4464,28 +4472,16 @@ function iniciarConferenciaPacotes() {
 
     function processarComandoRemoto(cmd) {
         if (!cmd || !cmd.comando) return;
-        if (!contextoSelecionadoMalote && regionalAtual && ehRegionalOperacional(regionalAtual)) {
-            selecionarContextoMalote(montarContextoMalote('regional', regionalAtual, 'Regional ' + regionalAtual));
-        }
         if (cmd.comando === 'atribuir_iipr') {
-            if (cmd.valor && inputLacreIiprMalote) {
-                inputLacreIiprMalote.value = normalizarNumeroLacre(cmd.valor);
-            }
-            if (btnSalvarMaloteIipr) btnSalvarMaloteIipr.click();
+            aplicarLacreIiprNoContexto(cmd.valor || '', 'controle');
             return;
         }
         if (cmd.comando === 'atribuir_correios') {
-            if (cmd.valor && inputLacreCorreiosMalote) {
-                inputLacreCorreiosMalote.value = normalizarNumeroLacre(cmd.valor);
-            }
-            if (btnSalvarMaloteCorreios) btnSalvarMaloteCorreios.click();
+            aplicarLacreCorreiosNoContexto(cmd.valor || '', 'controle');
             return;
         }
         if (cmd.comando === 'atribuir_display') {
-            if (cmd.valor_aux && inputEtiquetaCorreiosMalote) {
-                inputEtiquetaCorreiosMalote.value = String(cmd.valor_aux).trim();
-            }
-            if (btnSalvarEtiquetaCorreios) btnSalvarEtiquetaCorreios.click();
+            aplicarEtiquetaCorreiosNoContexto(cmd.valor_aux || '', 'controle');
         }
     }
 
@@ -4658,9 +4654,9 @@ function iniciarConferenciaPacotes() {
         formData.append('posto', rotuloContextoSelecionadoMalote || '-');
         formData.append('regional', tipoContextoSelecionadoMalote === 'regional' ? (rotuloContextoSelecionadoMalote || '-') : '-');
         formData.append('resumo', obterResumoContextoAtual());
-        formData.append('lacre_iipr', inputLacreIiprMalote ? inputLacreIiprMalote.value.trim() : '');
-        formData.append('lacre_correios', inputLacreCorreiosMalote ? inputLacreCorreiosMalote.value.trim() : '');
-        formData.append('etiqueta_correios', inputEtiquetaCorreiosMalote ? inputEtiquetaCorreiosMalote.value.trim() : '');
+        formData.append('lacre_iipr', ultimoLacreIiprAplicado || '');
+        formData.append('lacre_correios', ultimoLacreCorreiosAplicado || '');
+        formData.append('etiqueta_correios', ultimaEtiquetaCorreiosAplicada || '');
         fetch(window.location.href, { method: 'POST', body: formData }).catch(function() {});
     }
 
@@ -5838,7 +5834,16 @@ function iniciarConferenciaPacotes() {
             input.value = '';
             return;
         }
-        var valor = (valorBruto || '').trim();
+        var valorOriginal = String(valorBruto || '').trim();
+        if (processarCodigoDeComando(valorOriginal)) {
+            input.value = '';
+            return;
+        }
+        if (processarValorDeComando(valorOriginal)) {
+            input.value = '';
+            return;
+        }
+        var valor = valorOriginal;
         valor = valor.replace(/\D+/g, '');
         if (valor.length < 19) {
             return;

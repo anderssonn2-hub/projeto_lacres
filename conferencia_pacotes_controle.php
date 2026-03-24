@@ -137,6 +137,14 @@ if ($controle_canal === '') {
             font-size: 12px;
             line-height: 1.6;
         }
+        .link-comandos {
+            display: inline-flex;
+            margin-top: 10px;
+            color: var(--blue);
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+        }
         @media (max-width: 640px) {
             .estado-grid,
             .acoes {
@@ -167,6 +175,7 @@ if ($controle_canal === '') {
                 </div>
             </div>
             <div class="ajuda" id="estadoResumo">A prévia vai espelhar os lacres do contexto atual.</div>
+            <a class="link-comandos" href="conferencia_pacotes_comandos.php" target="_blank" rel="noopener">Abrir folha de comandos por código de barras</a>
         </section>
 
         <section class="card">

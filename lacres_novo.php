@@ -3711,28 +3711,36 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             }
         }
 
-        $stmtResumoOficio = $pdo_controle->prepare("SELECT posto, lote, etiquetaiipr, grupo_iipr, etiquetacorreios, grupo_correios, etiqueta_correios
-            FROM ciDespachoLotes
+        $stmtResumoOficio = $pdo_controle->prepare("SELECT d.posto, d.lote, d.etiquetaiipr, d.grupo_iipr, d.etiquetacorreios, d.grupo_correios, d.etiqueta_correios,
+                   LPAD(CAST(COALESCE(r.regional, d.posto) AS UNSIGNED), 3, '0') AS regional_codigo
+            FROM ciDespachoLotes d
+            LEFT JOIN ciRegionais r ON LPAD(CAST(r.posto AS UNSIGNED), 3, '0') = LPAD(CAST(d.posto AS UNSIGNED), 3, '0')
             WHERE id_despacho = ?
-            ORDER BY posto, lote");
+            ORDER BY regional_codigo, d.posto, d.lote");
         $stmtResumoOficio->execute(array($id_despacho_atual));
         $gruposResumo = array();
 
         while ($rowResumo = $stmtResumoOficio->fetch(PDO::FETCH_ASSOC)) {
             $postoResumo = (string)$rowResumo['posto'];
             $postoResumoPad = preg_match('/^M/i', $postoResumo) ? $postoResumo : str_pad($postoResumo, 3, '0', STR_PAD_LEFT);
+            $regionalCodigoResumo = isset($rowResumo['regional_codigo']) ? str_pad((string)$rowResumo['regional_codigo'], 3, '0', STR_PAD_LEFT) : $postoResumoPad;
+            $usarRegionalResumo = ($regionalCodigoResumo !== '' && !in_array($regionalCodigoResumo, array('000', '001', '999'), true));
+            $destinoCodigoResumo = $usarRegionalResumo ? $regionalCodigoResumo : $postoResumoPad;
+            $destinoNomeResumo = $usarRegionalResumo
+                ? ('Regional ' . $regionalCodigoResumo)
+                : (isset($mapaNomesPostoResumo[$postoResumoPad]) ? $mapaNomesPostoResumo[$postoResumoPad] : $postoResumoPad);
             $grupoCorreiosResumo = trim((string)$rowResumo['grupo_correios']);
             $grupoIiprResumo = trim((string)$rowResumo['grupo_iipr']);
             $lacreIiprResumo = isset($rowResumo['etiquetaiipr']) ? (int)$rowResumo['etiquetaiipr'] : 0;
             $lacreCorreiosResumo = isset($rowResumo['etiquetacorreios']) ? (int)$rowResumo['etiquetacorreios'] : 0;
             $etiquetaResumo = trim((string)$rowResumo['etiqueta_correios']);
             $fallback = $lacreCorreiosResumo . '|' . $etiquetaResumo . '|' . ($grupoIiprResumo !== '' ? $grupoIiprResumo : $lacreIiprResumo);
-            $chaveResumo = $postoResumoPad . '|' . ($grupoCorreiosResumo !== '' ? $grupoCorreiosResumo : $fallback);
+            $chaveResumo = $destinoCodigoResumo . '|' . ($grupoCorreiosResumo !== '' ? $grupoCorreiosResumo : $fallback);
 
             if (!isset($gruposResumo[$chaveResumo])) {
                 $gruposResumo[$chaveResumo] = array(
-                    'posto_codigo' => $postoResumoPad,
-                    'posto_nome' => isset($mapaNomesPostoResumo[$postoResumoPad]) ? $mapaNomesPostoResumo[$postoResumoPad] : $postoResumoPad,
+                    'posto_codigo' => $destinoCodigoResumo,
+                    'posto_nome' => $destinoNomeResumo,
                     'lacres_iipr' => array(),
                     'lacres_correios' => array(),
                     'etiqueta_correios' => '',
