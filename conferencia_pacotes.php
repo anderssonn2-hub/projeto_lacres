@@ -1902,6 +1902,30 @@ try {
         .operacao-chip.tem-correios {
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 0 0 2px rgba(83,194,255,0.28);
         }
+        .operacao-chip.tem-iipr::after {
+            content: ' I';
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 5px;
+            border-radius: 999px;
+            background: rgba(255, 209, 102, 0.24);
+            color: #ffe39a;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: 0.6px;
+        }
+        .operacao-chip.tem-correios::after {
+            content: ' C';
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 5px;
+            border-radius: 999px;
+            background: rgba(83, 194, 255, 0.22);
+            color: #d8f4ff;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: 0.6px;
+        }
         .operacao-posto-row.selecionado-malote {
             border-color: #7bdff2;
             box-shadow: 0 0 0 2px rgba(123,223,242,0.18);
@@ -2873,7 +2897,8 @@ try {
                     <input type="text" id="inputEtiquetaCorreiosMalote" maxlength="35" placeholder="Ex.: 87051030441050000104648810000101292">
                 </div>
                 <div class="painel-malotes-acoes">
-                    <button type="button" class="btn-malote-correios" id="btnSalvarMaloteCorreios">Vincular malote Correios aos IIPR marcados</button>
+                    <button type="button" class="btn-malote-correios" id="btnSalvarMaloteCorreios">Atribuir Lacre Correios</button>
+                    <button type="button" class="btn-malote-correios" id="btnSalvarEtiquetaCorreios">Atribuir Display Correios</button>
                 </div>
             </div>
         </div>
@@ -3479,6 +3504,7 @@ function iniciarConferenciaPacotes() {
     var inputEtiquetaCorreiosMalote = document.getElementById('inputEtiquetaCorreiosMalote');
     var btnSalvarMaloteIipr = document.getElementById('btnSalvarMaloteIipr');
     var btnSalvarMaloteCorreios = document.getElementById('btnSalvarMaloteCorreios');
+    var btnSalvarEtiquetaCorreios = document.getElementById('btnSalvarEtiquetaCorreios');
     var btnLimparMaloteLote = document.getElementById('btnLimparMaloteLote');
     var btnAlternarVozMalotes = document.getElementById('btnAlternarVozMalotes');
     var statusVozComando = document.getElementById('statusVozComando');
@@ -3945,10 +3971,12 @@ function iniciarConferenciaPacotes() {
 
             var contextoResumo = obterContextoMaloteDeDados(dados);
             var chaveResumo = contextoResumo.tipo === 'regional' ? contextoResumo.chave : (dados.posto || '');
-            var chaveGrupo = [contextoResumo.tipo || '', chaveResumo, dados.grupo_correios || '', dados.grupo_iipr || '', dados.regional || ''].join('|');
+            var agrupadorMalote = dados.grupo_correios || dados.grupo_iipr || '';
+            var chaveGrupo = [contextoResumo.tipo || '', chaveResumo, agrupadorMalote, dados.regional || ''].join('|');
             if (!grupos[chaveGrupo]) {
                 grupos[chaveGrupo] = {
                     regional: dados.regional || '',
+                    regional_codigo: contextoResumo.chave || dados.regional_codigo || '',
                     posto: dados.posto || '',
                     contexto_tipo: contextoResumo.tipo || '',
                     contexto_chave: chaveResumo,
@@ -3976,6 +4004,7 @@ function iniciarConferenciaPacotes() {
             if (!Object.prototype.hasOwnProperty.call(grupos, chave)) continue;
             resumo.push({
                 regional: grupos[chave].regional,
+                regional_codigo: grupos[chave].regional_codigo,
                 posto: grupos[chave].posto,
                 contexto_tipo: grupos[chave].contexto_tipo,
                 contexto_chave: grupos[chave].contexto_chave,
@@ -4233,6 +4262,7 @@ function iniciarConferenciaPacotes() {
             }
         }
         renderizarPainelMalotes();
+        publicarEstadoRemoto();
     }
 
     function montarPacoteParaPersistencia(chip, sobrescritas) {
@@ -4304,6 +4334,7 @@ function iniciarConferenciaPacotes() {
             if (malotesResumoIipr) malotesResumoIipr.textContent = '0';
             if (malotesResumoCorreios) malotesResumoCorreios.textContent = '0';
             publicarResumoPrevia();
+            publicarEstadoRemoto();
             return;
         }
 
@@ -4312,6 +4343,7 @@ function iniciarConferenciaPacotes() {
             if (painelMalotesLotes) painelMalotesLotes.className = 'painel-malotes-vazio';
             if (painelMalotesLotes) painelMalotesLotes.innerHTML = 'Nenhum pacote localizado para o contexto selecionado no painel de chips.';
             publicarResumoPrevia();
+            publicarEstadoRemoto();
             return;
         }
 
@@ -4326,6 +4358,7 @@ function iniciarConferenciaPacotes() {
             if (malotesResumoIipr) malotesResumoIipr.textContent = '0';
             if (malotesResumoCorreios) malotesResumoCorreios.textContent = '0';
             publicarResumoPrevia();
+            publicarEstadoRemoto();
             return;
         }
 
@@ -4414,6 +4447,63 @@ function iniciarConferenciaPacotes() {
         }
 
         publicarResumoPrevia();
+        publicarEstadoRemoto();
+    }
+
+    function abrirControleRemoto() {
+        var url = 'conferencia_pacotes_controle.php?canal_controle=' + encodeURIComponent(controleCanal || 'principal');
+        var ref = window.open(url, '_blank');
+        if (ref) {
+            if (statusControleRemoto) {
+                statusControleRemoto.textContent = 'Controle remoto aberto no canal ' + (controleCanal || 'principal') + '.';
+            }
+        } else if (statusControleRemoto) {
+            statusControleRemoto.textContent = 'O navegador bloqueou a abertura automática do controle remoto.';
+        }
+    }
+
+    function processarComandoRemoto(cmd) {
+        if (!cmd || !cmd.comando) return;
+        if (!contextoSelecionadoMalote && regionalAtual && ehRegionalOperacional(regionalAtual)) {
+            selecionarContextoMalote(montarContextoMalote('regional', regionalAtual, 'Regional ' + regionalAtual));
+        }
+        if (cmd.comando === 'atribuir_iipr') {
+            if (cmd.valor && inputLacreIiprMalote) {
+                inputLacreIiprMalote.value = normalizarNumeroLacre(cmd.valor);
+            }
+            if (btnSalvarMaloteIipr) btnSalvarMaloteIipr.click();
+            return;
+        }
+        if (cmd.comando === 'atribuir_correios') {
+            if (cmd.valor && inputLacreCorreiosMalote) {
+                inputLacreCorreiosMalote.value = normalizarNumeroLacre(cmd.valor);
+            }
+            if (btnSalvarMaloteCorreios) btnSalvarMaloteCorreios.click();
+            return;
+        }
+        if (cmd.comando === 'atribuir_display') {
+            if (cmd.valor_aux && inputEtiquetaCorreiosMalote) {
+                inputEtiquetaCorreiosMalote.value = String(cmd.valor_aux).trim();
+            }
+            if (btnSalvarEtiquetaCorreios) btnSalvarEtiquetaCorreios.click();
+        }
+    }
+
+    function consultarComandosRemotos() {
+        if (pollingRemotoAtivo) return;
+        pollingRemotoAtivo = true;
+        fetch(window.location.href + '?buscar_comandos_remoto_ajax=1&canal=' + encodeURIComponent(controleCanal || 'principal'), { cache: 'no-store' })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                var comandos = data && data.comandos ? data.comandos : [];
+                for (var i = 0; i < comandos.length; i++) {
+                    processarComandoRemoto(comandos[i]);
+                }
+            })
+            .catch(function() {})
+            .finally(function() {
+                pollingRemotoAtivo = false;
+            });
     }
 
     function obterChipsMarcadosNoPainel() {
@@ -4437,6 +4527,141 @@ function iniciarConferenciaPacotes() {
             selecionados.push(chips[i]);
         }
         return selecionados;
+    }
+
+    function obterGruposIiprNoContexto() {
+        var chips = obterChipsPorContextoMalote();
+        var grupos = {};
+        for (var i = 0; i < chips.length; i++) {
+            var dados = obterDadosChipOperacao(chips[i]);
+            if (!dados || !dados.conferido || !dados.grupo_iipr) continue;
+            if (!grupos[dados.grupo_iipr]) {
+                grupos[dados.grupo_iipr] = {
+                    grupo_iipr: dados.grupo_iipr,
+                    lacre_iipr: dados.lacre_iipr || '',
+                    grupo_correios: dados.grupo_correios || '',
+                    lacre_correios: dados.lacre_correios || '',
+                    etiqueta_correios: dados.etiqueta_correios || '',
+                    chips: []
+                };
+            }
+            grupos[dados.grupo_iipr].chips.push(chips[i]);
+            if (!grupos[dados.grupo_iipr].grupo_correios && dados.grupo_correios) {
+                grupos[dados.grupo_iipr].grupo_correios = dados.grupo_correios;
+            }
+            if (!grupos[dados.grupo_iipr].lacre_correios && dados.lacre_correios) {
+                grupos[dados.grupo_iipr].lacre_correios = dados.lacre_correios;
+            }
+            if (!grupos[dados.grupo_iipr].etiqueta_correios && dados.etiqueta_correios) {
+                grupos[dados.grupo_iipr].etiqueta_correios = dados.etiqueta_correios;
+            }
+        }
+        return grupos;
+    }
+
+    function obterGruposIiprMarcadosNoPainel() {
+        var checks = painelMalotesIipr ? painelMalotesIipr.querySelectorAll('.check-malote-iipr:checked') : [];
+        var grupos = [];
+        for (var i = 0; i < checks.length; i++) {
+            var grupoIipr = checks[i].getAttribute('data-grupo-iipr') || '';
+            if (grupoIipr) grupos.push(grupoIipr);
+        }
+        return grupos;
+    }
+
+    function obterGruposIiprSemCorreiosNoContexto() {
+        var grupos = obterGruposIiprNoContexto();
+        var lista = [];
+        for (var chave in grupos) {
+            if (!Object.prototype.hasOwnProperty.call(grupos, chave)) continue;
+            if (grupos[chave].grupo_correios) continue;
+            lista.push(chave);
+        }
+        return lista;
+    }
+
+    function obterChipsPorGrupoIipr(gruposIipr) {
+        var grupos = obterGruposIiprNoContexto();
+        var chips = [];
+        var vistos = {};
+        for (var i = 0; i < gruposIipr.length; i++) {
+            var grupo = grupos[gruposIipr[i]];
+            if (!grupo || !grupo.chips) continue;
+            for (var j = 0; j < grupo.chips.length; j++) {
+                var codigo = grupo.chips[j].getAttribute('data-codigo') || '';
+                if (codigo && !vistos[codigo]) {
+                    vistos[codigo] = true;
+                    chips.push(grupo.chips[j]);
+                }
+            }
+        }
+        return chips;
+    }
+
+    function obterGruposCorreiosAbertosNoContexto() {
+        var chips = obterChipsPorContextoMalote();
+        var grupos = {};
+        for (var i = 0; i < chips.length; i++) {
+            var dados = obterDadosChipOperacao(chips[i]);
+            if (!dados || !dados.conferido || !dados.grupo_correios) continue;
+            if (!grupos[dados.grupo_correios]) {
+                grupos[dados.grupo_correios] = {
+                    grupo_correios: dados.grupo_correios,
+                    lacre_correios: dados.lacre_correios || '',
+                    etiqueta_correios: dados.etiqueta_correios || '',
+                    chips: []
+                };
+            }
+            grupos[dados.grupo_correios].chips.push(chips[i]);
+            if (!grupos[dados.grupo_correios].etiqueta_correios && dados.etiqueta_correios) {
+                grupos[dados.grupo_correios].etiqueta_correios = dados.etiqueta_correios;
+            }
+        }
+        return grupos;
+    }
+
+    function obterGrupoCorreiosAbertoAtual() {
+        var grupos = obterGruposCorreiosAbertosNoContexto();
+        var encontrados = [];
+        for (var chave in grupos) {
+            if (!Object.prototype.hasOwnProperty.call(grupos, chave)) continue;
+            if (grupos[chave].etiqueta_correios) continue;
+            encontrados.push(grupos[chave]);
+        }
+        if (encontrados.length === 1) {
+            return encontrados[0];
+        }
+        return null;
+    }
+
+    function obterResumoContextoAtual() {
+        var chips = obterChipsPorContextoMalote();
+        var confirmados = 0;
+        var comIipr = 0;
+        var comCorreios = 0;
+        for (var i = 0; i < chips.length; i++) {
+            var dados = obterDadosChipOperacao(chips[i]);
+            if (!dados || !dados.conferido) continue;
+            confirmados++;
+            if (dados.lacre_iipr) comIipr++;
+            if (dados.lacre_correios || dados.etiqueta_correios) comCorreios++;
+        }
+        return confirmados + ' confirmados • ' + comIipr + ' com IIPR • ' + comCorreios + ' com Correios';
+    }
+
+    function publicarEstadoRemoto() {
+        if (!controleCanal) return;
+        var formData = new FormData();
+        formData.append('atualizar_estado_remoto_ajax', '1');
+        formData.append('canal', controleCanal);
+        formData.append('usuario', usuarioAtual || '');
+        formData.append('posto', rotuloContextoSelecionadoMalote || '-');
+        formData.append('regional', tipoContextoSelecionadoMalote === 'regional' ? (rotuloContextoSelecionadoMalote || '-') : '-');
+        formData.append('resumo', obterResumoContextoAtual());
+        formData.append('lacre_iipr', inputLacreIiprMalote ? inputLacreIiprMalote.value.trim() : '');
+        formData.append('lacre_correios', inputLacreCorreiosMalote ? inputLacreCorreiosMalote.value.trim() : '');
+        formData.append('etiqueta_correios', inputEtiquetaCorreiosMalote ? inputEtiquetaCorreiosMalote.value.trim() : '');
+        fetch(window.location.href, { method: 'POST', body: formData }).catch(function() {});
     }
 
     function obterChipsDosIiprMarcados() {
@@ -4524,25 +4749,29 @@ function iniciarConferenciaPacotes() {
     if (btnSalvarMaloteCorreios) {
         btnSalvarMaloteCorreios.addEventListener('click', function() {
             var lacreCorreios = normalizarNumeroLacre(inputLacreCorreiosMalote ? inputLacreCorreiosMalote.value : '');
-            var grupoCorreios = 'GC_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-            var etiquetaCorreios = inputEtiquetaCorreiosMalote ? String(inputEtiquetaCorreiosMalote.value || '').trim() : '';
-            var chips = obterChipsDosIiprMarcados();
-            if (!chips.length) {
-                alert('Selecione um ou mais malotes IIPR já fechados.');
+            var gruposMarcados = obterGruposIiprMarcadosNoPainel();
+            if (!gruposMarcados.length) {
+                gruposMarcados = obterGruposIiprSemCorreiosNoContexto();
+            }
+            if (!gruposMarcados.length) {
+                alert('Selecione um ou mais malotes IIPR já fechados ou deixe o contexto com malotes IIPR ainda sem Correios para seleção automática.');
                 return;
             }
-            if (!lacreCorreios && !etiquetaCorreios) {
-                alert('Informe ao menos o lacre Correios ou a etiqueta Correios.');
+            if (!lacreCorreios) {
+                alert('Informe o lacre Correios antes de atribuir.');
                 if (inputLacreCorreiosMalote) inputLacreCorreiosMalote.focus();
                 return;
             }
+
+            var grupoCorreios = 'GC_' + (tipoContextoSelecionadoMalote === 'regional' ? ('R' + contextoSelecionadoMalote) : ('P' + contextoSelecionadoMalote)) + '_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+            var chips = obterChipsPorGrupoIipr(gruposMarcados);
 
             var pacotes = [];
             for (var i = 0; i < chips.length; i++) {
                 var payload = montarPacoteParaPersistencia(chips[i], {
                     lacre_correios: lacreCorreios,
                     grupo_correios: grupoCorreios,
-                    etiqueta_correios: etiquetaCorreios
+                    etiqueta_correios: ''
                 });
                 if (payload) pacotes.push(payload);
             }
@@ -4555,14 +4784,59 @@ function iniciarConferenciaPacotes() {
                         grupo_iipr: dadosAtuais ? dadosAtuais.grupo_iipr : '',
                         lacre_correios: lacreCorreios,
                         grupo_correios: grupoCorreios,
-                        etiqueta_correios: etiquetaCorreios,
+                        etiqueta_correios: dadosAtuais ? dadosAtuais.etiqueta_correios : '',
                         usuario_lacre: usuarioAtual,
                         atualizado_lacre: agora
                     });
                 }
                 if (inputLacreCorreiosMalote) inputLacreCorreiosMalote.value = '';
+                limparModoVoz('Lacre Correios atribuído.');
+            });
+        });
+    }
+
+    if (btnSalvarEtiquetaCorreios) {
+        btnSalvarEtiquetaCorreios.addEventListener('click', function() {
+            var etiquetaCorreios = inputEtiquetaCorreiosMalote ? String(inputEtiquetaCorreiosMalote.value || '').trim() : '';
+            if (!etiquetaCorreios) {
+                alert('Leia ou digite a etiqueta Correios antes de atribuir o display.');
+                if (inputEtiquetaCorreiosMalote) inputEtiquetaCorreiosMalote.focus();
+                return;
+            }
+
+            var grupoAberto = obterGrupoCorreiosAbertoAtual();
+            if (!grupoAberto || !grupoAberto.chips || !grupoAberto.chips.length) {
+                alert('Não há malote Correios aberto neste contexto para receber o display.');
+                return;
+            }
+
+            var pacotes = [];
+            for (var i = 0; i < grupoAberto.chips.length; i++) {
+                var dadosGrupo = obterDadosChipOperacao(grupoAberto.chips[i]);
+                var payload = montarPacoteParaPersistencia(grupoAberto.chips[i], {
+                    lacre_correios: dadosGrupo ? dadosGrupo.lacre_correios : grupoAberto.lacre_correios,
+                    grupo_correios: dadosGrupo ? dadosGrupo.grupo_correios : grupoAberto.grupo_correios,
+                    etiqueta_correios: etiquetaCorreios
+                });
+                if (payload) pacotes.push(payload);
+            }
+
+            persistirAtribuicoesLote(pacotes, function() {
+                var agora = formatarDataHoraAtual();
+                for (var j = 0; j < grupoAberto.chips.length; j++) {
+                    var dadosAtuais = obterDadosChipOperacao(grupoAberto.chips[j]);
+                    aplicarAtribuicaoNoChip(grupoAberto.chips[j], {
+                        lacre_iipr: dadosAtuais ? dadosAtuais.lacre_iipr : '',
+                        grupo_iipr: dadosAtuais ? dadosAtuais.grupo_iipr : '',
+                        lacre_correios: dadosAtuais ? dadosAtuais.lacre_correios : grupoAberto.lacre_correios,
+                        grupo_correios: dadosAtuais ? dadosAtuais.grupo_correios : grupoAberto.grupo_correios,
+                        etiqueta_correios: etiquetaCorreios,
+                        usuario_lacre: usuarioAtual,
+                        atualizado_lacre: agora
+                    });
+                }
                 if (inputEtiquetaCorreiosMalote) inputEtiquetaCorreiosMalote.value = '';
-                limparModoVoz('Malote Correios vinculado.');
+                limparModoVoz('Display Correios atribuído.');
             });
         });
     }
@@ -4614,6 +4888,12 @@ function iniciarConferenciaPacotes() {
         });
     }
 
+    if (btnAbrirControleRemoto) {
+        btnAbrirControleRemoto.addEventListener('click', function() {
+            abrirControleRemoto();
+        });
+    }
+
     if (modalChipDetalhe) {
         modalChipDetalhe.addEventListener('click', function(e) {
             if (e.target === modalChipDetalhe) {
@@ -4635,6 +4915,22 @@ function iniciarConferenciaPacotes() {
             selecionarContextoMalote(obterContextoMaloteDeLinha(linhaPosto));
         }
     });
+
+    function entradaBloqueiaScanner(alvo) {
+        if (!alvo) return false;
+        if (alvo === input) return false;
+        if (alvo.id === 'usuario_conf_modal' || alvo.id === 'pacote_lote' || alvo.id === 'pacote_regional' || alvo.id === 'pacote_posto' || alvo.id === 'pacote_qtd' || alvo.id === 'pacote_dataexp' || alvo.id === 'pacote_responsavel') {
+            return true;
+        }
+        if (alvo.id === 'inputLacreIiprMalote' || alvo.id === 'inputLacreCorreiosMalote' || alvo.id === 'inputEtiquetaCorreiosMalote') {
+            return true;
+        }
+        var tag = String(alvo.tagName || '').toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+            return true;
+        }
+        return !!alvo.isContentEditable;
+    }
 
     function alternarModoVisualizacao(modo) {
         var abrirClassificacao = modo === 'classificacao';
@@ -5840,6 +6136,7 @@ function iniciarConferenciaPacotes() {
         });
         setInterval(function() {
             if (!input) return;
+            if (document.activeElement && document.activeElement !== input && entradaBloqueiaScanner(document.activeElement)) return;
             var valorAtual = (input.value || '').trim();
             if (!valorAtual || valorAtual === ultimoCodLido) return;
             ultimoCodLido = valorAtual;
@@ -5855,7 +6152,8 @@ function iniciarConferenciaPacotes() {
     document.addEventListener('keydown', function(e) {
         if (!e) return;
         var alvo = e.target;
-        if (alvo && (alvo.id === 'usuario_conf_modal' || alvo.id === 'pacote_lote' || alvo.id === 'pacote_regional' || alvo.id === 'pacote_posto' || alvo.id === 'pacote_qtd' || alvo.id === 'pacote_dataexp' || alvo.id === 'pacote_responsavel')) {
+        if (entradaBloqueiaScanner(alvo)) {
+            scanBuffer = '';
             return;
         }
         if (e.keyCode === 13) {
@@ -6063,6 +6361,8 @@ function iniciarConferenciaPacotes() {
     }
 
     renderizarPostosBloqueados();
+    consultarComandosRemotos();
+    setInterval(consultarComandosRemotos, 1200);
     } catch (e) {
         try { console.error('Erro ao iniciar conferência', e); } catch (e2) {}
     }

@@ -613,7 +613,8 @@ try {
             for (var i = 0; i < snapshot.resumo.length; i++) {
                 var item = snapshot.resumo[i] || {};
                 if (!item.row_key) {
-                    item.row_key = item.grupo_correios ? ('gc:' + item.grupo_correios) : (item.grupo_iipr ? ('gi:' + item.grupo_iipr) : ('ln:' + i + ':' + (item.posto || '') + ':' + (item.regional_codigo || '')));
+                    var contextoBase = item.contexto_chave || item.posto || item.regional_codigo || '';
+                    item.row_key = item.grupo_correios ? ('gc:' + item.grupo_correios) : (item.grupo_iipr ? ('gi:' + item.grupo_iipr) : ('ln:' + i + ':' + contextoBase));
                     snapshot.resumo[i] = item;
                     alterou = true;
                 }
@@ -648,10 +649,18 @@ try {
                 if (!item) continue;
                 var posto = String(item.posto || '').trim();
                 var postoPadrao = posto && /^\d+$/.test(posto) ? posto.padStart(3, '0') : posto;
+                var contextoTipo = String(item.contexto_tipo || '').trim();
+                var contextoRotulo = String(item.contexto_rotulo || '').trim();
+                var destinoRotulo = contextoRotulo;
+                if (!destinoRotulo) {
+                    destinoRotulo = postoPadrao && nomesPostos[postoPadrao] ? (postoPadrao + ' - ' + nomesPostos[postoPadrao]) : (postoPadrao ? ('Posto ' + postoPadrao) : 'Sem posto');
+                }
                 linhas.push({
                     row_key: item.row_key,
                     posto: posto,
-                    posto_rotulo: postoPadrao && nomesPostos[postoPadrao] ? (postoPadrao + ' - ' + nomesPostos[postoPadrao]) : (postoPadrao ? ('Posto ' + postoPadrao) : 'Sem posto'),
+                    posto_rotulo: destinoRotulo,
+                    contexto_tipo: contextoTipo,
+                    contexto_rotulo: contextoRotulo,
                     regional: item.regional || '',
                     regional_codigo: item.regional_codigo || '',
                     grupo_correios: item.grupo_correios || '',

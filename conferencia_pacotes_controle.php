@@ -149,16 +149,16 @@ if ($controle_canal === '') {
     <div class="wrap">
         <section class="card">
             <h1>Controle simplificado</h1>
-            <div class="sub">Fluxo direto: atribuir IIPR, salvar IIPR, salvar lacre Correios e depois salvar etiqueta Correios. Todos os botões continuam exigindo 3 toques.</div>
+            <div class="sub">Fluxo direto por contexto atual da conferência: atribuir Lacre IIPR, atribuir Lacre Correios e depois atribuir Display Correios. Todos os botões continuam exigindo 3 toques.</div>
             <div style="margin-top:12px;"><span class="badge">Canal: <span id="canalAtual"><?php echo htmlspecialchars($controle_canal, ENT_QUOTES, 'UTF-8'); ?></span></span></div>
             <div class="status" id="statusEnvio">Aguardando operação.</div>
             <div class="estado-grid">
                 <div class="estado-item">
-                    <div class="label">Posto atual</div>
+                    <div class="label">Contexto atual</div>
                     <div class="valor" id="estadoPosto">-</div>
                 </div>
                 <div class="estado-item">
-                    <div class="label">Grupo</div>
+                    <div class="label">Regional ativa</div>
                     <div class="valor" id="estadoRegional">-</div>
                 </div>
                 <div class="estado-item">
@@ -166,7 +166,7 @@ if ($controle_canal === '') {
                     <div class="valor" id="estadoAtualizado">-</div>
                 </div>
             </div>
-            <div class="ajuda" id="estadoResumo">A prévia vai espelhar os lacres do posto atual.</div>
+            <div class="ajuda" id="estadoResumo">A prévia vai espelhar os lacres do contexto atual.</div>
         </section>
 
         <section class="card">
@@ -177,7 +177,6 @@ if ($controle_canal === '') {
             </div>
             <div class="acoes">
                 <button type="button" class="btn-triplo btn-blue" data-acao="atribuir_iipr">Atribuir lacre IIPR</button>
-                <button type="button" class="btn-triplo btn-green" data-acao="salvar_iipr">Salvar lacre IIPR</button>
             </div>
         </section>
 
@@ -188,20 +187,20 @@ if ($controle_canal === '') {
                 <input type="text" id="inputLacreCorreiosRemoto" inputmode="numeric" maxlength="12" placeholder="Ex.: 101">
             </div>
             <div class="acoes">
-                <button type="button" class="btn-triplo btn-amber" data-acao="salvar_lacre_correios">Inserir lacre Correios</button>
+                <button type="button" class="btn-triplo btn-amber" data-acao="atribuir_correios">Atribuir lacre Correios</button>
             </div>
         </section>
 
         <section class="card">
-            <h2>3. Salvar etiqueta Correios</h2>
+            <h2>3. Atribuir display Correios</h2>
             <div class="campo">
                 <label for="inputEtiquetaCorreiosRemoto">Etiqueta Correios</label>
                 <input type="text" id="inputEtiquetaCorreiosRemoto" inputmode="numeric" maxlength="35" placeholder="Leia ou digite os 35 caracteres">
             </div>
             <div class="acoes">
-                <button type="button" class="btn-triplo btn-green" data-acao="salvar_etiqueta_correios">Inserir etiqueta Correios</button>
+                <button type="button" class="btn-triplo btn-green" data-acao="atribuir_display">Atribuir display Correios</button>
             </div>
-            <div class="ajuda">Se o lacre Correios já foi salvo antes, este botão completa o mesmo malote com a etiqueta.</div>
+            <div class="ajuda">Use este botão depois de atribuir o Lacre Correios. O sistema completa o malote Correios aberto do contexto atual.</div>
         </section>
     </div>
 
@@ -234,18 +233,13 @@ if ($controle_canal === '') {
             var valorAux = '';
 
             if (acao === 'atribuir_iipr') {
-                comando = 'armar_iipr';
-            } else if (acao === 'salvar_iipr') {
-                comando = 'salvar_iipr';
+                comando = 'atribuir_iipr';
                 valor = normalizarNumero(inputLacreIiprRemoto ? inputLacreIiprRemoto.value : '', 12);
-                valorAux = (estadoPosto && estadoPosto.textContent && estadoPosto.textContent.trim() !== '-') ? estadoPosto.textContent.trim() : '';
-            } else if (acao === 'salvar_lacre_correios') {
-                comando = 'salvar_correios';
+            } else if (acao === 'atribuir_correios') {
+                comando = 'atribuir_correios';
                 valor = normalizarNumero(inputLacreCorreiosRemoto ? inputLacreCorreiosRemoto.value : '', 12);
-                valorAux = '';
-            } else if (acao === 'salvar_etiqueta_correios') {
-                comando = 'salvar_correios';
-                valor = normalizarNumero(inputLacreCorreiosRemoto ? inputLacreCorreiosRemoto.value : '', 12);
+            } else if (acao === 'atribuir_display') {
+                comando = 'atribuir_display';
                 valorAux = normalizarNumero(inputEtiquetaCorreiosRemoto ? inputEtiquetaCorreiosRemoto.value : '', 35);
             }
 
@@ -259,18 +253,18 @@ if ($controle_canal === '') {
                 return;
             }
 
-            if (acao === 'salvar_iipr' && !payload.valor) {
-                atualizarStatus('Digite o lacre IIPR antes de salvar.', 'erro');
+            if (acao === 'atribuir_iipr' && !payload.valor) {
+                atualizarStatus('Digite o lacre IIPR antes de atribuir.', 'erro');
                 if (inputLacreIiprRemoto) inputLacreIiprRemoto.focus();
                 return;
             }
-            if (acao === 'salvar_lacre_correios' && !payload.valor) {
-                atualizarStatus('Digite o lacre Correios antes de inserir.', 'erro');
+            if (acao === 'atribuir_correios' && !payload.valor) {
+                atualizarStatus('Digite o lacre Correios antes de atribuir.', 'erro');
                 if (inputLacreCorreiosRemoto) inputLacreCorreiosRemoto.focus();
                 return;
             }
-            if (acao === 'salvar_etiqueta_correios' && !payload.valorAux) {
-                atualizarStatus('Leia ou digite a etiqueta Correios antes de salvar.', 'erro');
+            if (acao === 'atribuir_display' && !payload.valorAux) {
+                atualizarStatus('Leia ou digite a etiqueta Correios antes de atribuir o display.', 'erro');
                 if (inputEtiquetaCorreiosRemoto) inputEtiquetaCorreiosRemoto.focus();
                 return;
             }
@@ -289,9 +283,9 @@ if ($controle_canal === '') {
                         atualizarStatus('Falha ao enviar operação.', 'erro');
                         return;
                     }
-                    if (acao === 'salvar_iipr' && inputLacreIiprRemoto) inputLacreIiprRemoto.value = '';
-                    if (acao === 'salvar_lacre_correios' && inputLacreCorreiosRemoto) inputLacreCorreiosRemoto.value = '';
-                    if (acao === 'salvar_etiqueta_correios' && inputEtiquetaCorreiosRemoto) inputEtiquetaCorreiosRemoto.value = '';
+                    if (acao === 'atribuir_iipr' && inputLacreIiprRemoto) inputLacreIiprRemoto.value = '';
+                    if (acao === 'atribuir_correios' && inputLacreCorreiosRemoto) inputLacreCorreiosRemoto.value = '';
+                    if (acao === 'atribuir_display' && inputEtiquetaCorreiosRemoto) inputEtiquetaCorreiosRemoto.value = '';
                     atualizarStatus('Operação enviada: ' + acao.replace(/_/g, ' '), 'ok');
                 })
                 .catch(function() {
@@ -335,13 +329,13 @@ if ($controle_canal === '') {
                         estadoPosto.textContent = '-';
                         estadoRegional.textContent = '-';
                         estadoAtualizado.textContent = '-';
-                        estadoResumo.textContent = 'Aguardando posto conferido no PC.';
+                        estadoResumo.textContent = 'Aguardando contexto conferido no PC.';
                         return;
                     }
                     estadoPosto.textContent = estado.posto || '-';
                     estadoRegional.textContent = estado.regional || '-';
                     estadoAtualizado.textContent = estado.atualizado_em || '-';
-                    estadoResumo.textContent = estado.resumo || 'A prévia vai espelhar os lacres do posto atual.';
+                    estadoResumo.textContent = estado.resumo || 'A prévia vai espelhar os lacres do contexto atual.';
                 })
                 .catch(function() {});
         }
