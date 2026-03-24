@@ -674,7 +674,8 @@ try {
                     lacre_correios: item.lacre_correios || '',
                     etiqueta_correios: item.etiqueta_correios || '',
                     lotes: item.lotes || [],
-                    qtd_total: item.qtd_total || 0
+                    qtd_total: item.qtd_total || 0,
+                    pendente_lacre: !!item.pendente_lacre
                 });
             }
 
@@ -698,6 +699,10 @@ try {
             return secao === 'REGIONAIS' ? 'Regionais' : 'Posto';
         }
 
+        function montarCampoEdicao(classeExtra, rowKey, field, value, maxLength) {
+            return '<input class="campo-impressao campo-editavel ' + escapeHtml(classeExtra || '') + '" type="text" value="' + escapeHtml(value || '') + '" data-row-key="' + escapeHtml(rowKey || '') + '" data-field="' + escapeHtml(field || '') + '" maxlength="' + escapeHtml(String(maxLength || 35)) + '">';
+        }
+
         function montarTabela(secao, linhas) {
             var html = '';
             html += '<div class="secao">';
@@ -714,9 +719,9 @@ try {
                 var item = linhas[i];
                 html += '<tr data-row-key="' + escapeHtml(item.row_key) + '">';
                 html += '<td><div class="destino">' + escapeHtml(item.posto_rotulo) + '</div></td>';
-                html += '<td><div class="campo-impressao campo-lacres-iipr">' + escapeHtml(item.lacre_iipr || '-') + '</div></td>';
-                html += '<td><div class="campo-impressao">' + escapeHtml(item.lacre_correios || '-') + '</div></td>';
-                html += '<td><div class="campo-impressao">' + escapeHtml(item.etiqueta_correios || '-') + '</div></td>';
+                html += '<td>' + montarCampoEdicao('campo-lacres-iipr', item.row_key, 'lacre_iipr', item.lacre_iipr || '', 80) + '</td>';
+                html += '<td>' + montarCampoEdicao('', item.row_key, 'lacre_correios', item.lacre_correios || '', 80) + '</td>';
+                html += '<td>' + montarCampoEdicao('campo-etiqueta', item.row_key, 'etiqueta_correios', item.etiqueta_correios || '', 35) + '</td>';
                 html += '</tr>';
             }
 
@@ -751,7 +756,7 @@ try {
             }
 
             if (linhas.length) {
-                textoRodapeLotes.textContent = linhas.length + ' linha(s) pronta(s) para o ofício. Ajuste a etiqueta Correios aqui antes da gravação definitiva, se necessário.';
+                textoRodapeLotes.textContent = linhas.length + ' linha(s) visíveis na prévia. Você pode ajustar lacre IIPR, lacre Correios e etiqueta aqui antes da gravação definitiva, se necessário.';
             } else {
                 textoRodapeLotes.textContent = 'Nenhuma linha pronta foi consolidada.';
             }
@@ -810,13 +815,13 @@ try {
             }
         }
 
-        function estaEditandoEtiqueta() {
+        function estaEditandoCampoResumo() {
             var ativo = document.activeElement;
-            return !!(ativo && ativo.classList && ativo.classList.contains('campo-etiqueta'));
+            return !!(ativo && ativo.classList && ativo.classList.contains('campo-editavel'));
         }
 
         function renderizarQuandoPossivel(snapshot) {
-            if (estaEditandoEtiqueta()) {
+            if (estaEditandoCampoResumo()) {
                 return;
             }
             renderizar(snapshot);
@@ -925,8 +930,9 @@ try {
 
         areaGrade.addEventListener('input', function(event) {
             var alvo = event.target;
-            if (!alvo || alvo.getAttribute('data-field') !== 'etiqueta_correios') return;
-            atualizarCampoResumo(alvo.getAttribute('data-row-key'), 'etiqueta_correios', String(alvo.value || '').trim());
+            var field = alvo ? alvo.getAttribute('data-field') : '';
+            if (!field) return;
+            atualizarCampoResumo(alvo.getAttribute('data-row-key'), field, String(alvo.value || '').trim());
         });
 
         if (window.BroadcastChannel) {
@@ -953,7 +959,7 @@ try {
 
         areaGrade.addEventListener('blur', function(event) {
             var alvo = event.target;
-            if (!alvo || !alvo.classList || !alvo.classList.contains('campo-etiqueta')) return;
+            if (!alvo || !alvo.classList || !alvo.classList.contains('campo-editavel')) return;
             renderizar(lerSnapshot());
         }, true);
 

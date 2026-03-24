@@ -3962,6 +3962,38 @@ function iniciarConferenciaPacotes() {
             return postoA - postoB;
         });
 
+        for (var p = 0; p < listaPendentes.length; p++) {
+            resumo.push({
+                row_key: 'ctx:' + (listaPendentes[p].contexto_tipo || 'posto') + ':' + (listaPendentes[p].contexto_chave || listaPendentes[p].posto || p),
+                regional: listaPendentes[p].regional || '',
+                regional_codigo: listaPendentes[p].contexto_tipo === 'regional' ? (listaPendentes[p].contexto_chave || '') : (listaPendentes[p].regional || ''),
+                posto: listaPendentes[p].posto,
+                contexto_tipo: listaPendentes[p].contexto_tipo,
+                contexto_chave: listaPendentes[p].contexto_chave,
+                contexto_rotulo: listaPendentes[p].contexto_rotulo,
+                lotes: listaPendentes[p].lotes,
+                qtd_total: listaPendentes[p].qtd_total,
+                lacre_iipr: '',
+                lacre_correios: '',
+                etiqueta_correios: '',
+                grupo_iipr: '',
+                grupo_correios: '',
+                grupos_correios: [],
+                pendente_lacre: true
+            });
+        }
+
+        resumo.sort(function(a, b) {
+            var regA = parseInt(a.regional_codigo || 0, 10) || 0;
+            var regB = parseInt(b.regional_codigo || 0, 10) || 0;
+            if (regA !== regB) return regA - regB;
+            var grupoA = String(a.grupo_correios || a.grupo_iipr || a.row_key || '');
+            var grupoB = String(b.grupo_correios || b.grupo_iipr || b.row_key || '');
+            if (grupoA < grupoB) return -1;
+            if (grupoA > grupoB) return 1;
+            return 0;
+        });
+
         return {
             versao: '0.9.25.17',
             gerado_em: formatarDataHoraAtual(),
