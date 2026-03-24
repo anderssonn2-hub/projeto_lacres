@@ -600,15 +600,48 @@ try {
             return digitos.padStart(3, '0');
         }
 
+        function obterChavesContextoRemoto(estado) {
+            var chaves = [];
+            var regional = normalizarRegionalTexto(estado && estado.regional ? estado.regional : '');
+            var posto = normalizarRegionalTexto(estado && estado.posto ? estado.posto : '');
+            if (regional) {
+                chaves.push({ tipo: 'regional', chave: regional });
+            }
+            if (posto) {
+                chaves.push({ tipo: 'posto', chave: posto });
+            }
+            return chaves;
+        }
+
+        function itemCorrespondeAoEstado(item, chavesEstado) {
+            if (!item || !chavesEstado || !chavesEstado.length) return false;
+            var contextoTipo = String(item.contexto_tipo || '').trim();
+            var contextoChave = normalizarRegionalTexto(item.contexto_chave || '');
+            var regionalCodigo = normalizarRegionalTexto(item.regional_codigo || item.regional || '');
+            var postoCodigo = normalizarRegionalTexto(item.posto || '');
+
+            for (var i = 0; i < chavesEstado.length; i++) {
+                var chaveEstado = chavesEstado[i];
+                if (chaveEstado.tipo === 'regional') {
+                    if (contextoTipo === 'regional' && contextoChave === chaveEstado.chave) return true;
+                    if (regionalCodigo === chaveEstado.chave && contextoTipo !== 'posto') return true;
+                }
+                if (chaveEstado.tipo === 'posto') {
+                    if (contextoTipo === 'posto' && contextoChave === chaveEstado.chave) return true;
+                    if (postoCodigo === chaveEstado.chave) return true;
+                }
+            }
+            return false;
+        }
+
         function aplicarEstadoRemotoAoSnapshot(snapshot, estado) {
             if (!snapshot || !snapshot.resumo || !snapshot.resumo.length || !estado) return snapshot;
-            var regionalAtiva = normalizarRegionalTexto(estado.regional || '');
-            if (!regionalAtiva) return snapshot;
+            var chavesEstado = obterChavesContextoRemoto(estado);
+            if (!chavesEstado.length) return snapshot;
             var alterou = false;
             for (var i = 0; i < snapshot.resumo.length; i++) {
                 var item = snapshot.resumo[i] || {};
-                var regionalItem = normalizarRegionalTexto(item.regional_codigo || item.contexto_chave || item.regional || '');
-                if (regionalItem !== regionalAtiva) continue;
+                if (!itemCorrespondeAoEstado(item, chavesEstado)) continue;
                 if (estado.lacre_iipr && item.lacre_iipr !== estado.lacre_iipr) {
                     item.lacre_iipr = String(estado.lacre_iipr || '').trim();
                     alterou = true;
