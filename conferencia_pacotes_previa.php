@@ -793,28 +793,45 @@ try {
             return false;
         }
 
+        function itemAceitaEstadoRemoto(item) {
+            if (!item) return false;
+            if (item.pendente_lacre) return true;
+            return !item.grupo_correios && !item.grupo_iipr && !item.etiqueta_correios;
+        }
+
         function aplicarEstadoRemotoAoSnapshot(snapshot, estado) {
             if (!snapshot || !snapshot.resumo || !snapshot.resumo.length || !estado) return snapshot;
             var chavesEstado = obterChavesContextoRemoto(estado);
             if (!chavesEstado.length) return snapshot;
             var alterou = false;
+            var candidatos = [];
+            var preferenciais = [];
             for (var i = 0; i < snapshot.resumo.length; i++) {
                 var item = snapshot.resumo[i] || {};
                 if (!itemCorrespondeAoEstado(item, chavesEstado)) continue;
-                if (estado.lacre_iipr && item.lacre_iipr !== estado.lacre_iipr) {
-                    item.lacre_iipr = String(estado.lacre_iipr || '').trim();
-                    alterou = true;
+                candidatos.push(i);
+                if (itemAceitaEstadoRemoto(item)) {
+                    preferenciais.push(i);
                 }
-                if (estado.lacre_correios && item.lacre_correios !== estado.lacre_correios) {
-                    item.lacre_correios = String(estado.lacre_correios || '').trim();
-                    alterou = true;
-                }
-                if (estado.etiqueta_correios && item.etiqueta_correios !== estado.etiqueta_correios) {
-                    item.etiqueta_correios = String(estado.etiqueta_correios || '').trim();
-                    alterou = true;
-                }
-                snapshot.resumo[i] = item;
             }
+            var indicesAtualizacao = preferenciais.length ? preferenciais : candidatos;
+            if (!indicesAtualizacao.length) return snapshot;
+
+            var indiceDestino = indicesAtualizacao[indicesAtualizacao.length - 1];
+            var itemDestino = snapshot.resumo[indiceDestino] || {};
+            if (estado.lacre_iipr && itemDestino.lacre_iipr !== estado.lacre_iipr) {
+                itemDestino.lacre_iipr = String(estado.lacre_iipr || '').trim();
+                alterou = true;
+            }
+            if (estado.lacre_correios && itemDestino.lacre_correios !== estado.lacre_correios) {
+                itemDestino.lacre_correios = String(estado.lacre_correios || '').trim();
+                alterou = true;
+            }
+            if (estado.etiqueta_correios && itemDestino.etiqueta_correios !== estado.etiqueta_correios) {
+                itemDestino.etiqueta_correios = String(estado.etiqueta_correios || '').trim();
+                alterou = true;
+            }
+            snapshot.resumo[indiceDestino] = itemDestino;
             if (alterou) {
                 salvarSnapshot(snapshot);
             }
@@ -853,7 +870,11 @@ try {
                 var item = snapshot.resumo[i] || {};
                 if (!item.row_key) {
                     var contextoBase = item.contexto_chave || item.posto || item.regional_codigo || '';
-                    item.row_key = item.grupo_correios ? ('gc:' + item.grupo_correios) : (item.grupo_iipr ? ('gi:' + item.grupo_iipr) : ('ln:' + i + ':' + contextoBase));
+                    if (item.pendente_lacre) {
+                        item.row_key = 'pend:' + contextoBase;
+                    } else {
+                        item.row_key = item.grupo_correios ? ('gc:' + item.grupo_correios) : (item.grupo_iipr ? ('gi:' + item.grupo_iipr) : ('ln:' + i + ':' + contextoBase));
+                    }
                     snapshot.resumo[i] = item;
                     alterou = true;
                 }
@@ -925,6 +946,7 @@ try {
                 var ordemB = regB === 0 ? 0 : (regB === 1 ? 1 : (regB === 999 ? 2 : 3));
                 if (ordemA !== ordemB) return ordemA - ordemB;
                 if (ordemA === 3 && regA !== regB) return regA - regB;
+                if (!!a.pendente_lacre !== !!b.pendente_lacre) return a.pendente_lacre ? 1 : -1;
                 var grupoA = String(a.grupo_correios || a.grupo_iipr || a.row_key || '');
                 var grupoB = String(b.grupo_correios || b.grupo_iipr || b.row_key || '');
                 if (grupoA < grupoB) return -1;

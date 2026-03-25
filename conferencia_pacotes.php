@@ -3898,42 +3898,81 @@ function iniciarConferenciaPacotes() {
         var chips = document.querySelectorAll('.operacao-chip');
         var grupos = {};
         var pendentes = {};
+        var contextos = {};
         var totalConfirmados = 0;
+
+        function obterChaveContextoResumo(contexto, dados) {
+            var tipo = String(contexto && contexto.tipo ? contexto.tipo : 'posto');
+            var chave = '';
+            if (tipo === 'regional') {
+                chave = String(contexto && contexto.chave ? contexto.chave : (dados && (dados.regional_codigo || dados.regional) ? (dados.regional_codigo || dados.regional) : ''));
+            } else {
+                chave = String(contexto && contexto.chave ? contexto.chave : (dados && dados.posto ? dados.posto : ''));
+            }
+            return tipo + '|' + chave;
+        }
+
+        function obterOuCriarContextoResumo(contexto, dados) {
+            var chaveContexto = obterChaveContextoResumo(contexto, dados);
+            if (!contextos[chaveContexto]) {
+                contextos[chaveContexto] = {
+                    chave_contexto: chaveContexto,
+                    posto: dados && dados.posto ? dados.posto : '',
+                    regional: dados && dados.regional ? dados.regional : '',
+                    regional_codigo: dados && (dados.regional_codigo || dados.regional) ? (dados.regional_codigo || dados.regional) : '',
+                    contexto_tipo: contexto && contexto.tipo ? contexto.tipo : '',
+                    contexto_chave: contexto && contexto.chave ? contexto.chave : '',
+                    contexto_rotulo: contexto && contexto.rotulo ? contexto.rotulo : '',
+                    tem_linha_fechada: false,
+                    tem_linha_pendente: false,
+                    tem_trabalho_restante: false
+                };
+            }
+            return contextos[chaveContexto];
+        }
+
         for (var i = 0; i < chips.length; i++) {
             var dados = obterDadosChipOperacao(chips[i]);
-            if (!dados || !dados.conferido || dados.isPT) continue;
+            if (!dados || dados.isPT) continue;
+            var contextoChip = obterContextoMaloteDeDados(dados);
+            var contextoInfo = obterOuCriarContextoResumo(contextoChip, dados);
+            if (!dados.conferido) {
+                contextoInfo.tem_trabalho_restante = true;
+                continue;
+            }
             totalConfirmados++;
-            if (!dados.lacre_iipr) {
-                var contextoPendente = obterContextoMaloteDeDados(dados);
-                var chavePendente = (contextoPendente.tipo === 'regional' ? ('regional|' + (contextoPendente.chave || '-')) : ((dados.posto || '-') + '|' + (dados.regional || '-')));
+            if (!valorResumoPreenchido(dados.lacre_iipr)) {
+                var chavePendente = contextoInfo.chave_contexto;
                 if (!pendentes[chavePendente]) {
                     pendentes[chavePendente] = {
-                        posto: dados.posto || '',
-                        regional: dados.regional || '',
-                        contexto_tipo: contextoPendente.tipo || '',
-                        contexto_chave: contextoPendente.chave || '',
-                        contexto_rotulo: contextoPendente.rotulo || '',
+                        posto: contextoInfo.posto || '',
+                        regional: contextoInfo.regional || '',
+                        regional_codigo: contextoInfo.regional_codigo || '',
+                        contexto_tipo: contextoInfo.contexto_tipo || '',
+                        contexto_chave: contextoInfo.contexto_chave || '',
+                        contexto_rotulo: contextoInfo.contexto_rotulo || '',
                         lotes: [],
                         qtd_total: 0
                     };
                 }
                 pendentes[chavePendente].lotes.push(dados.lote || '');
                 pendentes[chavePendente].qtd_total += parseInt(dados.qtd || 0, 10) || 0;
+                contextoInfo.tem_linha_pendente = true;
                 continue;
             }
 
-            var contextoResumo = obterContextoMaloteDeDados(dados);
-            var chaveResumo = contextoResumo.tipo === 'regional' ? contextoResumo.chave : (dados.posto || '');
+            contextoInfo.tem_linha_fechada = true;
+            var chaveResumo = contextoInfo.contexto_chave || '';
             var agrupadorMalote = dados.grupo_correios || dados.grupo_iipr || '';
-            var chaveGrupo = [contextoResumo.tipo || '', chaveResumo, agrupadorMalote, dados.regional || ''].join('|');
+            var chaveGrupo = [contextoInfo.contexto_tipo || '', chaveResumo, agrupadorMalote, dados.regional || ''].join('|');
             if (!grupos[chaveGrupo]) {
                 grupos[chaveGrupo] = {
-                    regional: dados.regional || '',
-                    regional_codigo: dados.regional_codigo || dados.regional || '',
-                    posto: dados.posto || '',
-                    contexto_tipo: contextoResumo.tipo || '',
+                    regional: contextoInfo.regional || '',
+                    regional_codigo: contextoInfo.regional_codigo || '',
+                    posto: contextoInfo.posto || '',
+                    contexto_tipo: contextoInfo.contexto_tipo || '',
                     contexto_chave: chaveResumo,
-                    contexto_rotulo: contextoResumo.rotulo || '',
+                    contexto_rotulo: contextoInfo.contexto_rotulo || '',
                     lotes: [],
                     qtd_total: 0,
                     lacres_iipr: [],
@@ -3956,7 +3995,7 @@ function iniciarConferenciaPacotes() {
         for (var chave in grupos) {
             if (!Object.prototype.hasOwnProperty.call(grupos, chave)) continue;
             resumo.push({
-                row_key: 'ctx:' + String(grupos[chave].contexto_tipo || 'posto') + ':' + String(grupos[chave].contexto_chave || grupos[chave].posto || chave),
+                row_key: 'grp:' + String(chave),
                 regional: grupos[chave].regional,
                 regional_codigo: grupos[chave].regional_codigo,
                 posto: grupos[chave].posto,
@@ -3995,9 +4034,9 @@ function iniciarConferenciaPacotes() {
 
         for (var p = 0; p < listaPendentes.length; p++) {
             resumo.push({
-                row_key: 'ctx:' + (listaPendentes[p].contexto_tipo || 'posto') + ':' + (listaPendentes[p].contexto_chave || listaPendentes[p].posto || p),
+                row_key: 'pend:' + String(listaPendentes[p].contexto_tipo || 'posto') + ':' + String(listaPendentes[p].contexto_chave || listaPendentes[p].posto || p),
                 regional: listaPendentes[p].regional || '',
-                regional_codigo: listaPendentes[p].contexto_tipo === 'regional' ? (listaPendentes[p].contexto_chave || '') : (listaPendentes[p].regional || ''),
+                regional_codigo: listaPendentes[p].regional_codigo || (listaPendentes[p].contexto_tipo === 'regional' ? (listaPendentes[p].contexto_chave || '') : (listaPendentes[p].regional || '')),
                 posto: listaPendentes[p].posto,
                 contexto_tipo: listaPendentes[p].contexto_tipo,
                 contexto_chave: listaPendentes[p].contexto_chave,
@@ -4014,18 +4053,61 @@ function iniciarConferenciaPacotes() {
             });
         }
 
+        for (var chaveContexto in contextos) {
+            if (!Object.prototype.hasOwnProperty.call(contextos, chaveContexto)) continue;
+            var contextoLinha = contextos[chaveContexto];
+            if (!contextoLinha.tem_linha_fechada || contextoLinha.tem_linha_pendente || !contextoLinha.tem_trabalho_restante) continue;
+            resumo.push({
+                row_key: 'pend:' + String(contextoLinha.contexto_tipo || 'posto') + ':' + String(contextoLinha.contexto_chave || contextoLinha.posto || chaveContexto),
+                regional: contextoLinha.regional || '',
+                regional_codigo: contextoLinha.regional_codigo || '',
+                posto: contextoLinha.posto || '',
+                contexto_tipo: contextoLinha.contexto_tipo || '',
+                contexto_chave: contextoLinha.contexto_chave || '',
+                contexto_rotulo: contextoLinha.contexto_rotulo || '',
+                lotes: [],
+                qtd_total: 0,
+                lacre_iipr: '',
+                lacre_correios: '',
+                etiqueta_correios: '',
+                grupo_iipr: '',
+                grupo_correios: '',
+                grupos_correios: [],
+                pendente_lacre: true
+            });
+        }
+
+        var destinoDigitadoPorContexto = {};
         for (var r = 0; r < resumo.length; r++) {
             var chaveContextoResumo = String(resumo[r].contexto_tipo || '') + '|' + String(resumo[r].contexto_chave || '');
-            var digitado = valoresDigitadosPorContexto[chaveContextoResumo] || null;
+            if (resumo[r].pendente_lacre && typeof destinoDigitadoPorContexto[chaveContextoResumo] === 'undefined') {
+                destinoDigitadoPorContexto[chaveContextoResumo] = r;
+            }
+        }
+
+        for (var chaveDigitada in valoresDigitadosPorContexto) {
+            if (!Object.prototype.hasOwnProperty.call(valoresDigitadosPorContexto, chaveDigitada)) continue;
+            var indiceDestino = typeof destinoDigitadoPorContexto[chaveDigitada] !== 'undefined' ? destinoDigitadoPorContexto[chaveDigitada] : -1;
+            if (indiceDestino < 0) {
+                for (var busca = resumo.length - 1; busca >= 0; busca--) {
+                    var chaveBusca = String(resumo[busca].contexto_tipo || '') + '|' + String(resumo[busca].contexto_chave || '');
+                    if (chaveBusca === chaveDigitada) {
+                        indiceDestino = busca;
+                        break;
+                    }
+                }
+            }
+            if (indiceDestino < 0) continue;
+            var digitado = valoresDigitadosPorContexto[chaveDigitada] || null;
             if (!digitado) continue;
             if (digitado.lacre_iipr) {
-                resumo[r].lacre_iipr = digitado.lacre_iipr;
+                resumo[indiceDestino].lacre_iipr = digitado.lacre_iipr;
             }
             if (digitado.lacre_correios) {
-                resumo[r].lacre_correios = digitado.lacre_correios;
+                resumo[indiceDestino].lacre_correios = digitado.lacre_correios;
             }
             if (digitado.etiqueta_correios) {
-                resumo[r].etiqueta_correios = digitado.etiqueta_correios;
+                resumo[indiceDestino].etiqueta_correios = digitado.etiqueta_correios;
             }
         }
 
@@ -4033,6 +4115,7 @@ function iniciarConferenciaPacotes() {
             var regA = parseInt(a.regional_codigo || 0, 10) || 0;
             var regB = parseInt(b.regional_codigo || 0, 10) || 0;
             if (regA !== regB) return regA - regB;
+            if (!!a.pendente_lacre !== !!b.pendente_lacre) return a.pendente_lacre ? 1 : -1;
             var grupoA = String(a.grupo_correios || a.grupo_iipr || a.row_key || '');
             var grupoB = String(b.grupo_correios || b.grupo_iipr || b.row_key || '');
             if (grupoA < grupoB) return -1;
@@ -4057,6 +4140,7 @@ function iniciarConferenciaPacotes() {
 
     function obterChaveResumoPrevia(item, indice) {
         if (!item) return 'idx:' + indice;
+        if (item.row_key) return String(item.row_key);
         var tipo = String(item.contexto_tipo || 'posto');
         var contexto = String(item.contexto_chave || item.posto || item.regional_codigo || indice);
         var grupo = String(item.grupo_correios || item.grupo_iipr || '');
