@@ -231,17 +231,6 @@ function normalizarDataHoraSql($valor) {
     return '';
 }
 
-function extrairPrimeiroNumeroSequencia($valor) {
-    $valor = trim((string)$valor);
-    if ($valor === '') {
-        return 0;
-    }
-    if (preg_match('/\d+/', $valor, $match)) {
-        return (int)$match[0];
-    }
-    return 0;
-}
-
 function resolverNomePostoCiPostos($pdo, $posto) {
     $posto = trim((string)$posto);
     if ($posto === '') {
@@ -584,229 +573,6 @@ try {
         $stmtDelete = null;
         $pdo = null;
         die(json_encode(array('success' => true, 'salvos' => $salvos)));
-    }
-
-    if (isset($_POST['salvar_oficio_correios_preview_ajax'])) {
-        header('Content-Type: application/json; charset=utf-8');
-
-        $usuario = isset($_POST['usuario']) ? trim((string)$_POST['usuario']) : '';
-        $responsavel = isset($_POST['responsavel']) ? trim((string)$_POST['responsavel']) : '';
-        $modoOficio = isset($_POST['modo_oficio']) ? trim((string)$_POST['modo_oficio']) : 'sobrescrever';
-        $idSobrescrever = isset($_POST['id_oficio_sobrescrever']) ? (int)$_POST['id_oficio_sobrescrever'] : 0;
-        $snapshotBruto = isset($_POST['snapshot_oficio']) ? trim((string)$_POST['snapshot_oficio']) : '';
-        $snapshot = $snapshotBruto !== '' ? json_decode($snapshotBruto, true) : array();
-
-        $responsavelLower = strtolower($responsavel);
-        if ($responsavel === '' || $responsavelLower === 'teste' || $responsavelLower === 'não informado' || $responsavelLower === 'nao informado') {
-            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio para gravar as etiquetas dos Correios.')));
-        }
-        if ($usuario === '') {
-            $usuario = $responsavel;
-        }
-        if (!is_array($snapshot) || empty($snapshot['resumo']) || !is_array($snapshot['resumo'])) {
-            die(json_encode(array('success' => false, 'erro' => 'Snapshot do oficio invalido.')));
-        }
-
-        $datasSql = array();
-        if (isset($_POST['datas_json']) && trim((string)$_POST['datas_json']) !== '') {
-            $datasJson = json_decode((string)$_POST['datas_json'], true);
-            if (is_array($datasJson)) {
-                foreach ($datasJson as $dataItem) {
-                    $dataNorm = normalizarDataSqlPacote((string)$dataItem);
-                    if ($dataNorm !== '') {
-                        $datasSql[] = $dataNorm;
-                    }
-                }
-            }
-        }
-        if (empty($datasSql) && isset($_POST['datas_str']) && trim((string)$_POST['datas_str']) !== '') {
-            $datasStrTmp = explode(',', (string)$_POST['datas_str']);
-            foreach ($datasStrTmp as $dataItem) {
-                $dataNorm = normalizarDataSqlPacote((string)$dataItem);
-                if ($dataNorm !== '') {
-                    $datasSql[] = $dataNorm;
-                }
-            }
-        }
-        $datasSql = array_values(array_unique($datasSql));
-        if (empty($datasSql)) {
-            die(json_encode(array('success' => false, 'erro' => 'Nenhuma data valida foi informada para o oficio.')));
-        }
-
-        $datasStr = implode(',', $datasSql);
-
-        try {
-            $pdo->beginTransaction();
-
-            $_SESSION['ultimo_responsavel'] = $responsavel;
-
-            $grupo = 'CORREIOS';
-            $stUlt = $pdo->query("SELECT id FROM ciDespachos WHERE grupo = 'CORREIOS' ORDER BY id DESC LIMIT 1");
-            $ultimoIdDespachoCorreios = (int)$stUlt->fetchColumn();
-
-            if ($modoOficio === 'novo') {
-                $hash = sha1($grupo . '|' . $datasStr . '|' . time() . '|' . mt_rand());
-                $stNovo = $pdo->prepare("INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs) VALUES (?,?,?,?,1,?)");
-                $stNovo->execute(array($usuario, $grupo, $datasStr, $hash, null));
-                $idDespacho = (int)$pdo->lastInsertId();
-            } else {
-                $idDespacho = $idSobrescrever > 0 ? $idSobrescrever : $ultimoIdDespachoCorreios;
-                if ($idDespacho > 0) {
-                    $stCheck = $pdo->prepare("SELECT id FROM ciDespachos WHERE id = ? AND grupo = 'CORREIOS' LIMIT 1");
-                    $stCheck->execute(array($idDespacho));
-                    $idDespacho = (int)$stCheck->fetchColumn();
-                }
-                if ($idDespacho > 0) {
-                    $stUpd = $pdo->prepare("UPDATE ciDespachos SET usuario = ?, grupo = ?, datas_str = ?, ativo = 1, obs = NULL WHERE id = ?");
-                    $stUpd->execute(array($usuario, $grupo, $datasStr, $idDespacho));
-                    $stDelItens = $pdo->prepare("DELETE FROM ciDespachoItens WHERE id_despacho = ?");
-                    $stDelItens->execute(array($idDespacho));
-                    $stDelLotes = $pdo->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho = ?");
-                    $stDelLotes->execute(array($idDespacho));
-                } else {
-                    $hash = sha1($grupo . '|' . $datasStr);
-                    $stNovo = $pdo->prepare("INSERT INTO ciDespachos (usuario, grupo, datas_str, hash_chave, ativo, obs) VALUES (?,?,?,?,1,?)");
-                    $stNovo->execute(array($usuario, $grupo, $datasStr, $hash, null));
-                    $idDespacho = (int)$pdo->lastInsertId();
-                }
-            }
-
-            $placeholders = implode(',', array_fill(0, count($datasSql), '?'));
-            $stmtLotes = $pdo->prepare("SELECT LPAD(c.posto,3,'0') AS posto, LPAD(c.lote,8,'0') AS lote, SUM(COALESCE(c.quantidade,0)) AS quantidade, MIN(DATE(c.dataCarga)) AS data_carga, GROUP_CONCAT(DISTINCT c.usuario SEPARATOR ', ') AS responsaveis FROM ciPostosCsv c INNER JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(c.posto,3,'0') WHERE DATE(c.dataCarga) IN ($placeholders) AND LOWER(TRIM(r.entrega)) = 'correios' GROUP BY LPAD(c.posto,3,'0'), LPAD(c.lote,8,'0')");
-            $stmtLotes->execute($datasSql);
-            $mapaLotes = array();
-            while ($rowLote = $stmtLotes->fetch(PDO::FETCH_ASSOC)) {
-                $mapaLotes[$rowLote['posto'] . '|' . $rowLote['lote']] = array(
-                    'quantidade' => isset($rowLote['quantidade']) ? (int)$rowLote['quantidade'] : 0,
-                    'data_carga' => isset($rowLote['data_carga']) ? (string)$rowLote['data_carga'] : '',
-                    'responsaveis' => isset($rowLote['responsaveis']) ? (string)$rowLote['responsaveis'] : ''
-                );
-            }
-
-            $stmtLacres = $pdo->prepare("SELECT LPAD(posto,3,'0') AS posto, LPAD(lote,8,'0') AS lote, lacre_iipr, grupo_iipr, lacre_correios, grupo_correios, etiqueta_correios FROM conferencia_pacotes_lacres WHERE dataexp IN ($placeholders)");
-            $stmtLacres->execute($datasSql);
-            $mapaLacres = array();
-            while ($rowLacre = $stmtLacres->fetch(PDO::FETCH_ASSOC)) {
-                $mapaLacres[$rowLacre['posto'] . '|' . $rowLacre['lote']] = array(
-                    'lacre_iipr' => isset($rowLacre['lacre_iipr']) && $rowLacre['lacre_iipr'] !== null ? (int)$rowLacre['lacre_iipr'] : 0,
-                    'grupo_iipr' => isset($rowLacre['grupo_iipr']) ? trim((string)$rowLacre['grupo_iipr']) : '',
-                    'lacre_correios' => isset($rowLacre['lacre_correios']) && $rowLacre['lacre_correios'] !== null ? (int)$rowLacre['lacre_correios'] : 0,
-                    'grupo_correios' => isset($rowLacre['grupo_correios']) ? trim((string)$rowLacre['grupo_correios']) : '',
-                    'etiqueta_correios' => isset($rowLacre['etiqueta_correios']) ? trim((string)$rowLacre['etiqueta_correios']) : ''
-                );
-            }
-
-            $stmtInsLote = $pdo->prepare("INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis, etiquetaiipr, grupo_iipr, etiquetacorreios, grupo_correios, etiqueta_correios) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-            $stmtDeleteMalote = $pdo->prepare("DELETE FROM ciMalotes WHERE leitura = ? AND data = ? AND tipo = 1");
-            $stmtInsMalote = $pdo->prepare("INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-
-            $lotesGravados = 0;
-            $linhasGravadas = 0;
-            $postosUnicos = array();
-            $etiquetasMalotes = array();
-
-            foreach ($snapshot['resumo'] as $linhaResumo) {
-                if (!is_array($linhaResumo) || empty($linhaResumo['lotes']) || !is_array($linhaResumo['lotes'])) {
-                    continue;
-                }
-
-                $posto = str_pad(preg_replace('/\D+/', '', (string)(isset($linhaResumo['posto']) ? $linhaResumo['posto'] : '')), 3, '0', STR_PAD_LEFT);
-                if ($posto === '') {
-                    continue;
-                }
-
-                $lacreIiprLinha = extrairPrimeiroNumeroSequencia(isset($linhaResumo['lacre_iipr']) ? $linhaResumo['lacre_iipr'] : '');
-                $lacreCorreiosLinha = extrairPrimeiroNumeroSequencia(isset($linhaResumo['lacre_correios']) ? $linhaResumo['lacre_correios'] : '');
-                $grupoIiprLinha = isset($linhaResumo['grupo_iipr']) ? trim((string)$linhaResumo['grupo_iipr']) : '';
-                $grupoCorreiosLinha = isset($linhaResumo['grupo_correios']) ? trim((string)$linhaResumo['grupo_correios']) : '';
-                $etiquetaLinha = isset($linhaResumo['etiqueta_correios']) ? substr(trim((string)$linhaResumo['etiqueta_correios']), 0, 35) : '';
-                $linhaContribuiu = false;
-
-                foreach ($linhaResumo['lotes'] as $loteResumo) {
-                    $lote = str_pad(preg_replace('/\D+/', '', (string)$loteResumo), 8, '0', STR_PAD_LEFT);
-                    if ($lote === '') {
-                        continue;
-                    }
-
-                    $chaveLote = $posto . '|' . $lote;
-                    if (!isset($mapaLotes[$chaveLote])) {
-                        continue;
-                    }
-
-                    $dadosLote = $mapaLotes[$chaveLote];
-                    $dadosLacre = isset($mapaLacres[$chaveLote]) ? $mapaLacres[$chaveLote] : array();
-                    $lacreIiprFinal = $lacreIiprLinha > 0 ? $lacreIiprLinha : (isset($dadosLacre['lacre_iipr']) ? (int)$dadosLacre['lacre_iipr'] : 0);
-                    $lacreCorreiosFinal = $lacreCorreiosLinha > 0 ? $lacreCorreiosLinha : (isset($dadosLacre['lacre_correios']) ? (int)$dadosLacre['lacre_correios'] : 0);
-                    $grupoIiprFinal = $grupoIiprLinha !== '' ? $grupoIiprLinha : (isset($dadosLacre['grupo_iipr']) ? trim((string)$dadosLacre['grupo_iipr']) : '');
-                    $grupoCorreiosFinal = $grupoCorreiosLinha !== '' ? $grupoCorreiosLinha : (isset($dadosLacre['grupo_correios']) ? trim((string)$dadosLacre['grupo_correios']) : '');
-                    $etiquetaFinal = $etiquetaLinha !== '' ? $etiquetaLinha : (isset($dadosLacre['etiqueta_correios']) ? trim((string)$dadosLacre['etiqueta_correios']) : '');
-
-                    $stmtInsLote->execute(array(
-                        $idDespacho,
-                        $posto,
-                        $lote,
-                        isset($dadosLote['quantidade']) ? (int)$dadosLote['quantidade'] : 0,
-                        isset($dadosLote['data_carga']) ? $dadosLote['data_carga'] : null,
-                        isset($dadosLote['responsaveis']) ? $dadosLote['responsaveis'] : $usuario,
-                        $lacreIiprFinal > 0 ? $lacreIiprFinal : null,
-                        $grupoIiprFinal !== '' ? $grupoIiprFinal : null,
-                        $lacreCorreiosFinal > 0 ? $lacreCorreiosFinal : null,
-                        $grupoCorreiosFinal !== '' ? $grupoCorreiosFinal : null,
-                        $etiquetaFinal !== '' ? $etiquetaFinal : null
-                    ));
-
-                    if (preg_match('/^\d{35}$/', $etiquetaFinal)) {
-                        $etiquetasMalotes[$etiquetaFinal] = $posto;
-                    }
-
-                    $postosUnicos[$posto] = true;
-                    $lotesGravados++;
-                    $linhaContribuiu = true;
-                }
-
-                if ($linhaContribuiu) {
-                    $linhasGravadas++;
-                }
-            }
-
-            if ($lotesGravados === 0) {
-                throw new Exception('Nenhum lote valido foi encontrado para gravar o oficio Correios.');
-            }
-
-            $dataMalote = date('Y-m-d');
-            $etiquetasSalvas = 0;
-            foreach ($etiquetasMalotes as $etiquetaMalote => $postoMalote) {
-                $stmtDeleteMalote->execute(array($etiquetaMalote, $dataMalote));
-                $stmtInsMalote->execute(array(
-                    $etiquetaMalote,
-                    $dataMalote,
-                    null,
-                    $responsavel,
-                    1,
-                    substr($etiquetaMalote, 0, 8),
-                    substr($etiquetaMalote, -5),
-                    $postoMalote
-                ));
-                $etiquetasSalvas++;
-            }
-
-            $pdo->commit();
-            die(json_encode(array(
-                'success' => true,
-                'id_oficio' => $idDespacho,
-                'numero_oficio' => $idDespacho,
-                'linhas_gravadas' => $linhasGravadas,
-                'postos_gravados' => count($postosUnicos),
-                'lotes_gravados' => $lotesGravados,
-                'etiquetas_salvas' => $etiquetasSalvas,
-                'responsavel' => $responsavel
-            )));
-        } catch (Exception $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            die(json_encode(array('success' => false, 'erro' => $e->getMessage())));
-        }
     }
 
     // v9.23.2: Inserir pacotes não listados (ciPostosCsv + ciPostos)
@@ -2132,21 +1898,6 @@ try {
             display: block;
         }
         .operacao-grupo.recolhido .operacao-grupo-conteudo {
-            display: none;
-        }
-        .operacao-grupo.tipo-capital.recolhido .operacao-grupo-conteudo {
-            display: block;
-        }
-        .operacao-grupo.tipo-capital.recolhido .operacao-grade-header {
-            display: none;
-        }
-        .operacao-grupo.tipo-capital.recolhido .operacao-posto-row[data-tem-etiqueta-correios="0"] {
-            display: none;
-        }
-        .operacao-grupo.tipo-capital.recolhido .operacao-chips {
-            display: none;
-        }
-        .operacao-grupo.tipo-capital.recolhido .operacao-posto-sub {
             display: none;
         }
         .painel-operacao {
@@ -3552,18 +3303,14 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
     foreach ($porPosto as $postoKey => $listaPosto) {
         $totalPacotes = count($listaPosto);
         $conferidos = 0;
-        $temEtiquetaCorreios = 0;
         foreach ($listaPosto as $item) {
             if (!empty($item['conf'])) {
                 $conferidos++;
             }
-            if (!$temEtiquetaCorreios && !empty($item['etiqueta_correios'])) {
-                $temEtiquetaCorreios = 1;
-            }
         }
         $pendentes = max(0, $totalPacotes - $conferidos);
         $semUploadCount = isset($estanteSemUploadPorPosto[$postoKey]) ? (int)$estanteSemUploadPorPosto[$postoKey] : 0;
-        echo '<div class="operacao-posto-row" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '" data-grupo="' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '" data-tem-etiqueta-correios="' . $temEtiquetaCorreios . '">';
+        echo '<div class="operacao-posto-row" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '" data-grupo="' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '">';
         echo '<div><span class="operacao-posicao">' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</span></div>';
         echo '<div class="operacao-posto-meta">';
         echo '<div class="operacao-posto-nome">Posto ' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</div>';
@@ -5202,10 +4949,10 @@ function iniciarConferenciaPacotes() {
         var ref = window.open(url, '_blank');
         if (ref) {
             if (statusControleRemoto) {
-                statusControleRemoto.textContent = 'Lacre Remoto aberto no canal ' + (controleCanal || 'principal') + '.';
+                statusControleRemoto.textContent = 'Controle remoto aberto no canal ' + (controleCanal || 'principal') + '.';
             }
         } else if (statusControleRemoto) {
-            statusControleRemoto.textContent = 'O navegador bloqueou a abertura automática da página Lacre Remoto.';
+            statusControleRemoto.textContent = 'O navegador bloqueou a abertura automática do controle remoto.';
         }
     }
 
@@ -6670,7 +6417,7 @@ function iniciarConferenciaPacotes() {
             return response.json();
         })
         .then(function(data) {
-            if (!data || !data.success) {
+            if (!data.sucesso) {
                 console.error('Erro ao salvar:', data.erro);
             }
         })
@@ -7158,7 +6905,7 @@ function iniciarConferenciaPacotes() {
                     return response.json();
                 })
                 .then(function(data) {
-                    if (data && data.success) {
+                    if (data.sucesso) {
                         alert('Conferências resetadas com sucesso!');
                     } else {
                         console.error('Erro ao resetar:', data.erro);

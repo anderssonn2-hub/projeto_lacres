@@ -373,19 +373,6 @@ try {
         .texto-rodape-lotes {
             margin-bottom: 18px;
         }
-        .quadro-resumo-oficio {
-            margin-top: 14px;
-        }
-        .quadro-resumo-oficio h3 {
-            margin: 0 0 6px;
-            font-size: 18px;
-            color: var(--tinta);
-        }
-        .quadro-resumo-oficio .subtitulo {
-            margin-bottom: 10px;
-            font-size: 11px;
-            color: var(--tinta-suave);
-        }
         .assinaturas {
             display: flex;
             justify-content: space-between;
@@ -440,28 +427,6 @@ try {
             font-size: 14px;
             line-height: 1.5;
             color: var(--tinta-suave);
-        }
-        .modal-campo {
-            margin: 0 0 16px;
-        }
-        .modal-campo label {
-            display: block;
-            margin-bottom: 6px;
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            font-weight: bold;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            color: var(--tinta);
-        }
-        .modal-campo input {
-            width: 100%;
-            border: 1px solid rgba(45,43,39,0.35);
-            background: rgba(255,255,255,0.9);
-            color: var(--tinta);
-            padding: 11px 12px;
-            font-family: Arial, sans-serif;
-            font-size: 14px;
         }
         .modal-opcoes {
             display: grid;
@@ -603,7 +568,7 @@ try {
         <div class="barra-acoes">
             <div class="barra-esquerda">
                 <div class="titulo-pagina">Prévia do Ofício dos Correios</div>
-                <div class="subtitulo-pagina">Modelo alinhado ao ofício Correios do sistema</div>
+                <div class="subtitulo-pagina">Modelo editável para gravar e imprimir o ofício final dos Correios</div>
             </div>
             <div class="acoes">
                 <button type="button" class="btn btn-principal" id="btnGravarImprimir">Gravar e Imprimir Correios</button>
@@ -633,14 +598,14 @@ try {
             <div class="info-cliente-box">
                 <div class="info-cliente-texto">
                     <p><strong>CLIENTE:</strong> CORREIO - <strong>END.</strong>R: JOÃO NEGRÃO, 1251 - CENTRO - CURITIBA PARANÁ</p>
-                    <p><strong>SISTEMA: </strong>SIV --<strong>SETOR: </strong>EXPEDIÇÃO</p>
+                    <p><strong>SISTEMA:</strong> SIV -- <strong>SETOR:</strong> EXPEDIÇÃO</p>
                 </div>
                 <div class="numero-box" id="numeroOficioBox">Nº Prévia</div>
             </div>
 
             <div class="info-cliente-impressao">
                 <p><strong>CLIENTE:</strong> CORREIO - <strong>END.</strong>R: JOÃO NEGRÃO, 1251 - CENTRO - CURITIBA PARANÁ</p>
-                <p><strong>SISTEMA: </strong>SIV --<strong>SETOR: </strong>EXPEDIÇÃO</p>
+                <p><strong>SISTEMA:</strong> SIV -- <strong>SETOR:</strong> EXPEDIÇÃO</p>
             </div>
 
             <div class="cabecalho">
@@ -670,17 +635,18 @@ try {
             </div>
 
             <div class="documento-meta">
+                <div>Ofício Correios consolidado por malote.</div>
                 <div id="metaUltimoOficio">Último ofício Correios: <?php echo (int)$ultimoOficioCorreios; ?></div>
             </div>
 
-            <div class="quadro-resumo-oficio">
-                <h3>Ofício Correios consolidado por malote</h3>
-                <div class="subtitulo">Quando o mesmo posto usa mais de um conjunto de malotes, ele aparece em linhas separadas conforme os grupos fechados na conferência por chips.</div>
-                <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
-            </div>
+            <div class="subtitulo-quadro">Quando o mesmo posto usa mais de um conjunto de malotes, ele aparece em linhas separadas conforme os grupos fechados na conferência por chips.</div>
+
+            <div class="texto-abertura">Segue abaixo o modelo do ofício dos Correios já montado com base nos malotes conferidos. Antes de gravar, os campos de lacre IIPR, lacre Correios e etiqueta Correios podem ser ajustados manualmente nesta própria grade.</div>
+
+            <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
 
             <div class="rodape">
-                <div class="texto-rodape-lotes" id="textoRodapeLotes" style="display:none;">Nenhuma linha pronta foi consolidada.</div>
+                <div class="texto-rodape-lotes" id="textoRodapeLotes">Nenhuma linha pronta foi consolidada.</div>
                 <div class="assinaturas">
                     <div class="assinatura" id="assinaturaEsquerda">RESPONSÁVEL CELEPAR - Data: -</div>
                     <div class="assinatura">RESPONSÁVEL CORREIOS</div>
@@ -697,10 +663,6 @@ try {
         <div class="modal-conteudo">
             <h2 class="modal-titulo">Gravar ofício Correios</h2>
             <p class="modal-texto" id="modalTextoBase">Escolha se o documento deve sobrescrever o último número existente ou se deve criar um novo ofício.</p>
-            <div class="modal-campo">
-                <label for="inputResponsavelGravacao">Responsável pela inserção dos displays</label>
-                <input type="text" id="inputResponsavelGravacao" maxlength="120" placeholder="Informe o nome do responsável">
-            </div>
             <div class="modal-opcoes">
                 <button type="button" class="modal-opcao" id="btnSobrescrever">
                     <strong id="textoSobrescrever">Sobrescrever último</strong>
@@ -747,8 +709,6 @@ try {
         var detalheSobrescrever = document.getElementById('detalheSobrescrever');
         var textoCriarNovo = document.getElementById('textoCriarNovo');
         var detalheCriarNovo = document.getElementById('detalheCriarNovo');
-        var inputResponsavelGravacao = document.getElementById('inputResponsavelGravacao');
-        var responsavelStorageKey = 'conferencia_previa_responsavel_malotes';
         var estadoOficio = {
             ultimoConhecido: ultimoOficioInicial,
             salvoId: 0,
@@ -770,26 +730,6 @@ try {
             caixaAviso.textContent = String(texto || '');
             caixaAviso.className = erro ? 'aviso erro' : 'aviso';
             caixaAviso.style.display = texto ? 'block' : 'none';
-        }
-
-        function nomeResponsavelValido(nome) {
-            var texto = String(nome || '').trim();
-            if (!texto) return false;
-            var invalido = texto.toLowerCase();
-            return invalido !== 'teste' && invalido !== 'não informado' && invalido !== 'nao informado';
-        }
-
-        function obterResponsavelSnapshot(snapshot) {
-            if (snapshot && nomeResponsavelValido(snapshot.responsavel_gravacao)) {
-                return String(snapshot.responsavel_gravacao || '').trim();
-            }
-            try {
-                var salvo = localStorage.getItem(responsavelStorageKey) || '';
-                if (nomeResponsavelValido(salvo)) {
-                    return String(salvo).trim();
-                }
-            } catch (e) {}
-            return '';
         }
 
         function lerSnapshot() {
@@ -1053,7 +993,7 @@ try {
 
         function atualizarCabecalho(snapshot, linhas) {
             var datas = snapshot && snapshot.datas_filtro && snapshot.datas_filtro.length ? snapshot.datas_filtro.join(', ') : '-';
-            var usuario = obterResponsavelSnapshot(snapshot) || 'Equipe de Conferência';
+            var usuario = snapshot && snapshot.usuario ? snapshot.usuario : 'Equipe de Conferência';
             var numeroAtual = estadoOficio.salvoNumero || (snapshot && snapshot.oficio_numero ? parseInt(snapshot.oficio_numero, 10) || 0 : 0);
             var ultimoTexto = estadoOficio.ultimoConhecido > 0 ? String(estadoOficio.ultimoConhecido) : 'nenhum';
             var geradoEm = snapshot && snapshot.gerado_em ? snapshot.gerado_em : '-';
@@ -1126,7 +1066,7 @@ try {
             if (grupos['POSTO 001'].length) html += montarTabela('POSTO 001', grupos['POSTO 001']);
             if (grupos['CAPITAL'].length) html += montarTabela('CAPITAL', grupos['CAPITAL']);
             if (grupos['METROPOLITANA'].length) html += montarTabela('METROPOLITANA', grupos['METROPOLITANA']);
-            if (grupos['CENTRAL'].length) html += montarTabela('CENTRAL IIPR', grupos['CENTRAL']);
+            if (grupos['CENTRAL'].length) html += montarTabela('CENTRAL', grupos['CENTRAL']);
             if (grupos['REGIONAIS'].length) html += montarTabela('REGIONAIS', grupos['REGIONAIS']);
 
             areaGrade.className = '';
@@ -1164,7 +1104,6 @@ try {
         }
 
         function abrirModal() {
-            var snapshotAtual = lerSnapshot();
             var alvoSobrescrever = estadoOficio.salvoId || estadoOficio.ultimoConhecido || 0;
             var proximo = (estadoOficio.ultimoConhecido || 0) + 1;
             modalTextoBase.textContent = 'Escolha como o número do ofício Correios deve ser tratado para esta prévia.';
@@ -1172,17 +1111,8 @@ try {
             detalheSobrescrever.textContent = alvoSobrescrever > 0 ? ('Regrava o ofício ' + alvoSobrescrever + ' com as linhas atuais da conferência.') : 'Não existe ofício anterior disponível; neste caso será criado um novo automaticamente.';
             textoCriarNovo.textContent = 'Criar novo nº ' + (proximo > 0 ? proximo : 1);
             detalheCriarNovo.textContent = 'Cria um novo ofício sem alterar os anteriores.';
-            if (inputResponsavelGravacao) {
-                inputResponsavelGravacao.value = obterResponsavelSnapshot(snapshotAtual);
-            }
             modalGravacao.classList.add('ativo');
             modalGravacao.setAttribute('aria-hidden', 'false');
-            if (inputResponsavelGravacao) {
-                window.setTimeout(function() {
-                    inputResponsavelGravacao.focus();
-                    inputResponsavelGravacao.select();
-                }, 20);
-            }
         }
 
         function imprimirDocumento() {
@@ -1199,16 +1129,9 @@ try {
             }
 
             snapshot = garantirChavesResumo(snapshot, false);
-            var responsavel = inputResponsavelGravacao ? String(inputResponsavelGravacao.value || '').trim() : '';
-            if (!nomeResponsavelValido(responsavel)) {
-                exibirAviso('Informe o responsável antes de gravar as etiquetas dos Correios.', true);
-                if (inputResponsavelGravacao) inputResponsavelGravacao.focus();
-                return;
-            }
             var formData = new FormData();
             formData.append('salvar_oficio_correios_preview_ajax', '1');
             formData.append('usuario', snapshot.usuario || 'Equipe de Conferência');
-            formData.append('responsavel', responsavel);
             formData.append('modo_oficio', modo === 'novo' ? 'novo' : 'sobrescrever');
             formData.append('id_oficio_sobrescrever', String(estadoOficio.salvoId || estadoOficio.ultimoConhecido || 0));
             formData.append('datas_json', JSON.stringify(snapshot.datas_filtro || []));
@@ -1239,10 +1162,6 @@ try {
 
                 snapshot.oficio_id_salvo = estadoOficio.salvoId;
                 snapshot.oficio_numero = estadoOficio.salvoNumero;
-                snapshot.responsavel_gravacao = responsavel;
-                try {
-                    localStorage.setItem(responsavelStorageKey, responsavel);
-                } catch (ePersist) {}
                 salvarSnapshot(snapshot);
                 renderizar(snapshot);
                 exibirAviso('Ofício ' + estadoOficio.salvoNumero + ' gravado com ' + (json.linhas_gravadas || 0) + ' linha(s) e ' + (json.lotes_gravados || 0) + ' lote(s).', false);
