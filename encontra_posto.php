@@ -202,7 +202,6 @@ try {
             }
             $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
                 FROM lotes_na_estante l
-                WHERE 1=1
                 $whereEstante
                 AND NOT EXISTS (
                     SELECT 1 FROM ciPostosCsv c
@@ -215,7 +214,6 @@ try {
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
-                WHERE 1=1
                 $whereEstante
                 AND NOT EXISTS (
                     SELECT 1 FROM ciPostosCsv c
@@ -432,7 +430,6 @@ try {
             }
             $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
                 FROM lotes_na_estante l
-                WHERE 1=1
                 $whereEstante
                 AND NOT EXISTS (
                     SELECT 1 FROM ciPostosCsv c
@@ -445,7 +442,6 @@ try {
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
-                WHERE 1=1
                 $whereEstante
                 AND NOT EXISTS (
                     SELECT 1 FROM ciPostosCsv c
