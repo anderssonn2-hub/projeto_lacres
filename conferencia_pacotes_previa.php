@@ -428,6 +428,28 @@ try {
             line-height: 1.5;
             color: var(--tinta-suave);
         }
+        .modal-campo {
+            margin: 0 0 16px;
+        }
+        .modal-campo label {
+            display: block;
+            margin-bottom: 6px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--tinta);
+        }
+        .modal-campo input {
+            width: 100%;
+            border: 1px solid rgba(45,43,39,0.35);
+            background: rgba(255,255,255,0.9);
+            color: var(--tinta);
+            padding: 11px 12px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }
         .modal-opcoes {
             display: grid;
             gap: 10px;
@@ -663,6 +685,10 @@ try {
         <div class="modal-conteudo">
             <h2 class="modal-titulo">Gravar ofício Correios</h2>
             <p class="modal-texto" id="modalTextoBase">Escolha se o documento deve sobrescrever o último número existente ou se deve criar um novo ofício.</p>
+            <div class="modal-campo">
+                <label for="inputResponsavelGravacao">Responsável pela inserção dos displays</label>
+                <input type="text" id="inputResponsavelGravacao" maxlength="120" placeholder="Informe o nome do responsável">
+            </div>
             <div class="modal-opcoes">
                 <button type="button" class="modal-opcao" id="btnSobrescrever">
                     <strong id="textoSobrescrever">Sobrescrever último</strong>
@@ -709,6 +735,8 @@ try {
         var detalheSobrescrever = document.getElementById('detalheSobrescrever');
         var textoCriarNovo = document.getElementById('textoCriarNovo');
         var detalheCriarNovo = document.getElementById('detalheCriarNovo');
+        var inputResponsavelGravacao = document.getElementById('inputResponsavelGravacao');
+        var responsavelStorageKey = 'conferencia_previa_responsavel_malotes';
         var estadoOficio = {
             ultimoConhecido: ultimoOficioInicial,
             salvoId: 0,
@@ -730,6 +758,29 @@ try {
             caixaAviso.textContent = String(texto || '');
             caixaAviso.className = erro ? 'aviso erro' : 'aviso';
             caixaAviso.style.display = texto ? 'block' : 'none';
+        }
+
+        function nomeResponsavelValido(nome) {
+            var texto = String(nome || '').trim();
+            if (!texto) return false;
+            var invalido = texto.toLowerCase();
+            return invalido !== 'teste' && invalido !== 'não informado' && invalido !== 'nao informado';
+        }
+
+        function obterResponsavelSnapshot(snapshot) {
+            if (snapshot && nomeResponsavelValido(snapshot.responsavel_gravacao)) {
+                return String(snapshot.responsavel_gravacao || '').trim();
+            }
+            try {
+                var salvo = localStorage.getItem(responsavelStorageKey) || '';
+                if (nomeResponsavelValido(salvo)) {
+                    return String(salvo).trim();
+                }
+            } catch (e) {}
+            if (snapshot && nomeResponsavelValido(snapshot.usuario)) {
+                return String(snapshot.usuario || '').trim();
+            }
+            return '';
         }
 
         function lerSnapshot() {
@@ -993,7 +1044,7 @@ try {
 
         function atualizarCabecalho(snapshot, linhas) {
             var datas = snapshot && snapshot.datas_filtro && snapshot.datas_filtro.length ? snapshot.datas_filtro.join(', ') : '-';
-            var usuario = snapshot && snapshot.usuario ? snapshot.usuario : 'Equipe de Conferência';
+            var usuario = obterResponsavelSnapshot(snapshot) || 'Equipe de Conferência';
             var numeroAtual = estadoOficio.salvoNumero || (snapshot && snapshot.oficio_numero ? parseInt(snapshot.oficio_numero, 10) || 0 : 0);
             var ultimoTexto = estadoOficio.ultimoConhecido > 0 ? String(estadoOficio.ultimoConhecido) : 'nenhum';
             var geradoEm = snapshot && snapshot.gerado_em ? snapshot.gerado_em : '-';
@@ -1104,6 +1155,7 @@ try {
         }
 
         function abrirModal() {
+            var snapshotAtual = lerSnapshot();
             var alvoSobrescrever = estadoOficio.salvoId || estadoOficio.ultimoConhecido || 0;
             var proximo = (estadoOficio.ultimoConhecido || 0) + 1;
             modalTextoBase.textContent = 'Escolha como o número do ofício Correios deve ser tratado para esta prévia.';
@@ -1111,8 +1163,17 @@ try {
             detalheSobrescrever.textContent = alvoSobrescrever > 0 ? ('Regrava o ofício ' + alvoSobrescrever + ' com as linhas atuais da conferência.') : 'Não existe ofício anterior disponível; neste caso será criado um novo automaticamente.';
             textoCriarNovo.textContent = 'Criar novo nº ' + (proximo > 0 ? proximo : 1);
             detalheCriarNovo.textContent = 'Cria um novo ofício sem alterar os anteriores.';
+            if (inputResponsavelGravacao) {
+                inputResponsavelGravacao.value = obterResponsavelSnapshot(snapshotAtual);
+            }
             modalGravacao.classList.add('ativo');
             modalGravacao.setAttribute('aria-hidden', 'false');
+            if (inputResponsavelGravacao) {
+                window.setTimeout(function() {
+                    inputResponsavelGravacao.focus();
+                    inputResponsavelGravacao.select();
+                }, 20);
+            }
         }
 
         function imprimirDocumento() {
@@ -1129,9 +1190,16 @@ try {
             }
 
             snapshot = garantirChavesResumo(snapshot, false);
+            var responsavel = inputResponsavelGravacao ? String(inputResponsavelGravacao.value || '').trim() : '';
+            if (!nomeResponsavelValido(responsavel)) {
+                exibirAviso('Informe o responsável antes de gravar as etiquetas dos Correios.', true);
+                if (inputResponsavelGravacao) inputResponsavelGravacao.focus();
+                return;
+            }
             var formData = new FormData();
             formData.append('salvar_oficio_correios_preview_ajax', '1');
             formData.append('usuario', snapshot.usuario || 'Equipe de Conferência');
+            formData.append('responsavel', responsavel);
             formData.append('modo_oficio', modo === 'novo' ? 'novo' : 'sobrescrever');
             formData.append('id_oficio_sobrescrever', String(estadoOficio.salvoId || estadoOficio.ultimoConhecido || 0));
             formData.append('datas_json', JSON.stringify(snapshot.datas_filtro || []));
@@ -1162,6 +1230,10 @@ try {
 
                 snapshot.oficio_id_salvo = estadoOficio.salvoId;
                 snapshot.oficio_numero = estadoOficio.salvoNumero;
+                snapshot.responsavel_gravacao = responsavel;
+                try {
+                    localStorage.setItem(responsavelStorageKey, responsavel);
+                } catch (ePersist) {}
                 salvarSnapshot(snapshot);
                 renderizar(snapshot);
                 exibirAviso('Ofício ' + estadoOficio.salvoNumero + ' gravado com ' + (json.linhas_gravadas || 0) + ' linha(s) e ' + (json.lotes_gravados || 0) + ' lote(s).', false);
