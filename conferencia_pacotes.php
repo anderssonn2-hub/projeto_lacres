@@ -1853,6 +1853,53 @@ try {
         .btn-toggle-historico:hover {
             background: #f1f6fb;
         }
+        .btn-recolher-global {
+            border: 1px solid rgba(255,255,255,0.16);
+            background: rgba(255,255,255,0.08);
+            color: #f8fbff;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            min-width: 160px;
+        }
+        .btn-recolher-global:hover {
+            background: rgba(255,255,255,0.14);
+        }
+        .painel-operacao-acoes,
+        .secao-tradicional-acoes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .secao-tradicional-topo {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 10px 0 6px;
+        }
+        .secao-tradicional-topo h3 {
+            margin: 0;
+            padding-left: 0;
+            border: 0;
+            color: #1b1f3b;
+        }
+        .secao-tradicional-acoes .btn-recolher-tradicional {
+            color: #12395d;
+            background: #fff;
+            border-color: #c8d6e5;
+            min-width: 180px;
+        }
+        .operacao-grupo-conteudo {
+            display: block;
+        }
+        .operacao-grupo.recolhido .operacao-grupo-conteudo {
+            display: none;
+        }
         .painel-operacao {
             background: linear-gradient(180deg, #0b2d4d 0%, #071a2d 100%);
             border-radius: 14px;
@@ -2919,6 +2966,9 @@ try {
                 <div class="operacao-titulo">Conferência Produção Período</div>
                 <div class="operacao-periodo"><?php echo e($periodo_operacao_label); ?></div>
             </div>
+            <div class="painel-operacao-acoes">
+                <button type="button" class="btn-recolher-global" id="btnToggleTodosChips" aria-expanded="true">Recolher chips</button>
+            </div>
         </div>
         <div class="operacao-grade" id="operacaoGrade">
             <?php
@@ -3136,6 +3186,13 @@ try {
 
 <div id="secaoTradicional" class="secao-visualizacao oculta">
 
+<div class="secao-tradicional-topo">
+    <h3>Modo tradicional por regional</h3>
+    <div class="secao-tradicional-acoes">
+        <button type="button" class="btn-recolher-tradicional" id="btnToggleTodosTradicional" aria-expanded="true">Recolher regionais</button>
+    </div>
+</div>
+
 <!-- Tabelas Agrupadas -->
 <div id="tabelas">
 <?php
@@ -3209,6 +3266,7 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
     echo '<div class="operacao-numero"><span>' . $conferidosGrupo . '</span><span class="operacao-numero-label">CONFERIDOS</span></div>';
     echo '<div class="operacao-pendentes"><span>' . $pendentesGrupo . '</span><span class="operacao-numero-label">PENDENTES</span></div>';
     echo '</div>';
+    echo '<div class="operacao-grupo-conteudo">';
     echo '<div class="operacao-grade-header">';
     echo '<div>Pos.</div>';
     echo '<div>Operação</div>';
@@ -3283,6 +3341,7 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
     }
 
     echo '</div>';
+    echo '</div>';
 }
 
 // v8.17.5: Função para renderizar tabela (aceita array plano OU aninhado)
@@ -3343,7 +3402,6 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     echo '</div>';
     echo '<div class="grupo-tradicional-meta">' . $total_subpostos . ' subpostos nesta visão</div>';
     echo '</div>';
-    echo '<button type="button" class="btn-recolher-tradicional" data-group-toggle="' . htmlspecialchars($grupoTradicionalId, ENT_QUOTES, 'UTF-8') . '" aria-expanded="true">-</button>';
     echo '</h3>';
     echo '<div class="grupo-tradicional-conteudo" data-group-body="' . htmlspecialchars($grupoTradicionalId, ENT_QUOTES, 'UTF-8') . '">';
     echo '<table data-view="' . $tipoView . '">';
@@ -3594,6 +3652,8 @@ function iniciarConferenciaPacotes() {
     var painelHistoricoLeitura = document.getElementById('painelHistoricoLeitura');
     var btnToggleHistoricoLeitura = document.getElementById('btnToggleHistoricoLeitura');
     var listaHistoricoLeitura = document.getElementById('listaHistoricoLeitura');
+    var btnToggleTodosChips = document.getElementById('btnToggleTodosChips');
+    var btnToggleTodosTradicional = document.getElementById('btnToggleTodosTradicional');
     var btnSalvarPacotes = document.getElementById('btnSalvarPacotes');
     var btnCancelarPacotes = document.getElementById('btnCancelarPacotes');
     var resumoPacotesPendentes = document.getElementById('resumoPacotesPendentes');
@@ -3618,7 +3678,8 @@ function iniciarConferenciaPacotes() {
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
     var storageHistoricoLeituraKey = 'conferencia_historico_leitura_aberto';
-    var storageGruposTradicionaisKey = 'conferencia_tradicional_grupos_recolhidos';
+    var storageChipsRecolhidosKey = 'conferencia_chips_recolhidos';
+    var storageTradicionalRecolhidoKey = 'conferencia_tradicional_recolhido';
     var previewStorageKey = 'conferencia_previa_malotes_v1';
     var controleCanal = <?php echo json_encode($controle_canal); ?>;
     var contextoSelecionadoMalote = '';
@@ -3685,13 +3746,12 @@ function iniciarConferenciaPacotes() {
     var ultimoCodigoProcessado = '';
     var ultimaLeituraProcessadaEm = 0;
     var ultimoAvisoScanner = { chave: '', quando: 0 };
-    var gruposTradicionaisRecolhidos = {};
+    var chipsRecolhidos = false;
+    var tradicionalRecolhido = false;
+    var wakeLockSentinel = null;
 
-    try {
-        gruposTradicionaisRecolhidos = JSON.parse(localStorage.getItem(storageGruposTradicionaisKey) || '{}') || {};
-    } catch (eGrupos) {
-        gruposTradicionaisRecolhidos = {};
-    }
+    try { chipsRecolhidos = localStorage.getItem(storageChipsRecolhidosKey) === '1'; } catch (eChips) {}
+    try { tradicionalRecolhido = localStorage.getItem(storageTradicionalRecolhidoKey) === '1'; } catch (eTrad) {}
 
     function mostrarConfirmacao(texto, autoFechar) {
         if (confirmacaoTexto) {
@@ -5434,7 +5494,19 @@ function iniciarConferenciaPacotes() {
         btnMostrarTradicional.addEventListener('click', function() {
             var aberto = secaoTradicional && !secaoTradicional.classList.contains('oculta');
             alternarModoVisualizacao(aberto ? '' : 'tradicional');
-            sincronizarGruposTradicionais();
+            definirRecolhimentoTradicional(tradicionalRecolhido);
+        });
+    }
+
+    if (btnToggleTodosChips) {
+        btnToggleTodosChips.addEventListener('click', function() {
+            definirRecolhimentoChips(!chipsRecolhidos);
+        });
+    }
+
+    if (btnToggleTodosTradicional) {
+        btnToggleTodosTradicional.addEventListener('click', function() {
+            definirRecolhimentoTradicional(!tradicionalRecolhido);
         });
     }
 
@@ -5445,24 +5517,23 @@ function iniciarConferenciaPacotes() {
         });
     }
 
-    document.addEventListener('click', function(event) {
-        var alvo = event.target;
-        if (!alvo || !alvo.getAttribute) return;
-        var groupId = alvo.getAttribute('data-group-toggle');
-        if (!groupId) return;
-        var proximoEstado = !gruposTradicionaisRecolhidos[groupId];
-        gruposTradicionaisRecolhidos[groupId] = proximoEstado;
-        aplicarEstadoGrupoTradicional(groupId, proximoEstado);
-        salvarEstadoGruposTradicionais();
-    });
-
     definirPainelHistoricoLeitura(false);
     try {
         if (localStorage.getItem(storageHistoricoLeituraKey) === '1') {
             definirPainelHistoricoLeitura(true);
         }
     } catch (eHistorico) {}
-    sincronizarGruposTradicionais();
+    definirRecolhimentoChips(chipsRecolhidos);
+    definirRecolhimentoTradicional(tradicionalRecolhido);
+    solicitarWakeLockTela();
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+            solicitarWakeLockTela();
+        }
+    });
+    window.addEventListener('focus', solicitarWakeLockTela);
+    document.addEventListener('keydown', solicitarWakeLockTela, true);
+    document.addEventListener('pointerdown', solicitarWakeLockTela, true);
 
     function obterTituloTabela(tabela) {
         if (!tabela) return null;
@@ -5787,28 +5858,42 @@ function iniciarConferenciaPacotes() {
         }
     }
 
-    function salvarEstadoGruposTradicionais() {
-        try {
-            localStorage.setItem(storageGruposTradicionaisKey, JSON.stringify(gruposTradicionaisRecolhidos));
-        } catch (e) {}
+    function definirRecolhimentoChips(recolhido) {
+        chipsRecolhidos = !!recolhido;
+        var grupos = document.querySelectorAll('.operacao-grupo[data-view]');
+        for (var i = 0; i < grupos.length; i++) {
+            grupos[i].classList.toggle('recolhido', chipsRecolhidos);
+        }
+        if (btnToggleTodosChips) {
+            btnToggleTodosChips.textContent = chipsRecolhidos ? 'Expandir chips' : 'Recolher chips';
+            btnToggleTodosChips.setAttribute('aria-expanded', chipsRecolhidos ? 'false' : 'true');
+        }
+        try { localStorage.setItem(storageChipsRecolhidosKey, chipsRecolhidos ? '1' : '0'); } catch (e) {}
     }
 
-    function aplicarEstadoGrupoTradicional(groupId, recolhido) {
-        if (!groupId) return;
-        var grupo = document.querySelector('.grupo-tradicional[data-group-id="' + groupId + '"]');
-        var botao = document.querySelector('.btn-recolher-tradicional[data-group-toggle="' + groupId + '"]');
-        if (!grupo || !botao) return;
-        grupo.classList.toggle('recolhido', !!recolhido);
-        botao.textContent = recolhido ? '+' : '-';
-        botao.setAttribute('aria-expanded', recolhido ? 'false' : 'true');
-    }
-
-    function sincronizarGruposTradicionais() {
+    function definirRecolhimentoTradicional(recolhido) {
+        tradicionalRecolhido = !!recolhido;
         var grupos = document.querySelectorAll('.grupo-tradicional[data-group-id]');
         for (var i = 0; i < grupos.length; i++) {
-            var groupId = grupos[i].getAttribute('data-group-id') || '';
-            aplicarEstadoGrupoTradicional(groupId, !!gruposTradicionaisRecolhidos[groupId]);
+            grupos[i].classList.toggle('recolhido', tradicionalRecolhido);
         }
+        if (btnToggleTodosTradicional) {
+            btnToggleTodosTradicional.textContent = tradicionalRecolhido ? 'Expandir regionais' : 'Recolher regionais';
+            btnToggleTodosTradicional.setAttribute('aria-expanded', tradicionalRecolhido ? 'false' : 'true');
+        }
+        try { localStorage.setItem(storageTradicionalRecolhidoKey, tradicionalRecolhido ? '1' : '0'); } catch (e) {}
+    }
+
+    function solicitarWakeLockTela() {
+        if (!('wakeLock' in navigator)) return;
+        if (document.visibilityState !== 'visible') return;
+        if (wakeLockSentinel) return;
+        navigator.wakeLock.request('screen').then(function(sentinel) {
+            wakeLockSentinel = sentinel;
+            sentinel.addEventListener('release', function() {
+                wakeLockSentinel = null;
+            });
+        }).catch(function() {});
     }
 
     function tocarPacoteNaoEncontrado() {
