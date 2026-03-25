@@ -1,5 +1,10 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.17
+/* conferencia_pacotes.php — v0.9.25.18
+ * CHANGELOG v9.25.13:
+ * - [NOVO] Foco remoto sincronizado entre controle e prévia do ofício
+ * - [NOVO] Linha extra manual por contexto para repetir posto/regional no ofício
+ * - [AJUSTE] Estado remoto publica regional real do contexto atual
+ *
  * CHANGELOG v9.25.12:
  * - [NOVO] Controle remoto por celular com comandos de malote sincronizados via servidor
  * - [NOVO] Canal remoto para operar lacres e etiqueta sem depender de voz no navegador
@@ -365,9 +370,25 @@ try {
         lacre_iipr VARCHAR(20) DEFAULT NULL,
         lacre_correios VARCHAR(20) DEFAULT NULL,
         etiqueta_correios VARCHAR(35) DEFAULT NULL,
+        campo_ativo VARCHAR(40) DEFAULT NULL,
+        row_key_ativo VARCHAR(120) DEFAULT NULL,
+        foco_token VARCHAR(60) DEFAULT NULL,
         atualizado_em DATETIME NOT NULL,
         PRIMARY KEY (canal)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    $colsCampoAtivo = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes_controle_estado LIKE 'campo_ativo'")->fetchAll();
+    if (count($colsCampoAtivo) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes_controle_estado ADD COLUMN campo_ativo VARCHAR(40) DEFAULT NULL AFTER etiqueta_correios");
+    }
+    $colsRowKeyAtivo = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes_controle_estado LIKE 'row_key_ativo'")->fetchAll();
+    if (count($colsRowKeyAtivo) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes_controle_estado ADD COLUMN row_key_ativo VARCHAR(120) DEFAULT NULL AFTER campo_ativo");
+    }
+    $colsFocoToken = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes_controle_estado LIKE 'foco_token'")->fetchAll();
+    if (count($colsFocoToken) === 0) {
+        $pdo->exec("ALTER TABLE conferencia_pacotes_controle_estado ADD COLUMN foco_token VARCHAR(60) DEFAULT NULL AFTER row_key_ativo");
+    }
 
     if (isset($_POST['enviar_comando_remoto_ajax'])) {
         $canal = isset($_POST['canal']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$_POST['canal']) : 'principal';
@@ -424,8 +445,11 @@ try {
         $lacreIipr = isset($_POST['lacre_iipr']) ? substr(trim((string)$_POST['lacre_iipr']), 0, 20) : '';
         $lacreCorreios = isset($_POST['lacre_correios']) ? substr(trim((string)$_POST['lacre_correios']), 0, 20) : '';
         $etiquetaCorreios = isset($_POST['etiqueta_correios']) ? substr(trim((string)$_POST['etiqueta_correios']), 0, 35) : '';
-        $stmt = $pdo->prepare("INSERT INTO conferencia_pacotes_controle_estado (canal, usuario, posto, regional, resumo, lacre_iipr, lacre_correios, etiqueta_correios, atualizado_em)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        $campoAtivo = isset($_POST['campo_ativo']) ? substr(trim((string)$_POST['campo_ativo']), 0, 40) : '';
+        $rowKeyAtivo = isset($_POST['row_key_ativo']) ? substr(trim((string)$_POST['row_key_ativo']), 0, 120) : '';
+        $focoToken = isset($_POST['foco_token']) ? substr(trim((string)$_POST['foco_token']), 0, 60) : '';
+        $stmt = $pdo->prepare("INSERT INTO conferencia_pacotes_controle_estado (canal, usuario, posto, regional, resumo, lacre_iipr, lacre_correios, etiqueta_correios, campo_ativo, row_key_ativo, foco_token, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ON DUPLICATE KEY UPDATE
                 usuario = VALUES(usuario),
                 posto = VALUES(posto),
@@ -434,6 +458,9 @@ try {
                 lacre_iipr = VALUES(lacre_iipr),
                 lacre_correios = VALUES(lacre_correios),
                 etiqueta_correios = VALUES(etiqueta_correios),
+                campo_ativo = VALUES(campo_ativo),
+                row_key_ativo = VALUES(row_key_ativo),
+                foco_token = VALUES(foco_token),
                 atualizado_em = NOW()");
         $stmt->execute(array(
             $canal,
@@ -443,7 +470,10 @@ try {
             ($resumo === '' ? null : $resumo),
             ($lacreIipr === '' ? null : $lacreIipr),
             ($lacreCorreios === '' ? null : $lacreCorreios),
-            ($etiquetaCorreios === '' ? null : $etiquetaCorreios)
+            ($etiquetaCorreios === '' ? null : $etiquetaCorreios),
+            ($campoAtivo === '' ? null : $campoAtivo),
+            ($rowKeyAtivo === '' ? null : $rowKeyAtivo),
+            ($focoToken === '' ? null : $focoToken)
         ));
         $stmt = null;
         $pdo = null;
@@ -455,7 +485,7 @@ try {
         if ($canal === '') {
             $canal = 'principal';
         }
-        $stmt = $pdo->prepare("SELECT canal, usuario, posto, regional, resumo, lacre_iipr, lacre_correios, etiqueta_correios, atualizado_em FROM conferencia_pacotes_controle_estado WHERE canal = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT canal, usuario, posto, regional, resumo, lacre_iipr, lacre_correios, etiqueta_correios, campo_ativo, row_key_ativo, foco_token, atualizado_em FROM conferencia_pacotes_controle_estado WHERE canal = ? LIMIT 1");
         $stmt->execute(array($canal));
         $estado = $stmt->fetch(PDO::FETCH_ASSOC);
         $stmt = null;
@@ -3720,6 +3750,10 @@ function iniciarConferenciaPacotes() {
     var ultimoLacreCorreiosAplicado = '';
     var ultimaEtiquetaCorreiosAplicada = '';
     var valoresDigitadosPorContexto = {};
+    var linhasExtrasPorContexto = {};
+    var campoAtivoRemoto = '';
+    var rowKeyAtivoRemoto = '';
+    var tokenFocoRemoto = '';
     var comandosCodigoBarras = {
         '990000000000000000001': { tipo: 'iipr', mensagem: 'Aguardando leitura do lacre IIPR.' },
         '990000000000000000002': { tipo: 'correios_lacre', mensagem: 'Aguardando leitura do lacre Correios.' },
@@ -3734,6 +3768,154 @@ function iniciarConferenciaPacotes() {
             previewChannel = null;
         }
     }
+
+    function normalizarCampoRemoto(campo) {
+        campo = String(campo || '').trim().toLowerCase();
+        if (campo === 'iipr' || campo === 'lacre_iipr') return 'lacre_iipr';
+        if (campo === 'correios' || campo === 'correios_lacre' || campo === 'lacre_correios') return 'lacre_correios';
+        if (campo === 'display' || campo === 'etiqueta' || campo === 'correios_etiqueta' || campo === 'etiqueta_correios') return 'etiqueta_correios';
+        return '';
+    }
+
+    function criarTokenFocoRemoto() {
+        return String(Date.now()) + '_' + String(Math.floor(Math.random() * 100000));
+    }
+
+    function obterInformacoesContextoSelecionadoMalote() {
+        var info = {
+            tipo: tipoContextoSelecionadoMalote || '',
+            contexto_chave: contextoSelecionadoMalote || '',
+            contexto_rotulo: rotuloContextoSelecionadoMalote || '',
+            posto: '',
+            regional: '',
+            regional_codigo: ''
+        };
+        var chips = obterChipsPorContextoMalote();
+        if (info.tipo === 'posto') {
+            info.posto = formatarCodigoComZeros(info.contexto_chave || '', 3);
+        }
+        if (info.tipo === 'regional') {
+            info.regional = formatarCodigoComZeros(info.contexto_chave || '', 3);
+            info.regional_codigo = info.regional;
+        }
+        if (chips.length) {
+            var dados = obterDadosChipOperacao(chips[0]);
+            if (dados) {
+                if (!info.posto) info.posto = formatarCodigoComZeros(dados.posto || '', 3);
+                if (!info.regional) info.regional = normalizarRegionalValor(dados.regional_codigo || dados.regional);
+                if (!info.regional_codigo) info.regional_codigo = normalizarRegionalValor(dados.regional_codigo || dados.regional);
+            }
+        }
+        if (!info.contexto_rotulo) {
+            if (info.tipo === 'regional' && info.contexto_chave) {
+                info.contexto_rotulo = 'Regional ' + formatarCodigoComZeros(info.contexto_chave, 3);
+            } else if (info.posto) {
+                info.contexto_rotulo = 'Posto ' + info.posto;
+            }
+        }
+        return info;
+    }
+
+    function obterRotuloRegionalContextoAtual() {
+        var info = obterInformacoesContextoSelecionadoMalote();
+        var codigo = formatarCodigoComZeros(info.regional_codigo || info.regional || '', 3);
+        if (!codigo) return '-';
+        if (codigo === '000') return 'CAPITAL';
+        if (codigo === '001') return 'METROPOLITANA';
+        if (codigo === '999') return 'CENTRAL IIPR';
+        return 'Regional ' + codigo;
+    }
+
+    function carregarLinhasExtrasDaPrevia() {
+        var bruto = '';
+        var snapshot = null;
+        try {
+            bruto = localStorage.getItem(previewStorageKey) || '';
+            snapshot = bruto ? JSON.parse(bruto) : null;
+        } catch (e1) {
+            snapshot = null;
+        }
+        linhasExtrasPorContexto = {};
+        if (!snapshot || !snapshot.resumo || !snapshot.resumo.length) {
+            return;
+        }
+        for (var i = 0; i < snapshot.resumo.length; i++) {
+            var item = snapshot.resumo[i] || {};
+            if (!item.linha_manual) continue;
+            var chave = String(item.contexto_tipo || '') + '|' + String(item.contexto_chave || '');
+            if (!linhasExtrasPorContexto[chave]) {
+                linhasExtrasPorContexto[chave] = [];
+            }
+            linhasExtrasPorContexto[chave].push({
+                row_key: item.row_key || ('manual:' + i),
+                regional: item.regional || '',
+                regional_codigo: item.regional_codigo || '',
+                posto: item.posto || '',
+                contexto_tipo: item.contexto_tipo || '',
+                contexto_chave: item.contexto_chave || '',
+                contexto_rotulo: item.contexto_rotulo || '',
+                lotes: item.lotes || [],
+                qtd_total: item.qtd_total || 0,
+                lacre_iipr: item.lacre_iipr || '',
+                lacre_correios: item.lacre_correios || '',
+                etiqueta_correios: item.etiqueta_correios || '',
+                grupo_iipr: item.grupo_iipr || '',
+                grupo_correios: item.grupo_correios || '',
+                grupos_correios: item.grupos_correios || [],
+                pendente_lacre: true,
+                linha_manual: true
+            });
+        }
+    }
+
+    function criarLinhaExtraNoContextoAtual(origem) {
+        if (!garantirContextoMaloteAtual()) {
+            mostrarConfirmacao('Selecione uma regional ou posto antes de adicionar uma nova linha.', true);
+            return false;
+        }
+        var info = obterInformacoesContextoSelecionadoMalote();
+        var chave = String(info.tipo || '') + '|' + String(info.contexto_chave || '');
+        if (!chave || chave === '|') {
+            mostrarConfirmacao('Nao foi possivel identificar o contexto atual para criar a linha.', true);
+            return false;
+        }
+        if (!linhasExtrasPorContexto[chave]) {
+            linhasExtrasPorContexto[chave] = [];
+        }
+        var rowKey = 'manual:' + chave + ':' + String(Date.now()) + ':' + String(Math.floor(Math.random() * 100000));
+        linhasExtrasPorContexto[chave].push({
+            row_key: rowKey,
+            regional: info.regional || '',
+            regional_codigo: info.regional_codigo || info.regional || '',
+            posto: info.posto || '',
+            contexto_tipo: info.tipo || '',
+            contexto_chave: info.contexto_chave || '',
+            contexto_rotulo: info.contexto_rotulo || '',
+            lotes: [],
+            qtd_total: 0,
+            lacre_iipr: '',
+            lacre_correios: '',
+            etiqueta_correios: '',
+            grupo_iipr: '',
+            grupo_correios: '',
+            grupos_correios: [],
+            pendente_lacre: true,
+            linha_manual: true
+        });
+        campoAtivoRemoto = 'lacre_iipr';
+        rowKeyAtivoRemoto = rowKey;
+        tokenFocoRemoto = criarTokenFocoRemoto();
+        publicarResumoPrevia();
+        publicarEstadoRemoto({
+            campo_ativo: campoAtivoRemoto,
+            row_key_ativo: rowKeyAtivoRemoto,
+            foco_token: tokenFocoRemoto
+        });
+        mostrarConfirmacao('Linha extra preparada para o contexto atual' + (origem ? ' via ' + origem : '') + '.', true);
+        return true;
+    }
+
+    carregarLinhasExtrasDaPrevia();
 
     function aplicarModoConsulta(ativo) {
         modoConsulta = !!ativo;
@@ -4319,6 +4501,33 @@ function iniciarConferenciaPacotes() {
             });
         }
 
+        for (var chaveExtra in linhasExtrasPorContexto) {
+            if (!Object.prototype.hasOwnProperty.call(linhasExtrasPorContexto, chaveExtra)) continue;
+            var extras = linhasExtrasPorContexto[chaveExtra] || [];
+            for (var ex = 0; ex < extras.length; ex++) {
+                var itemExtra = extras[ex] || {};
+                resumo.push({
+                    row_key: itemExtra.row_key || ('manual:' + chaveExtra + ':' + ex),
+                    regional: itemExtra.regional || '',
+                    regional_codigo: itemExtra.regional_codigo || '',
+                    posto: itemExtra.posto || '',
+                    contexto_tipo: itemExtra.contexto_tipo || '',
+                    contexto_chave: itemExtra.contexto_chave || '',
+                    contexto_rotulo: itemExtra.contexto_rotulo || '',
+                    lotes: itemExtra.lotes || [],
+                    qtd_total: itemExtra.qtd_total || 0,
+                    lacre_iipr: itemExtra.lacre_iipr || '',
+                    lacre_correios: itemExtra.lacre_correios || '',
+                    etiqueta_correios: itemExtra.etiqueta_correios || '',
+                    grupo_iipr: itemExtra.grupo_iipr || '',
+                    grupo_correios: itemExtra.grupo_correios || '',
+                    grupos_correios: itemExtra.grupos_correios || [],
+                    pendente_lacre: true,
+                    linha_manual: true
+                });
+            }
+        }
+
         var destinoDigitadoPorContexto = {};
         for (var r = 0; r < resumo.length; r++) {
             var chaveContextoResumo = String(resumo[r].contexto_tipo || '') + '|' + String(resumo[r].contexto_chave || '');
@@ -4366,12 +4575,17 @@ function iniciarConferenciaPacotes() {
         });
 
         return {
-            versao: '0.9.25.17',
+            versao: '0.9.25.18',
             gerado_em: formatarDataHoraAtual(),
             usuario: usuarioAtual || '',
             contexto_selecionado: contextoSelecionadoMalote || '',
             contexto_tipo: tipoContextoSelecionadoMalote || '',
             contexto_rotulo: rotuloContextoSelecionadoMalote || '',
+            foco_remoto: {
+                campo_ativo: campoAtivoRemoto || '',
+                row_key_ativo: rowKeyAtivoRemoto || '',
+                foco_token: tokenFocoRemoto || ''
+            },
             datas_filtro: datasFiltroSql.slice(0),
             total_confirmados: totalConfirmados,
             total_fechados: resumo.length,
@@ -4745,6 +4959,20 @@ function iniciarConferenciaPacotes() {
         publicarResumoPrevia();
     }
 
+    function ativarCampoRemotoNaPrevia(campo, rowKey) {
+        var campoNormalizado = normalizarCampoRemoto(campo);
+        if (!campoNormalizado) return;
+        campoAtivoRemoto = campoNormalizado;
+        rowKeyAtivoRemoto = rowKey ? String(rowKey) : '';
+        tokenFocoRemoto = criarTokenFocoRemoto();
+        publicarEstadoRemoto({
+            campo_ativo: campoAtivoRemoto,
+            row_key_ativo: rowKeyAtivoRemoto,
+            foco_token: tokenFocoRemoto
+        });
+        publicarResumoPrevia();
+    }
+
     function garantirContextoMaloteAtual() {
         if (!contextoSelecionadoMalote && regionalAtual && ehRegionalOperacional(regionalAtual)) {
             selecionarContextoMalote(montarContextoMalote('regional', regionalAtual, 'Regional ' + regionalAtual));
@@ -4968,6 +5196,10 @@ function iniciarConferenciaPacotes() {
         }
         if (cmd.comando === 'atribuir_display') {
             aplicarEtiquetaCorreiosNoContexto(cmd.valor_aux || '', 'controle');
+            return;
+        }
+        if (cmd.comando === 'adicionar_linha') {
+            criarLinhaExtraNoContextoAtual('controle');
         }
     }
 
@@ -5131,18 +5363,32 @@ function iniciarConferenciaPacotes() {
         return confirmados + ' confirmados • ' + comIipr + ' com IIPR • ' + comCorreios + ' com Correios';
     }
 
-    function publicarEstadoRemoto() {
+    function publicarEstadoRemoto(overrideEstado) {
         if (!controleCanal) return;
+        overrideEstado = overrideEstado || {};
+        if (Object.prototype.hasOwnProperty.call(overrideEstado, 'campo_ativo')) {
+            campoAtivoRemoto = normalizarCampoRemoto(overrideEstado.campo_ativo);
+        }
+        if (Object.prototype.hasOwnProperty.call(overrideEstado, 'row_key_ativo')) {
+            rowKeyAtivoRemoto = overrideEstado.row_key_ativo ? String(overrideEstado.row_key_ativo) : '';
+        }
+        if (Object.prototype.hasOwnProperty.call(overrideEstado, 'foco_token')) {
+            tokenFocoRemoto = overrideEstado.foco_token ? String(overrideEstado.foco_token) : '';
+        }
+        var infoContexto = obterInformacoesContextoSelecionadoMalote();
         var formData = new FormData();
         formData.append('atualizar_estado_remoto_ajax', '1');
         formData.append('canal', controleCanal);
         formData.append('usuario', usuarioAtual || '');
-        formData.append('posto', rotuloContextoSelecionadoMalote || '-');
-        formData.append('regional', tipoContextoSelecionadoMalote === 'regional' ? (rotuloContextoSelecionadoMalote || '-') : '-');
+        formData.append('posto', infoContexto.posto || '');
+        formData.append('regional', infoContexto.regional_codigo || infoContexto.regional || '');
         formData.append('resumo', obterResumoContextoAtual());
         formData.append('lacre_iipr', ultimoLacreIiprAplicado || '');
         formData.append('lacre_correios', ultimoLacreCorreiosAplicado || '');
         formData.append('etiqueta_correios', ultimaEtiquetaCorreiosAplicada || '');
+        formData.append('campo_ativo', campoAtivoRemoto || '');
+        formData.append('row_key_ativo', rowKeyAtivoRemoto || '');
+        formData.append('foco_token', tokenFocoRemoto || '');
         fetch(window.location.href, { method: 'POST', body: formData }).catch(function() {});
     }
 
