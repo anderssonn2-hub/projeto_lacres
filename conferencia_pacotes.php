@@ -1744,6 +1744,115 @@ try {
         .secao-visualizacao.oculta {
             display: none;
         }
+        .painel-historico-leitura {
+            margin-top: 10px;
+            border: 1px solid #dbe5f1;
+            border-radius: 10px;
+            background: #f8fbff;
+            overflow: hidden;
+        }
+        .painel-historico-topo {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 12px;
+            background: #eef5fc;
+        }
+        .painel-historico-titulo {
+            font-size: 13px;
+            font-weight: 800;
+            color: #12395d;
+        }
+        .painel-historico-subtitulo {
+            font-size: 11px;
+            color: #597795;
+            margin-top: 2px;
+        }
+        .painel-historico-corpo {
+            padding: 10px 12px 12px;
+            display: none;
+        }
+        .painel-historico-leitura.aberto .painel-historico-corpo {
+            display: block;
+        }
+        .historico-leitura-lista {
+            list-style: none;
+            display: grid;
+            gap: 8px;
+        }
+        .historico-leitura-item {
+            border: 1px solid #d8e3ef;
+            border-radius: 8px;
+            background: #fff;
+            padding: 8px 10px;
+        }
+        .historico-leitura-item strong {
+            color: #12395d;
+        }
+        .historico-leitura-meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 11px;
+            color: #6a8098;
+            margin-top: 4px;
+        }
+        .historico-leitura-vazio {
+            font-size: 12px;
+            color: #6a8098;
+        }
+        .grupo-tradicional {
+            margin-top: 18px;
+            border: 1px solid #d9e2ec;
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(15, 35, 60, 0.06);
+            overflow: hidden;
+        }
+        .grupo-tradicional-titulo {
+            margin: 0;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 1px solid #e7edf4;
+            background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 100%);
+        }
+        .grupo-tradicional-info {
+            min-width: 0;
+        }
+        .grupo-tradicional-meta {
+            font-size: 11px;
+            color: #667c94;
+            margin-top: 3px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .grupo-tradicional-conteudo {
+            padding: 0 14px 14px;
+        }
+        .grupo-tradicional.recolhido .grupo-tradicional-conteudo {
+            display: none;
+        }
+        .btn-recolher-tradicional,
+        .btn-toggle-historico {
+            border: 1px solid #c8d6e5;
+            background: #fff;
+            color: #12395d;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            min-width: 52px;
+        }
+        .btn-recolher-tradicional:hover,
+        .btn-toggle-historico:hover {
+            background: #f1f6fb;
+        }
         .painel-operacao {
             background: linear-gradient(180deg, #0b2d4d 0%, #071a2d 100%);
             border-radius: 14px;
@@ -2775,15 +2884,26 @@ try {
 
 <div class="painel-leitura">
     <div class="painel-leitura-topo">
-        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus
-            oninput="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
-            onchange="if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);}"
-            onkeydown="if(event && event.keyCode===13){event.preventDefault(); if(window.processarLeituraCodigo){window.processarLeituraCodigo(this.value);} }">
+        <input type="text" id="codigo_barras" placeholder="Escaneie o código de barras (19 dígitos)" maxlength="19" autofocus>
         <div class="painel-leitura-acoes">
             <button id="resetar">🔄 Resetar Conferência</button>
         </div>
     </div>
     <div class="mensagem-leitura" id="mensagemLeitura"></div>
+    <div class="painel-historico-leitura" id="painelHistoricoLeitura">
+        <div class="painel-historico-topo">
+            <div>
+                <div class="painel-historico-titulo">Painel da última leitura</div>
+                <div class="painel-historico-subtitulo">Recolhido por padrão. Expanda quando quiser acompanhar o histórico operacional.</div>
+            </div>
+            <button type="button" class="btn-toggle-historico" id="btnToggleHistoricoLeitura" aria-expanded="false">+</button>
+        </div>
+        <div class="painel-historico-corpo" id="historicoLeituraCorpo">
+            <ul class="historico-leitura-lista" id="listaHistoricoLeitura">
+                <li class="historico-leitura-vazio">Nenhuma leitura registrada ainda.</li>
+            </ul>
+        </div>
+    </div>
     <div class="modos-visualizacao">
         <button class="btn-toggle" type="button" id="btnMostrarClassificacao" data-target="classificacao" aria-expanded="false">🏆 Classificação por chips</button>
         <button class="btn-toggle" type="button" id="btnMostrarTradicional" data-target="tradicional" aria-expanded="false">📋 Modo tradicional por regional</button>
@@ -2845,6 +2965,8 @@ try {
         function bindFallback() {
             var input = document.getElementById('codigo_barras');
             if (!input || input.__fallbackBound) return;
+            if (typeof window.iniciarConferenciaPacotes === 'function') return;
+            if (typeof window.processarLeituraCodigo === 'function') return;
             input.__fallbackBound = true;
             var audioDesbloqueado = false;
 
@@ -3196,13 +3318,34 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         }
     }
     $tipoView = $ehPoupaTempo ? 'poupatempo' : 'correios';
+    $grupoTradicionalId = preg_replace('/[^a-z0-9]+/i', '-', strtolower($titulo));
+    $grupoTradicionalId = trim($grupoTradicionalId, '-');
+    if ($grupoTradicionalId === '') {
+        $grupoTradicionalId = 'grupo-tradicional';
+    }
+    $postos_distintos = array();
+    foreach ($postos_para_exibir as $postoResumo) {
+        $postoResumoKey = isset($postoResumo['posto']) ? (string)$postoResumo['posto'] : '';
+        if ($postoResumoKey !== '') {
+            $postos_distintos[$postoResumoKey] = true;
+        }
+    }
+    $total_subpostos = count($postos_distintos);
     
-    echo '<h3 data-view="' . $tipoView . '">' . htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
+    echo '<div class="grupo-tradicional" data-group-id="' . htmlspecialchars($grupoTradicionalId, ENT_QUOTES, 'UTF-8') . '">';
+    echo '<h3 class="grupo-tradicional-titulo" data-view="' . $tipoView . '">';
+    echo '<div class="grupo-tradicional-info">';
+    echo '<div>' . htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
     echo ' <span class="contagem-pacotes" data-total="' . $total_pacotes . '" data-conferidos="' . $total_conferidos . '" style="color:#666; font-weight:normal; font-size:14px;">(' . $total_pacotes . ' pacotes / ' . $total_conferidos . ' conferidos / ' . max(0, $total_pacotes - $total_conferidos) . ' pendentes)</span>';
     if ($ehPoupaTempo) {
         echo ' <span class="tag-pt">POUPA TEMPO</span>';
     }
+    echo '</div>';
+    echo '<div class="grupo-tradicional-meta">' . $total_subpostos . ' subpostos nesta visão</div>';
+    echo '</div>';
+    echo '<button type="button" class="btn-recolher-tradicional" data-group-toggle="' . htmlspecialchars($grupoTradicionalId, ENT_QUOTES, 'UTF-8') . '" aria-expanded="true">-</button>';
     echo '</h3>';
+    echo '<div class="grupo-tradicional-conteudo" data-group-body="' . htmlspecialchars($grupoTradicionalId, ENT_QUOTES, 'UTF-8') . '">';
     echo '<table data-view="' . $tipoView . '">';
     echo '<thead><tr>';
     echo '<th>Regional</th>';
@@ -3258,6 +3401,8 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     }
     
     echo '</tbody></table>';
+    echo '</div>';
+    echo '</div>';
 }
 
 // v8.17.4: Renderizar na ordem correta (cada grupo = UMA tabela)
@@ -3446,6 +3591,9 @@ function iniciarConferenciaPacotes() {
     var btnCancelarPacote = document.getElementById('btnCancelarPacote');
     var painelPacotesNovos = document.getElementById('painelPacotesNovos');
     var listaPacotesNovos = document.getElementById('listaPacotesNovos');
+    var painelHistoricoLeitura = document.getElementById('painelHistoricoLeitura');
+    var btnToggleHistoricoLeitura = document.getElementById('btnToggleHistoricoLeitura');
+    var listaHistoricoLeitura = document.getElementById('listaHistoricoLeitura');
     var btnSalvarPacotes = document.getElementById('btnSalvarPacotes');
     var btnCancelarPacotes = document.getElementById('btnCancelarPacotes');
     var resumoPacotesPendentes = document.getElementById('resumoPacotesPendentes');
@@ -3469,6 +3617,8 @@ function iniciarConferenciaPacotes() {
     var storageUsuarioKey = 'conferencia_responsavel';
     var storageTipoKey = 'conferencia_tipo_inicio';
     var storageModoKey = 'conferencia_modo';
+    var storageHistoricoLeituraKey = 'conferencia_historico_leitura_aberto';
+    var storageGruposTradicionaisKey = 'conferencia_tradicional_grupos_recolhidos';
     var previewStorageKey = 'conferencia_previa_malotes_v1';
     var controleCanal = <?php echo json_encode($controle_canal); ?>;
     var contextoSelecionadoMalote = '';
@@ -3534,6 +3684,14 @@ function iniciarConferenciaPacotes() {
     var codigosEmProcessamento = {};
     var ultimoCodigoProcessado = '';
     var ultimaLeituraProcessadaEm = 0;
+    var ultimoAvisoScanner = { chave: '', quando: 0 };
+    var gruposTradicionaisRecolhidos = {};
+
+    try {
+        gruposTradicionaisRecolhidos = JSON.parse(localStorage.getItem(storageGruposTradicionaisKey) || '{}') || {};
+    } catch (eGrupos) {
+        gruposTradicionaisRecolhidos = {};
+    }
 
     function mostrarConfirmacao(texto, autoFechar) {
         if (confirmacaoTexto) {
@@ -5234,6 +5392,10 @@ function iniciarConferenciaPacotes() {
             tabela.style.display = exibirTabela ? '' : 'none';
             var titulo = obterTituloTabela(tabela);
             if (titulo) titulo.style.display = exibirTabela ? '' : 'none';
+            var grupoTradicional = tabela.closest ? tabela.closest('.grupo-tradicional') : null;
+            if (grupoTradicional) {
+                grupoTradicional.style.display = exibirTabela ? '' : 'none';
+            }
         }
 
         var blocosCorreios = document.querySelectorAll('.grupo-capital-wrapper[data-view], .grupo-central-wrapper[data-view]');
@@ -5272,11 +5434,43 @@ function iniciarConferenciaPacotes() {
         btnMostrarTradicional.addEventListener('click', function() {
             var aberto = secaoTradicional && !secaoTradicional.classList.contains('oculta');
             alternarModoVisualizacao(aberto ? '' : 'tradicional');
+            sincronizarGruposTradicionais();
         });
     }
 
+    if (btnToggleHistoricoLeitura) {
+        btnToggleHistoricoLeitura.addEventListener('click', function() {
+            var aberto = !painelHistoricoLeitura || !painelHistoricoLeitura.classList.contains('aberto');
+            definirPainelHistoricoLeitura(aberto);
+        });
+    }
+
+    document.addEventListener('click', function(event) {
+        var alvo = event.target;
+        if (!alvo || !alvo.getAttribute) return;
+        var groupId = alvo.getAttribute('data-group-toggle');
+        if (!groupId) return;
+        var proximoEstado = !gruposTradicionaisRecolhidos[groupId];
+        gruposTradicionaisRecolhidos[groupId] = proximoEstado;
+        aplicarEstadoGrupoTradicional(groupId, proximoEstado);
+        salvarEstadoGruposTradicionais();
+    });
+
+    definirPainelHistoricoLeitura(false);
+    try {
+        if (localStorage.getItem(storageHistoricoLeituraKey) === '1') {
+            definirPainelHistoricoLeitura(true);
+        }
+    } catch (eHistorico) {}
+    sincronizarGruposTradicionais();
+
     function obterTituloTabela(tabela) {
-        var titulo = tabela ? tabela.previousElementSibling : null;
+        if (!tabela) return null;
+        var grupo = tabela.closest ? tabela.closest('.grupo-tradicional') : null;
+        if (grupo) {
+            return grupo.querySelector('.grupo-tradicional-titulo');
+        }
+        var titulo = tabela.previousElementSibling;
         while (titulo && titulo.tagName !== 'H3') {
             titulo = titulo.previousElementSibling;
         }
@@ -5539,12 +5733,86 @@ function iniciarConferenciaPacotes() {
         } catch (e) {}
     }
 
-    function tocarPacoteNaoEncontrado() {
-        if (pacoteNaoEncontradoAudio) {
-            enfileirarSom(pacoteNaoEncontradoAudio);
+    function avisoScannerFoiEmitido(chave) {
+        var agora = Date.now();
+        var chaveAtual = String(chave || '');
+        if (ultimoAvisoScanner.chave === chaveAtual && (agora - ultimoAvisoScanner.quando) < 900) {
+            return true;
+        }
+        ultimoAvisoScanner = { chave: chaveAtual, quando: agora };
+        return false;
+    }
+
+    function avisarSomOuFala(chave, audio, textoFallback) {
+        if (avisoScannerFoiEmitido(chave)) return;
+        if (audio) {
+            enfileirarSom(audio);
             return;
         }
-        falarTexto('pacote não encontrado');
+        falarTexto(textoFallback);
+    }
+
+    function definirPainelHistoricoLeitura(aberto) {
+        if (!painelHistoricoLeitura || !btnToggleHistoricoLeitura) return;
+        painelHistoricoLeitura.classList.toggle('aberto', !!aberto);
+        btnToggleHistoricoLeitura.textContent = aberto ? '-' : '+';
+        btnToggleHistoricoLeitura.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+        try {
+            localStorage.setItem(storageHistoricoLeituraKey, aberto ? '1' : '0');
+        } catch (e) {}
+    }
+
+    function registrarHistoricoLeitura(status, detalhe, codigo) {
+        if (!listaHistoricoLeitura) return;
+        var vazio = listaHistoricoLeitura.querySelector('.historico-leitura-vazio');
+        if (vazio && vazio.parentNode) {
+            vazio.parentNode.removeChild(vazio);
+        }
+        var item = document.createElement('li');
+        item.className = 'historico-leitura-item';
+        var horario = formatarDataHoraAtual();
+        var html = '<strong>' + escapeHtml(status || 'Leitura') + '</strong>';
+        if (detalhe) {
+            html += '<div>' + escapeHtml(detalhe) + '</div>';
+        }
+        html += '<div class="historico-leitura-meta"><span>' + escapeHtml(horario) + '</span>';
+        if (codigo) {
+            html += '<span>Código ' + escapeHtml(String(codigo)) + '</span>';
+        }
+        html += '</div>';
+        item.innerHTML = html;
+        listaHistoricoLeitura.insertBefore(item, listaHistoricoLeitura.firstChild);
+        while (listaHistoricoLeitura.children.length > 8) {
+            listaHistoricoLeitura.removeChild(listaHistoricoLeitura.lastChild);
+        }
+    }
+
+    function salvarEstadoGruposTradicionais() {
+        try {
+            localStorage.setItem(storageGruposTradicionaisKey, JSON.stringify(gruposTradicionaisRecolhidos));
+        } catch (e) {}
+    }
+
+    function aplicarEstadoGrupoTradicional(groupId, recolhido) {
+        if (!groupId) return;
+        var grupo = document.querySelector('.grupo-tradicional[data-group-id="' + groupId + '"]');
+        var botao = document.querySelector('.btn-recolher-tradicional[data-group-toggle="' + groupId + '"]');
+        if (!grupo || !botao) return;
+        grupo.classList.toggle('recolhido', !!recolhido);
+        botao.textContent = recolhido ? '+' : '-';
+        botao.setAttribute('aria-expanded', recolhido ? 'false' : 'true');
+    }
+
+    function sincronizarGruposTradicionais() {
+        var grupos = document.querySelectorAll('.grupo-tradicional[data-group-id]');
+        for (var i = 0; i < grupos.length; i++) {
+            var groupId = grupos[i].getAttribute('data-group-id') || '';
+            aplicarEstadoGrupoTradicional(groupId, !!gruposTradicionaisRecolhidos[groupId]);
+        }
+    }
+
+    function tocarPacoteNaoEncontrado() {
+        avisarSomOuFala('pacote_nao_encontrado', pacoteNaoEncontradoAudio, 'pacote não encontrado');
     }
 
     function avisarIncompatibilidadeTipo(tipoPacote) {
@@ -5552,19 +5820,13 @@ function iniciarConferenciaPacotes() {
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
             }
-            if (pertenceCorreios) {
-                enfileirarSom(pertenceCorreios);
-            }
-            falarTexto('posto dos correios');
+            avisarSomOuFala('incompatibilidade_correios', pertenceCorreios, 'posto dos correios');
             return;
         }
         if (mensagemLeitura) {
             mensagemLeitura.innerHTML = '<strong>Posto do Poupa Tempo:</strong> altere o tipo para Poupa Tempo ou Todos.';
         }
-        if (postoPoupaTempo) {
-            enfileirarSom(postoPoupaTempo);
-        }
-        falarTexto('posto do poupa tempo');
+        avisarSomOuFala('incompatibilidade_poupatempo', postoPoupaTempo, 'posto do poupa tempo');
     }
 
     // Encadeia para tocar o próximo som quando o atual terminar
@@ -6075,12 +6337,28 @@ function iniciarConferenciaPacotes() {
         return n;
     }
 
+    function localizarLinhaPorCodigo(codigo) {
+        var codigoNormalizado = String(codigo || '').replace(/\D+/g, '');
+        if (!codigoNormalizado) return null;
+        var linha = document.querySelector('tr[data-codigo="' + codigoNormalizado + '"]');
+        if (linha) return linha;
+        var linhas = document.querySelectorAll('tbody tr[data-codigo]');
+        for (var i = 0; i < linhas.length; i++) {
+            var codigoLinha = String(linhas[i].getAttribute('data-codigo') || '').replace(/\D+/g, '');
+            if (codigoLinha === codigoNormalizado) {
+                return linhas[i];
+            }
+        }
+        return null;
+    }
+
     function processarLeituraCodigo(valorBruto) {
         if (!input) return;
         if (modoConsulta) {
             if (mensagemLeitura) {
                 mensagemLeitura.textContent = 'Modo consulta ativo.';
             }
+            registrarHistoricoLeitura('Modo consulta', 'Leitura ignorada porque o modo consulta está ativo.', valorBruto);
             input.value = '';
             return;
         }
@@ -6122,6 +6400,15 @@ function iniciarConferenciaPacotes() {
             if (limparInput) {
                 input.value = '';
             }
+            ultimoCodLido = '';
+            if (scanTimer) {
+                clearTimeout(scanTimer);
+                scanTimer = null;
+            }
+            scanBuffer = '';
+            if (input && document.activeElement !== input) {
+                try { input.focus(); } catch (e) {}
+            }
         }
 
         desbloquearAudio();
@@ -6131,15 +6418,16 @@ function iniciarConferenciaPacotes() {
             var dadosBloq = postosBloqueadosMap[postoLido] || {};
             var motivoBloq = (dadosBloq.motivo || dadosBloq.nome || '').toString().trim();
             var textoVoz = motivoBloq ? motivoBloq : 'posto bloqueado';
-            falarTexto(textoVoz);
+            avisarSomOuFala('posto_bloqueado:' + postoLido, null, textoVoz);
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto bloqueado:</strong> ' + postoLido + ' ' + (motivoBloq || '');
             }
+            registrarHistoricoLeitura('Posto bloqueado', 'Posto ' + postoLido + ' bloqueado para conferência.', valor);
             finalizarProcessamento(true);
             return;
         }
 
-        var linha = document.querySelector('tr[data-codigo="' + valor + '"]');
+        var linha = localizarLinhaPorCodigo(valor);
 
         if (!linha) {
             verificarPacoteOutraData(valor, function(resp) {
@@ -6147,7 +6435,8 @@ function iniciarConferenciaPacotes() {
                     if (mensagemLeitura) {
                         mensagemLeitura.innerHTML = '<strong>Pacote de outra data:</strong> ' + formatarDataBr(resp.data || '');
                     }
-                    falarTexto('pacote de outra data');
+                    registrarHistoricoLeitura('Pacote de outra data', 'Pacote localizado fora do filtro atual.', valor);
+                    avisarSomOuFala('pacote_outra_data:' + valor, null, 'pacote de outra data');
                     finalizarProcessamento(true);
                     return;
                 }
@@ -6175,6 +6464,7 @@ function iniciarConferenciaPacotes() {
                 if (mensagemLeitura) {
                     mensagemLeitura.innerHTML = '<strong>Pacote não encontrado:</strong> adicionado à lista pendente.';
                 }
+                registrarHistoricoLeitura('Pacote não encontrado', 'Pacote enviado para a fila de pendentes.', valor);
                 finalizarProcessamento(true);
             });
             return;
@@ -6205,6 +6495,7 @@ function iniciarConferenciaPacotes() {
         if (linha.classList.contains('confirmado')) {
             enfileirarSom(pacoteJaConferido);
             destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
+            registrarHistoricoLeitura('Pacote já conferido', 'O pacote já estava marcado como conferido.', valor);
             finalizarProcessamento(true);
             return;
         }
@@ -6243,14 +6534,14 @@ function iniciarConferenciaPacotes() {
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto do Poupa Tempo:</strong> altere o tipo para Poupa Tempo ou Todos.';
             }
-            falarTexto('posto do poupa tempo');
+            avisarSomOuFala('incompatibilidade_poupatempo', postoPoupaTempo, 'posto do poupa tempo');
         } else if (!modoTodos && podeConferir && tipoAtual === 'poupatempo' && tipoPacote === 'correios') {
             somAlerta = pertenceCorreios;
             podeConferir = false;
             if (mensagemLeitura) {
                 mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
             }
-            falarTexto('posto dos correios');
+            avisarSomOuFala('incompatibilidade_correios', pertenceCorreios, 'posto dos correios');
         } else if (!modoTodos && podeConferir && regionalDoPacoteNorm && regionalDoPacoteNorm !== normalizarRegionalValor(regionalAtual) && tipoPacote === tipoAtual) {
             somAlerta = pacoteOutraRegional;
             podeConferir = false;
@@ -6267,6 +6558,7 @@ function iniciarConferenciaPacotes() {
             if (somAlerta) {
                 enfileirarSom(somAlerta);
             }
+            registrarHistoricoLeitura('Leitura bloqueada', 'O pacote pertence a outro contexto de conferência.', valor);
             finalizarProcessamento(true);
             return;
         }
@@ -6295,6 +6587,7 @@ function iniciarConferenciaPacotes() {
         if (mensagemLeitura) {
             mensagemLeitura.textContent = '';
         }
+        registrarHistoricoLeitura('Pacote conferido', 'Leitura confirmada com sucesso.', valor);
 
         var ultimas = document.querySelectorAll('tr.ultimo-lido');
         for (var u = 0; u < ultimas.length; u++) {
