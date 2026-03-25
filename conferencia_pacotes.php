@@ -596,7 +596,8 @@ try {
         $snapshotBruto = isset($_POST['snapshot_oficio']) ? trim((string)$_POST['snapshot_oficio']) : '';
         $snapshot = $snapshotBruto !== '' ? json_decode($snapshotBruto, true) : array();
 
-        if ($responsavel === '') {
+        $responsavelLower = strtolower($responsavel);
+        if ($responsavel === '' || $responsavelLower === 'teste' || $responsavelLower === 'não informado' || $responsavelLower === 'nao informado') {
             die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio para gravar as etiquetas dos Correios.')));
         }
         if ($usuario === '') {
@@ -3205,6 +3206,30 @@ try {
     </div>
 </div>
 
+<div class="painel-malotes-utilitarios">
+    <div class="painel-controle-remoto">
+        <div class="painel-controle-topo">
+            <div>
+                <h4>Lacre Remoto</h4>
+                <div class="painel-controle-sub">Abra a página remota para lançar lacres e displays sem depender desta tela principal.</div>
+            </div>
+            <button type="button" class="btn-controle-remoto" id="btnAbrirControleRemoto">Abrir Lacre Remoto</button>
+        </div>
+        <div class="controle-canal-badge">Canal <?php echo e($controle_canal); ?></div>
+        <div class="painel-controle-dicas" id="statusControleRemoto">Use este atalho para abrir a página de entrada remota dos lacres.</div>
+    </div>
+    <div class="painel-previsao-malotes">
+        <div class="painel-previsao-topo">
+            <div>
+                <h4>Prévia</h4>
+                <div class="painel-previsao-sub">Acompanhe em tempo real a formação do ofício Correios com o mesmo modelo operacional do sistema.</div>
+            </div>
+            <button type="button" class="btn-previsao-malotes" id="btnAbrirPreviaMalotes">Abrir Prévia</button>
+        </div>
+        <div class="painel-previsao-dicas" id="statusPreviaMalotes">Abra a prévia em outra janela para acompanhar a montagem do ofício.</div>
+    </div>
+</div>
+
 <div id="secaoClassificacao" class="secao-visualizacao oculta">
 <div id="painel-estatisticas" style="display:block;">
     <div class="painel-operacao" id="painelOperacao">
@@ -5177,10 +5202,10 @@ function iniciarConferenciaPacotes() {
         var ref = window.open(url, '_blank');
         if (ref) {
             if (statusControleRemoto) {
-                statusControleRemoto.textContent = 'Controle remoto aberto no canal ' + (controleCanal || 'principal') + '.';
+                statusControleRemoto.textContent = 'Lacre Remoto aberto no canal ' + (controleCanal || 'principal') + '.';
             }
         } else if (statusControleRemoto) {
-            statusControleRemoto.textContent = 'O navegador bloqueou a abertura automática do controle remoto.';
+            statusControleRemoto.textContent = 'O navegador bloqueou a abertura automática da página Lacre Remoto.';
         }
     }
 
@@ -6645,7 +6670,7 @@ function iniciarConferenciaPacotes() {
             return response.json();
         })
         .then(function(data) {
-            if (!data.sucesso) {
+            if (!data || !data.success) {
                 console.error('Erro ao salvar:', data.erro);
             }
         })
@@ -7133,7 +7158,7 @@ function iniciarConferenciaPacotes() {
                     return response.json();
                 })
                 .then(function(data) {
-                    if (data.sucesso) {
+                    if (data && data.success) {
                         alert('Conferências resetadas com sucesso!');
                     } else {
                         console.error('Erro ao resetar:', data.erro);

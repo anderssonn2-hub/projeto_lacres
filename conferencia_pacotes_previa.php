@@ -373,6 +373,19 @@ try {
         .texto-rodape-lotes {
             margin-bottom: 18px;
         }
+        .quadro-resumo-oficio {
+            margin-top: 14px;
+        }
+        .quadro-resumo-oficio h3 {
+            margin: 0 0 6px;
+            font-size: 18px;
+            color: var(--tinta);
+        }
+        .quadro-resumo-oficio .subtitulo {
+            margin-bottom: 10px;
+            font-size: 11px;
+            color: var(--tinta-suave);
+        }
         .assinaturas {
             display: flex;
             justify-content: space-between;
@@ -590,7 +603,7 @@ try {
         <div class="barra-acoes">
             <div class="barra-esquerda">
                 <div class="titulo-pagina">Prévia do Ofício dos Correios</div>
-                <div class="subtitulo-pagina">Modelo editável para gravar e imprimir o ofício final dos Correios</div>
+                <div class="subtitulo-pagina">Modelo alinhado ao ofício Correios do sistema</div>
             </div>
             <div class="acoes">
                 <button type="button" class="btn btn-principal" id="btnGravarImprimir">Gravar e Imprimir Correios</button>
@@ -620,14 +633,14 @@ try {
             <div class="info-cliente-box">
                 <div class="info-cliente-texto">
                     <p><strong>CLIENTE:</strong> CORREIO - <strong>END.</strong>R: JOÃO NEGRÃO, 1251 - CENTRO - CURITIBA PARANÁ</p>
-                    <p><strong>SISTEMA:</strong> SIV -- <strong>SETOR:</strong> EXPEDIÇÃO</p>
+                    <p><strong>SISTEMA: </strong>SIV --<strong>SETOR: </strong>EXPEDIÇÃO</p>
                 </div>
                 <div class="numero-box" id="numeroOficioBox">Nº Prévia</div>
             </div>
 
             <div class="info-cliente-impressao">
                 <p><strong>CLIENTE:</strong> CORREIO - <strong>END.</strong>R: JOÃO NEGRÃO, 1251 - CENTRO - CURITIBA PARANÁ</p>
-                <p><strong>SISTEMA:</strong> SIV -- <strong>SETOR:</strong> EXPEDIÇÃO</p>
+                <p><strong>SISTEMA: </strong>SIV --<strong>SETOR: </strong>EXPEDIÇÃO</p>
             </div>
 
             <div class="cabecalho">
@@ -657,18 +670,17 @@ try {
             </div>
 
             <div class="documento-meta">
-                <div>Ofício Correios consolidado por malote.</div>
                 <div id="metaUltimoOficio">Último ofício Correios: <?php echo (int)$ultimoOficioCorreios; ?></div>
             </div>
 
-            <div class="subtitulo-quadro">Quando o mesmo posto usa mais de um conjunto de malotes, ele aparece em linhas separadas conforme os grupos fechados na conferência por chips.</div>
-
-            <div class="texto-abertura">Segue abaixo o modelo do ofício dos Correios já montado com base nos malotes conferidos. Antes de gravar, os campos de lacre IIPR, lacre Correios e etiqueta Correios podem ser ajustados manualmente nesta própria grade.</div>
-
-            <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
+            <div class="quadro-resumo-oficio">
+                <h3>Ofício Correios consolidado por malote</h3>
+                <div class="subtitulo">Quando o mesmo posto usa mais de um conjunto de malotes, ele aparece em linhas separadas conforme os grupos fechados na conferência por chips.</div>
+                <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
+            </div>
 
             <div class="rodape">
-                <div class="texto-rodape-lotes" id="textoRodapeLotes">Nenhuma linha pronta foi consolidada.</div>
+                <div class="texto-rodape-lotes" id="textoRodapeLotes" style="display:none;">Nenhuma linha pronta foi consolidada.</div>
                 <div class="assinaturas">
                     <div class="assinatura" id="assinaturaEsquerda">RESPONSÁVEL CELEPAR - Data: -</div>
                     <div class="assinatura">RESPONSÁVEL CORREIOS</div>
@@ -777,9 +789,6 @@ try {
                     return String(salvo).trim();
                 }
             } catch (e) {}
-            if (snapshot && nomeResponsavelValido(snapshot.usuario)) {
-                return String(snapshot.usuario || '').trim();
-            }
             return '';
         }
 
@@ -1117,7 +1126,7 @@ try {
             if (grupos['POSTO 001'].length) html += montarTabela('POSTO 001', grupos['POSTO 001']);
             if (grupos['CAPITAL'].length) html += montarTabela('CAPITAL', grupos['CAPITAL']);
             if (grupos['METROPOLITANA'].length) html += montarTabela('METROPOLITANA', grupos['METROPOLITANA']);
-            if (grupos['CENTRAL'].length) html += montarTabela('CENTRAL', grupos['CENTRAL']);
+            if (grupos['CENTRAL'].length) html += montarTabela('CENTRAL IIPR', grupos['CENTRAL']);
             if (grupos['REGIONAIS'].length) html += montarTabela('REGIONAIS', grupos['REGIONAIS']);
 
             areaGrade.className = '';
