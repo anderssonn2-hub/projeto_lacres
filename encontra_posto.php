@@ -160,12 +160,12 @@ try {
         try {
             $params_estante = array();
             if ($data_ini !== '') {
-                $whereEstante = "WHERE producao_de BETWEEN ? AND ?";
+                $whereEstante = "WHERE DATE(triado_em) BETWEEN ? AND ?";
                 $params_estante[] = $data_ini;
                 $params_estante[] = $data_fim;
             } else {
                 $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-                $whereEstante = "WHERE producao_de IN ($ph)";
+                $whereEstante = "WHERE DATE(triado_em) IN ($ph)";
                 $params_estante = $datas_alvo;
             }
             $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
@@ -392,12 +392,12 @@ try {
         try {
             $params_estante = array();
             if ($data_ini !== '') {
-                $whereEstante = "WHERE producao_de BETWEEN ? AND ?";
+                $whereEstante = "WHERE DATE(triado_em) BETWEEN ? AND ?";
                 $params_estante[] = $data_ini;
                 $params_estante[] = $data_fim;
             } else {
                 $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-                $whereEstante = "WHERE producao_de IN ($ph)";
+                $whereEstante = "WHERE DATE(triado_em) IN ($ph)";
                 $params_estante = $datas_alvo;
             }
             $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
