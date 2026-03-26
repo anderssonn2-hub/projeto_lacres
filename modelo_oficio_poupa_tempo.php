@@ -209,6 +209,9 @@ function normalizarDataPtSql($valor) {
     if ($valor === '') {
         return '';
     }
+    if (preg_match('/^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}$/', $valor, $m)) {
+        return $m[1];
+    }
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
         return $valor;
     }
@@ -920,27 +923,26 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
         $mapaConferidos = array();
         if (!empty($postosList)) {
             $inPostos = "'" . implode("','", array_map('strval', $postosList)) . "'";
-            $sqlConf = "SELECT DISTINCT nlote, nposto
+            $datasNormMapa = array();
+            foreach ($datasNorm as $dataFiltroPt) {
+                $dataFiltroNorm = normalizarDataPtSql($dataFiltroPt);
+                if ($dataFiltroNorm !== '') {
+                    $datasNormMapa[$dataFiltroNorm] = true;
+                }
+            }
+            $sqlConf = "SELECT DISTINCT nlote, nposto, dataexp
                         FROM conferencia_pacotes
                         WHERE conf IN ('s', 'S', '1', 1)
                           AND nposto IN ($inPostos)";
-            if (!empty($datasNorm)) {
-                $datasBr = array();
-                foreach ($datasNorm as $dataSqlPt) {
-                    $dataBrPt = formatarDataPtBr($dataSqlPt);
-                    if ($dataBrPt !== '') {
-                        $datasBr[] = $dataBrPt;
-                    }
-                }
-                $datasBr = array_values(array_unique($datasBr));
-                $inBr = !empty($datasBr) ? ("'" . implode("','", array_map('strval', $datasBr)) . "'") : "''";
-                $sqlConf .= " AND (dataexp IN ($in) OR dataexp IN ($inBr) OR DATE(dataexp) IN ($in)) ";
-            }
             try {
                 $stmtConf = $pdo_controle->query($sqlConf);
                 while ($rc = $stmtConf->fetch(PDO::FETCH_ASSOC)) {
                     $p = str_pad(preg_replace('/\D+/', '', (string)$rc['nposto']), 3, '0', STR_PAD_LEFT);
                     $l = str_pad(preg_replace('/\D+/', '', (string)$rc['nlote']), 8, '0', STR_PAD_LEFT);
+                    $dataConfNorm = normalizarDataPtSql(isset($rc['dataexp']) ? $rc['dataexp'] : '');
+                    if (!empty($datasNormMapa) && ($dataConfNorm === '' || !isset($datasNormMapa[$dataConfNorm]))) {
+                        continue;
+                    }
                     if ($p !== '' && $l !== '') {
                         if (!isset($mapaConferidos[$p])) { $mapaConferidos[$p] = array(); }
                         $mapaConferidos[$p][$l] = true;
