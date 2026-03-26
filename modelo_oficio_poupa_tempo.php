@@ -940,7 +940,7 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
                 $stmtConf = $pdo_controle->query($sqlConf);
                 while ($rc = $stmtConf->fetch(PDO::FETCH_ASSOC)) {
                     $p = str_pad(preg_replace('/\D+/', '', (string)$rc['nposto']), 3, '0', STR_PAD_LEFT);
-                    $l = preg_replace('/\D+/', '', (string)$rc['nlote']);
+                    $l = str_pad(preg_replace('/\D+/', '', (string)$rc['nlote']), 8, '0', STR_PAD_LEFT);
                     if ($p !== '' && $l !== '') {
                         if (!isset($mapaConferidos[$p])) { $mapaConferidos[$p] = array(); }
                         $mapaConferidos[$p][$l] = true;
@@ -2290,7 +2290,7 @@ if (document.readyState === 'loading') {
                             <tbody>
                                 <?php foreach ($lotes_pagina as $lote): ?>
                                 <?php
-                                    $lote_num_render = preg_replace('/\D+/', '', (string)$lote['lote']);
+                                    $lote_num_render = str_pad(preg_replace('/\D+/', '', (string)$lote['lote']), 8, '0', STR_PAD_LEFT);
                                     $esta_conferido = (!$modo_branco && $lote_num_render !== '' && isset($mapaConferidos[$codigo3]) && isset($mapaConferidos[$codigo3][$lote_num_render]));
                                 ?>
                                 <tr class="linha-lote<?php echo $esta_conferido ? ' conferido' : ''; ?>" data-posto="<?php echo e($codigo3); ?>" data-lote="<?php echo e($lote['lote']); ?>" data-checked="1" data-quantidade="<?php echo e($lote['quantidade']); ?>" data-data-carga="<?php echo e($lote['data_carga']); ?>">
