@@ -504,6 +504,7 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
                 carregarItens(function(okLista, itensLista) {
                     if (okLista) {
                         renderizar(itensLista);
+                        fechar();
                     }
                 });
             });
