@@ -1695,26 +1695,31 @@ try {
             position: fixed;
             left: 18px;
             bottom: 18px;
-            z-index: 1190;
+            z-index: 21010;
             display: none;
-            width: 46px;
-            height: 46px;
-            border: none;
+            width: 56px;
+            height: 56px;
+            border: 2px solid rgba(255,255,255,0.9);
             border-radius: 999px;
-            background: #1f2b6d;
+            background: #0f172a;
             color: #fff;
-            font-size: 22px;
+            font-size: 28px;
             font-weight: 700;
             cursor: pointer;
-            box-shadow: 0 10px 24px rgba(0,0,0,0.24);
+            box-shadow: 0 14px 28px rgba(0,0,0,0.34);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease;
         }
         .btn-topo-pagina.visivel {
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            opacity: 1;
+            transform: translateY(0);
         }
         .btn-topo-pagina:hover {
-            background: #162057;
+            background: #1e293b;
         }
 
         .painel-estante {
@@ -7126,6 +7131,7 @@ if (document.readyState === 'loading') {
 
 <button type="button" id="btnTopoPagina" class="btn-topo-pagina" title="Voltar ao topo">↑</button>
 
+<?php include __DIR__ . '/processando_overlay.php'; ?>
 <?php include __DIR__ . '/melhorias_widget.php'; ?>
 
 <script>
@@ -7137,7 +7143,7 @@ if (document.readyState === 'loading') {
 
     function atualizarVisibilidadeTopo() {
         var topoAtual = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-        if (topoAtual > 320) {
+        if (topoAtual > 120) {
             btnTopo.className = 'btn-topo-pagina visivel';
         } else {
             btnTopo.className = 'btn-topo-pagina';

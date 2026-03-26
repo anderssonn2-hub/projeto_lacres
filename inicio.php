@@ -180,6 +180,7 @@
       </section>
     </div>
   </div>
+  <?php include __DIR__ . '/processando_overlay.php'; ?>
   <?php include __DIR__ . '/melhorias_widget.php'; ?>
 </body>
 </html>
