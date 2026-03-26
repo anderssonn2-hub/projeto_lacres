@@ -201,6 +201,15 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
     font-size: 12px;
     text-align: center;
 }
+.melhorias-widget-erro {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fdecea;
+    color: #9f2d20;
+    font-size: 12px;
+    display: none;
+}
 @media (max-width: 640px) {
     .melhorias-widget-painel {
         right: 12px;
@@ -282,6 +291,7 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
                 </div>
             </form>
 
+            <div id="melhoriasWidgetErro" class="melhorias-widget-erro"></div>
             <div id="melhoriasWidgetLista" class="melhorias-widget-lista"></div>
         </div>
     </div>
@@ -294,7 +304,7 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
     }
     window.__melhoriasWidgetInicializado = true;
 
-    var storageKey = 'projeto_lacres_melhorias_v1';
+    var apiUrl = 'melhorias_widget_api.php';
     var botao = document.getElementById('melhoriasWidgetBotao');
     var fundo = document.getElementById('melhoriasWidgetFundo');
     var lista = document.getElementById('melhoriasWidgetLista');
@@ -307,22 +317,64 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
     var resumoPendentes = document.getElementById('melhoriasResumoPendentes');
     var resumoConcluidas = document.getElementById('melhoriasResumoConcluidas');
     var botaoFechar = document.getElementById('melhoriasWidgetFechar');
+    var erroBox = document.getElementById('melhoriasWidgetErro');
+    var itensCache = [];
 
-    function carregarItens() {
-        var itens = [];
-        try {
-            itens = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        } catch (e) {
-            itens = [];
+    function mostrarErro(texto) {
+        if (!erroBox) return;
+        if (!texto) {
+            erroBox.style.display = 'none';
+            erroBox.innerHTML = '';
+            return;
         }
-        if (!itens || typeof itens.length === 'undefined') {
-            itens = [];
-        }
-        return itens;
+        erroBox.style.display = 'block';
+        erroBox.innerHTML = escapar(texto);
     }
 
-    function salvarItens(itens) {
-        localStorage.setItem(storageKey, JSON.stringify(itens));
+    function requisicao(acao, dados, callback) {
+        var xhr = new XMLHttpRequest();
+        var payload = [];
+        var chave;
+        xhr.open('POST', apiUrl, true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+        xhr.onreadystatechange = function() {
+            var resposta;
+            if (xhr.readyState !== 4) {
+                return;
+            }
+            try {
+                resposta = JSON.parse(xhr.responseText);
+            } catch (e) {
+                callback(false, { erro: 'Resposta invalida da API de melhorias.' });
+                return;
+            }
+            if (xhr.status >= 200 && xhr.status < 300 && resposta && resposta.success) {
+                callback(true, resposta);
+                return;
+            }
+            callback(false, resposta || { erro: 'Falha ao acessar API de melhorias.' });
+        };
+        payload.push('acao=' + encodeURIComponent(acao));
+        dados = dados || {};
+        for (chave in dados) {
+            if (Object.prototype.hasOwnProperty.call(dados, chave)) {
+                payload.push(encodeURIComponent(chave) + '=' + encodeURIComponent(dados[chave]));
+            }
+        }
+        xhr.send(payload.join('&'));
+    }
+
+    function carregarItens(callback) {
+        requisicao('listar', {}, function(ok, resposta) {
+            if (ok) {
+                itensCache = resposta.itens || [];
+                mostrarErro('');
+                if (callback) callback(true, itensCache);
+                return;
+            }
+            mostrarErro(resposta && resposta.erro ? resposta.erro : 'Nao foi possivel carregar as melhorias.');
+            if (callback) callback(false, []);
+        });
     }
 
     function atualizarResumo(itens) {
@@ -341,10 +393,10 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
         resumoConcluidas.innerHTML = String(concluidas);
     }
 
-    function renderizar() {
-        var itens = carregarItens();
+    function renderizar(itens) {
         var html = '';
         var i;
+        itens = itens || itensCache || [];
         atualizarResumo(itens);
 
         if (!itens.length) {
@@ -435,21 +487,26 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
                 return false;
             }
 
-            itens = carregarItens();
-            novoItem = {
-                id: 'melhoria_' + new Date().getTime(),
+            mostrarErro('');
+            requisicao('criar', {
                 titulo: titulo.value.replace(/^\s+|\s+$/g, ''),
                 descricao: descricao.value.replace(/^\s+|\s+$/g, ''),
                 status: status.value,
-                pagina: pagina.value.replace(/^\s+|\s+$/g, ''),
-                atualizado_em: new Date().toISOString()
-            };
-            itens.push(novoItem);
-            salvarItens(itens);
-            titulo.value = '';
-            descricao.value = '';
-            status.value = 'pendente';
-            renderizar();
+                pagina: pagina.value.replace(/^\s+|\s+$/g, '')
+            }, function(ok, resposta) {
+                if (!ok) {
+                    mostrarErro(resposta && resposta.erro ? resposta.erro : 'Falha ao salvar melhoria.');
+                    return;
+                }
+                titulo.value = '';
+                descricao.value = '';
+                status.value = 'pendente';
+                carregarItens(function(okLista, itensLista) {
+                    if (okLista) {
+                        renderizar(itensLista);
+                    }
+                });
+            });
             return false;
         };
     }
@@ -470,24 +527,30 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
             if (!item) {
                 return;
             }
-            itens = carregarItens();
-            for (i = 0; i < itens.length; i++) {
-                if (itens[i].id === item.getAttribute('data-id')) {
-                    itens[i].status = alvo.value;
-                    itens[i].atualizado_em = new Date().toISOString();
-                    break;
+            requisicao('atualizar_status', {
+                id: item.getAttribute('data-id'),
+                status: alvo.value
+            }, function(ok, resposta) {
+                if (!ok) {
+                    mostrarErro(resposta && resposta.erro ? resposta.erro : 'Falha ao atualizar status.');
+                    carregarItens(function(okLista, itensLista) {
+                        if (okLista) {
+                            renderizar(itensLista);
+                        }
+                    });
+                    return;
                 }
-            }
-            salvarItens(itens);
-            renderizar();
+                carregarItens(function(okLista, itensLista) {
+                    if (okLista) {
+                        renderizar(itensLista);
+                    }
+                });
+            });
         };
 
         lista.onclick = function(event) {
             var alvo = event.target;
             var item;
-            var itens;
-            var filtrados = [];
-            var i;
             if (!alvo || alvo.getAttribute('data-acao') !== 'excluir') {
                 return;
             }
@@ -498,14 +561,19 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
             if (!item) {
                 return;
             }
-            itens = carregarItens();
-            for (i = 0; i < itens.length; i++) {
-                if (itens[i].id !== item.getAttribute('data-id')) {
-                    filtrados.push(itens[i]);
+            requisicao('excluir', {
+                id: item.getAttribute('data-id')
+            }, function(ok, resposta) {
+                if (!ok) {
+                    mostrarErro(resposta && resposta.erro ? resposta.erro : 'Falha ao excluir melhoria.');
+                    return;
                 }
-            }
-            salvarItens(filtrados);
-            renderizar();
+                carregarItens(function(okLista, itensLista) {
+                    if (okLista) {
+                        renderizar(itensLista);
+                    }
+                });
+            });
         };
     }
 
@@ -515,6 +583,12 @@ $melhoriasWidgetPagina = htmlspecialchars($melhoriasWidgetPagina, ENT_QUOTES, 'U
         }
     });
 
-    renderizar();
+    carregarItens(function(okLista, itensLista) {
+        if (okLista) {
+            renderizar(itensLista);
+        } else {
+            renderizar([]);
+        }
+    });
 })();
 </script>

@@ -222,7 +222,7 @@ try {
             $stmtSemTot->execute(array_merge($params_estante, $params_upload));
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
 
-            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_em
+            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, quantidade, producao_de, triado_em
                 FROM lotes_na_estante
                 $whereEstante
                 ORDER BY triado_em DESC, id DESC
@@ -233,6 +233,7 @@ try {
                     'lote' => $row['lote'],
                     'posto' => $row['posto'],
                     'regional' => $row['regional'],
+                    'quantidade' => isset($row['quantidade']) ? (int)$row['quantidade'] : 0,
                     'producao_de' => $row['producao_de'],
                     'triado_em' => $row['triado_em']
                 );
@@ -453,7 +454,7 @@ try {
             $stmtSemTot->execute(array_merge($params_estante, $params_upload));
             $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
 
-            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, producao_de, triado_em
+            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, quantidade, producao_de, triado_em
                 FROM lotes_na_estante
                 $whereEstante
                 ORDER BY triado_em DESC, id DESC
@@ -464,6 +465,7 @@ try {
                     'lote' => $row['lote'],
                     'posto' => $row['posto'],
                     'regional' => $row['regional'],
+                    'quantidade' => isset($row['quantidade']) ? (int)$row['quantidade'] : 0,
                     'producao_de' => $row['producao_de'],
                     'triado_em' => $row['triado_em']
                 );
@@ -619,6 +621,48 @@ try {
         .lista-lotes { display:flex; flex-wrap:wrap; gap:6px; }
         .lote-badge {
             background:#263238; color:#fff; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700;
+        }
+
+        .painel-historico {
+            background: #ffffff; border-radius: 10px;
+            padding: 16px 20px; margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .painel-historico h3 { margin: 0 0 6px; font-size: 15px; color:#333; }
+        .painel-historico .subtitulo { font-size: 12px; color:#5f6b7a; margin-bottom: 10px; }
+        .historico-tabela-wrap {
+            overflow-x: auto;
+            border: 1px solid #e4e8ee;
+            border-radius: 8px;
+        }
+        .historico-tabela {
+            width: 100%;
+            min-width: 640px;
+            border-collapse: collapse;
+            background: #fff;
+        }
+        .historico-tabela th,
+        .historico-tabela td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #edf1f5;
+            font-size: 12px;
+            text-align: left;
+        }
+        .historico-tabela th {
+            background: #eef3ff;
+            color: #1a237e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-size: 11px;
+        }
+        .historico-tabela tbody tr:nth-child(even) {
+            background: #fafbfd;
+        }
+        .historico-vazio {
+            padding: 16px;
+            text-align: center;
+            color: #64748b;
+            font-size: 12px;
         }
 
         .resultado-posto {
@@ -883,6 +927,28 @@ try {
         <div class="lista-lotes" id="listaSemUpload"></div>
     </div>
 
+    <div class="painel-historico" id="painelHistoricoLeituras">
+        <h3>Pacotes ja lidos na estante</h3>
+        <div class="subtitulo" id="historicoLeiturasSubtitulo">Listagem conforme o periodo aplicado.</div>
+        <div class="historico-tabela-wrap">
+            <table class="historico-tabela">
+                <thead>
+                    <tr>
+                        <th>Lote</th>
+                        <th>Posto</th>
+                        <th>Regional</th>
+                        <th>Qtd</th>
+                        <th>Data producao</th>
+                        <th>Lido em</th>
+                    </tr>
+                </thead>
+                <tbody id="historicoLeiturasBody">
+                    <tr><td colspan="6" class="historico-vazio">Nenhum pacote lido para o filtro atual.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div class="resultado-posto" id="resultadoPosto">
         <div class="resultado-header" id="resultadoHeader">
             <div class="numero-posto" id="resultadoNumero"></div>
@@ -921,6 +987,7 @@ var contRegional = 0;
 var contPT = 0;
 var contSemUpload = 0;
 var lotesSemUpload = [];
+var historicoLeituras = [];
 var audioFilaAtiva = false;
 var audioFila = [];
 
@@ -1324,6 +1391,10 @@ function exibirResultado(dados) {
         lotesSemUpload = dados.sem_upload.lotes || [];
         renderizarSemUpload();
     }
+    if (dados.historico) {
+        historicoLeituras = dados.historico || [];
+        renderizarHistoricoLeituras();
+    }
 
     if (dados.layout) {
         estanteLayout = dados.layout || { correios: {}, poupatempo: {}, totais: {} };
@@ -1369,6 +1440,50 @@ function renderizarSemUpload() {
         html += '<span class="lote-badge">' + lotesSemUpload[i] + '</span>';
     }
     lista.innerHTML = html;
+}
+
+function formatarDataHoraBr(valor) {
+    var texto = String(valor || '').trim();
+    var m = texto.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (m) {
+        return m[3] + '-' + m[2] + '-' + m[1] + ' ' + m[4] + ':' + m[5] + (m[6] ? ':' + m[6] : '');
+    }
+    return texto;
+}
+
+function renderizarHistoricoLeituras() {
+    var corpo = document.getElementById('historicoLeiturasBody');
+    var subtitulo = document.getElementById('historicoLeiturasSubtitulo');
+    var dataIni = obterDataIni();
+    var dataFim = obterDataFim() || dataIni;
+    var html = '';
+    var i;
+    if (!corpo) return;
+
+    if (subtitulo) {
+        if (dataIni) {
+            subtitulo.textContent = 'Listagem conforme o periodo aplicado: ' + formatarDataBr(dataIni) + ' a ' + formatarDataBr(dataFim) + '.';
+        } else {
+            subtitulo.textContent = 'Listagem conforme o periodo aplicado.';
+        }
+    }
+
+    if (!historicoLeituras || historicoLeituras.length === 0) {
+        corpo.innerHTML = '<tr><td colspan="6" class="historico-vazio">Nenhum pacote lido para o filtro atual.</td></tr>';
+        return;
+    }
+
+    for (i = 0; i < historicoLeituras.length; i++) {
+        html += '<tr>' +
+            '<td><strong>' + historicoLeituras[i].lote + '</strong></td>' +
+            '<td>' + historicoLeituras[i].posto + '</td>' +
+            '<td>' + historicoLeituras[i].regional + '</td>' +
+            '<td>' + String(historicoLeituras[i].quantidade || 0) + '</td>' +
+            '<td>' + formatarDataBr(historicoLeituras[i].producao_de || '') + '</td>' +
+            '<td>' + formatarDataHoraBr(historicoLeituras[i].triado_em || '') + '</td>' +
+            '</tr>';
+    }
+    corpo.innerHTML = html;
 }
 
 var prateleirasCorreiosA = [
@@ -1538,7 +1653,9 @@ function carregarEstanteInicial() {
     var dataFim = obterDataFim();
     if (!dataIni) {
         contTotal = 0; contCapital = 0; contCentral = 0; contRegional = 0; contPT = 0; contSemUpload = 0; lotesSemUpload = [];
+        historicoLeituras = [];
         renderizarSemUpload();
+        renderizarHistoricoLeituras();
         atualizarStats();
         estanteLayout = { correios: {}, poupatempo: {}, totais: {} };
         renderizarEstantes();
@@ -1569,6 +1686,10 @@ function carregarEstanteInicial() {
                         contSemUpload = resp.sem_upload.total || 0;
                         lotesSemUpload = resp.sem_upload.lotes || [];
                         renderizarSemUpload();
+                    }
+                    if (resp.historico) {
+                        historicoLeituras = resp.historico || [];
+                        renderizarHistoricoLeituras();
                     }
                     if (resp.layout) {
                         estanteLayout = resp.layout || { correios: {}, poupatempo: {}, totais: {} };
@@ -1676,6 +1797,7 @@ for (var i = 0; i < toggleBtns.length; i++) {
     });
 }
 carregarEstanteInicial();
+renderizarHistoricoLeituras();
 
 </script>
 
