@@ -344,11 +344,6 @@ try {
         .campo-impressao[readonly] {
             cursor: default;
         }
-        .campo-impressao.foco-remoto {
-            border-color: var(--destaque);
-            box-shadow: 0 0 0 2px rgba(22,155,65,0.18);
-            background: #f6fff8;
-        }
         .campo-lacres-iipr {
             font-family: "Courier New", monospace;
         }
@@ -721,7 +716,6 @@ try {
             salvando: false
         };
         var channel = null;
-        var ultimoTokenFocoRemotoAplicado = '';
 
         function escapeHtml(valor) {
             return String(valor || '')
@@ -801,60 +795,29 @@ try {
 
         function itemAceitaEstadoRemoto(item) {
             if (!item) return false;
-            if (item.linha_manual) return true;
             if (item.pendente_lacre) return true;
             return !item.grupo_correios && !item.grupo_iipr && !item.etiqueta_correios;
         }
 
-        function normalizarCampoRemoto(estado) {
-            var campo = String(estado && estado.campo_ativo ? estado.campo_ativo : '').trim().toLowerCase();
-            if (campo === 'iipr' || campo === 'lacre_iipr') return 'lacre_iipr';
-            if (campo === 'correios' || campo === 'correios_lacre' || campo === 'lacre_correios') return 'lacre_correios';
-            if (campo === 'display' || campo === 'etiqueta' || campo === 'correios_etiqueta' || campo === 'etiqueta_correios') return 'etiqueta_correios';
-            return '';
-        }
-
-        function campoResumoVazio(item, campo) {
-            return String(item && item[campo] ? item[campo] : '').trim() === '';
-        }
-
-        function localizarIndiceDestinoRemoto(snapshot, estado, campo) {
-            if (!snapshot || !snapshot.resumo || !snapshot.resumo.length) return -1;
-            var rowKeyAtivo = String(estado && estado.row_key_ativo ? estado.row_key_ativo : '').trim();
+        function aplicarEstadoRemotoAoSnapshot(snapshot, estado) {
+            if (!snapshot || !snapshot.resumo || !snapshot.resumo.length || !estado) return snapshot;
+            var chavesEstado = obterChavesContextoRemoto(estado);
+            if (!chavesEstado.length) return snapshot;
+            var alterou = false;
             var candidatos = [];
             var preferenciais = [];
-            if (rowKeyAtivo) {
-                for (var idx = 0; idx < snapshot.resumo.length; idx++) {
-                    if (String(snapshot.resumo[idx].row_key || '') === rowKeyAtivo) {
-                        return idx;
-                    }
-                }
-            }
-            var chavesEstado = obterChavesContextoRemoto(estado);
-            if (!chavesEstado.length) return -1;
             for (var i = 0; i < snapshot.resumo.length; i++) {
                 var item = snapshot.resumo[i] || {};
                 if (!itemCorrespondeAoEstado(item, chavesEstado)) continue;
                 candidatos.push(i);
-                if (item.linha_manual || itemAceitaEstadoRemoto(item) || (campo && campoResumoVazio(item, campo))) {
+                if (itemAceitaEstadoRemoto(item)) {
                     preferenciais.push(i);
                 }
             }
-            if (preferenciais.length) {
-                return preferenciais[preferenciais.length - 1];
-            }
-            if (candidatos.length) {
-                return candidatos[candidatos.length - 1];
-            }
-            return -1;
-        }
+            var indicesAtualizacao = preferenciais.length ? preferenciais : candidatos;
+            if (!indicesAtualizacao.length) return snapshot;
 
-        function aplicarEstadoRemotoAoSnapshot(snapshot, estado) {
-            if (!snapshot || !snapshot.resumo || !snapshot.resumo.length || !estado) return snapshot;
-            var campoAtivo = normalizarCampoRemoto(estado);
-            var indiceDestino = localizarIndiceDestinoRemoto(snapshot, estado, campoAtivo);
-            if (indiceDestino < 0) return snapshot;
-            var alterou = false;
+            var indiceDestino = indicesAtualizacao[indicesAtualizacao.length - 1];
             var itemDestino = snapshot.resumo[indiceDestino] || {};
             if (estado.lacre_iipr && itemDestino.lacre_iipr !== estado.lacre_iipr) {
                 itemDestino.lacre_iipr = String(estado.lacre_iipr || '').trim();
@@ -875,47 +838,6 @@ try {
             return snapshot;
         }
 
-        function limparMarcacaoFocoRemoto() {
-            var marcados = areaGrade.querySelectorAll('.campo-editavel.foco-remoto');
-            for (var i = 0; i < marcados.length; i++) {
-                marcados[i].classList.remove('foco-remoto');
-            }
-        }
-
-        function aplicarFocoRemoto(estado, snapshot) {
-            var campo = normalizarCampoRemoto(estado);
-            var token = String(estado && estado.foco_token ? estado.foco_token : '').trim();
-            if (!campo || !token || token === ultimoTokenFocoRemotoAplicado) {
-                return;
-            }
-            var indice = localizarIndiceDestinoRemoto(snapshot, estado, campo);
-            if (indice < 0) return;
-            var item = snapshot && snapshot.resumo ? snapshot.resumo[indice] : null;
-            var rowKey = item && item.row_key ? String(item.row_key) : '';
-            if (!rowKey) return;
-            window.requestAnimationFrame(function() {
-                var campos = areaGrade.querySelectorAll('.campo-editavel');
-                var alvo = null;
-                for (var i = 0; i < campos.length; i++) {
-                    if (String(campos[i].getAttribute('data-row-key') || '') !== rowKey) continue;
-                    if (String(campos[i].getAttribute('data-field') || '') !== campo) continue;
-                    alvo = campos[i];
-                    break;
-                }
-                if (!alvo) return;
-                limparMarcacaoFocoRemoto();
-                alvo.classList.add('foco-remoto');
-                alvo.focus();
-                if (typeof alvo.select === 'function') {
-                    alvo.select();
-                }
-                if (typeof alvo.scrollIntoView === 'function') {
-                    alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-                ultimoTokenFocoRemotoAplicado = token;
-            });
-        }
-
         function sincronizarComEstadoRemoto() {
             fetch('conferencia_pacotes.php?ler_estado_remoto_ajax=1&canal=' + encodeURIComponent(canalControle), { cache: 'no-store' })
                 .then(function(resp) { return resp.json(); })
@@ -926,7 +848,6 @@ try {
                     if (!snapshot) return;
                     snapshot = aplicarEstadoRemotoAoSnapshot(snapshot, estado);
                     renderizarQuandoPossivel(snapshot);
-                    aplicarFocoRemoto(estado, snapshot);
                 })
                 .catch(function() {});
         }
@@ -1014,8 +935,7 @@ try {
                     etiqueta_correios: item.etiqueta_correios || '',
                     lotes: item.lotes || [],
                     qtd_total: item.qtd_total || 0,
-                    pendente_lacre: !!item.pendente_lacre,
-                    linha_manual: !!item.linha_manual
+                    pendente_lacre: !!item.pendente_lacre
                 });
             }
 

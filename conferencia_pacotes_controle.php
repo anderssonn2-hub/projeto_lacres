@@ -8,7 +8,7 @@ if ($controle_canal === '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Lacres Remoto v0.9.25.18</title>
+    <title>Controle Simplificado dos Malotes v0.9.25.17</title>
     <style>
         :root {
             --bg: #eef3f9;
@@ -19,7 +19,6 @@ if ($controle_canal === '') {
             --ok: #0f766e;
             --blue: #1d4ed8;
             --amber: #b45309;
-            --purple: #7c3aed;
         }
         * { box-sizing: border-box; }
         body {
@@ -29,9 +28,9 @@ if ($controle_canal === '') {
             color: var(--text);
         }
         .wrap {
-            max-width: 760px;
+            max-width: 680px;
             margin: 0 auto;
-            padding: 14px 14px 32px;
+            padding: 16px 14px 28px;
         }
         .card {
             background: var(--card);
@@ -42,18 +41,8 @@ if ($controle_canal === '') {
             margin-bottom: 14px;
         }
         h1, h2 { margin: 0; }
-        h1 { font-size: 26px; letter-spacing: 0.01em; }
-        h2 { font-size: 18px; margin-bottom: 10px; }
-        .hero-card {
-            padding: 18px;
-        }
-        .hero-topo {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
+        h1 { font-size: 24px; }
+        h2 { font-size: 17px; margin-bottom: 10px; }
         .sub {
             margin-top: 8px;
             color: var(--sub);
@@ -121,17 +110,10 @@ if ($controle_canal === '') {
             padding: 14px 12px;
             font-size: 18px;
             background: #fff;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-        }
-        .campo input:focus,
-        .campo input.ativo-remoto {
-            border-color: var(--blue);
-            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
-            outline: none;
         }
         .acoes {
             display: grid;
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
             margin-top: 12px;
         }
@@ -146,39 +128,14 @@ if ($controle_canal === '') {
             cursor: pointer;
             touch-action: manipulation;
         }
-        .btn-triplo small {
-            display: block;
-            margin-top: 4px;
-            font-size: 12px;
-            font-weight: 700;
-            opacity: 0.86;
-        }
         .btn-blue { background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%); }
         .btn-green { background: linear-gradient(180deg, #0f766e 0%, #115e59 100%); }
         .btn-amber { background: linear-gradient(180deg, #d97706 0%, #b45309 100%); }
-        .btn-purple { background: linear-gradient(180deg, #8b5cf6 0%, #6d28d9 100%); }
         .ajuda {
             margin-top: 10px;
             color: var(--sub);
             font-size: 12px;
             line-height: 1.6;
-        }
-        .passo {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 30px;
-            height: 30px;
-            border-radius: 999px;
-            background: #e8eef8;
-            color: var(--blue);
-            font-size: 13px;
-            font-weight: 800;
-            margin-bottom: 10px;
-        }
-        .card-compacto {
-            padding-top: 14px;
-            padding-bottom: 14px;
         }
         .link-comandos {
             display: inline-flex;
@@ -189,39 +146,23 @@ if ($controle_canal === '') {
             text-decoration: none;
         }
         @media (max-width: 640px) {
-            .hero-card {
-                padding: 16px;
-            }
-            .hero-topo,
             .estado-grid,
             .acoes {
                 grid-template-columns: 1fr;
-            }
-            h1 {
-                font-size: 22px;
-            }
-            .btn-triplo {
-                padding: 18px 14px;
-                font-size: 16px;
-            }
-            .campo input {
-                font-size: 19px;
-                padding: 16px 12px;
             }
         }
     </style>
 </head>
 <body>
     <div class="wrap">
-        <section class="card hero-card">
-            <div class="hero-topo">
-                <h1>Lacres Remoto</h1>
-                <span class="badge">Canal: <span id="canalAtual"><?php echo htmlspecialchars($controle_canal, ENT_QUOTES, 'UTF-8'); ?></span></span>
-            </div>
+        <section class="card">
+            <h1>Controle simplificado</h1>
+            <div class="sub">Fluxo direto por contexto atual da conferência: atribuir Lacre IIPR, atribuir Lacre Correios e depois atribuir Display Correios. Todos os botões continuam exigindo 3 toques.</div>
+            <div style="margin-top:12px;"><span class="badge">Canal: <span id="canalAtual"><?php echo htmlspecialchars($controle_canal, ENT_QUOTES, 'UTF-8'); ?></span></span></div>
             <div class="status" id="statusEnvio">Aguardando operação.</div>
             <div class="estado-grid">
                 <div class="estado-item">
-                    <div class="label">Regional</div>
+                    <div class="label">Contexto em conferência</div>
                     <div class="valor" id="estadoRegional">-</div>
                 </div>
                 <div class="estado-item">
@@ -233,50 +174,38 @@ if ($controle_canal === '') {
             <a class="link-comandos" href="conferencia_pacotes_comandos.php" target="_blank" rel="noopener">Abrir folha de comandos por código de barras</a>
         </section>
 
-        <section class="card card-compacto">
-            <div class="passo">1</div>
-            <h2>Lacre IIPR</h2>
+        <section class="card">
+            <h2>1. Fechar malote IIPR</h2>
             <div class="campo">
                 <label for="inputLacreIiprRemoto">Lacre IIPR</label>
                 <input type="text" id="inputLacreIiprRemoto" inputmode="numeric" maxlength="12" placeholder="Ex.: 100">
             </div>
             <div class="acoes">
-                <button type="button" class="btn-triplo btn-blue" data-acao="atribuir_iipr">Atribuir Lacre IIPR<small>Exige 3 toques</small></button>
+                <button type="button" class="btn-triplo btn-blue" data-acao="atribuir_iipr">Atribuir lacre IIPR</button>
             </div>
         </section>
 
-        <section class="card card-compacto">
-            <div class="passo">2</div>
-            <h2>Lacre Correios</h2>
+        <section class="card">
+            <h2>2. Fechar malote Correios</h2>
             <div class="campo">
                 <label for="inputLacreCorreiosRemoto">Lacre Correios</label>
                 <input type="text" id="inputLacreCorreiosRemoto" inputmode="numeric" maxlength="12" placeholder="Ex.: 101">
             </div>
             <div class="acoes">
-                <button type="button" class="btn-triplo btn-amber" data-acao="atribuir_correios">Atribuir Lacre Correios<small>Exige 3 toques</small></button>
+                <button type="button" class="btn-triplo btn-amber" data-acao="atribuir_correios">Atribuir lacre Correios</button>
             </div>
         </section>
 
-        <section class="card card-compacto">
-            <div class="passo">3</div>
-            <h2>Display Correios</h2>
+        <section class="card">
+            <h2>3. Atribuir display Correios</h2>
             <div class="campo">
                 <label for="inputEtiquetaCorreiosRemoto">Etiqueta Correios</label>
                 <input type="text" id="inputEtiquetaCorreiosRemoto" inputmode="numeric" maxlength="35" placeholder="Leia ou digite os 35 caracteres">
             </div>
             <div class="acoes">
-                <button type="button" class="btn-triplo btn-green" data-acao="atribuir_display">Atribuir Display Correios<small>Exige 3 toques</small></button>
+                <button type="button" class="btn-triplo btn-green" data-acao="atribuir_display">Atribuir display Correios</button>
             </div>
-            <div class="ajuda">Ao tocar neste campo ou neste botão, a prévia ativa o input correspondente para leitura direta do código de barras.</div>
-        </section>
-
-        <section class="card card-compacto">
-            <div class="passo">4</div>
-            <h2>Mais uma linha no ofício</h2>
-            <div class="acoes">
-                <button type="button" class="btn-triplo btn-purple" data-acao="adicionar_linha">Adicionar Linha para Este Posto<small>Exige 3 toques</small></button>
-            </div>
-            <div class="ajuda">Use quando o mesmo posto precisar aparecer mais uma vez na prévia e no ofício final.</div>
+            <div class="ajuda">Use este botão depois de atribuir o Lacre Correios. O sistema completa o malote Correios aberto do contexto atual.</div>
         </section>
     </div>
 
@@ -292,94 +221,6 @@ if ($controle_canal === '') {
         var inputEtiquetaCorreiosRemoto = document.getElementById('inputEtiquetaCorreiosRemoto');
         var toques = {};
         var ultimoEstadoRemoto = null;
-
-        function formatarRegionalExibicao(valor) {
-            var digitos = String(valor || '').replace(/\D+/g, '');
-            if (!digitos) return '-';
-            digitos = digitos.slice(-3).padStart(3, '0');
-            if (digitos === '000') return 'CAPITAL';
-            if (digitos === '001') return 'METROPOLITANA';
-            if (digitos === '999') return 'CENTRAL IIPR';
-            return 'Regional ' + digitos;
-        }
-
-        function normalizarCampoAtivo(campo) {
-            campo = String(campo || '').trim().toLowerCase();
-            if (campo === 'iipr' || campo === 'lacre_iipr') return 'lacre_iipr';
-            if (campo === 'correios' || campo === 'correios_lacre' || campo === 'lacre_correios') return 'lacre_correios';
-            if (campo === 'display' || campo === 'etiqueta' || campo === 'correios_etiqueta' || campo === 'etiqueta_correios') return 'etiqueta_correios';
-            return '';
-        }
-
-        function criarTokenFoco() {
-            return String(Date.now()) + '_' + String(Math.floor(Math.random() * 100000));
-        }
-
-        function acaoParaCampo(acao) {
-            if (acao === 'atribuir_iipr') return 'lacre_iipr';
-            if (acao === 'atribuir_correios') return 'lacre_correios';
-            if (acao === 'atribuir_display') return 'etiqueta_correios';
-            return '';
-        }
-
-        function destacarInputAtivo(campo) {
-            var mapa = {
-                lacre_iipr: inputLacreIiprRemoto,
-                lacre_correios: inputLacreCorreiosRemoto,
-                etiqueta_correios: inputEtiquetaCorreiosRemoto
-            };
-            for (var chave in mapa) {
-                if (!Object.prototype.hasOwnProperty.call(mapa, chave) || !mapa[chave]) continue;
-                mapa[chave].classList.toggle('ativo-remoto', chave === campo);
-            }
-        }
-
-        function publicarEstadoRemotoParcial(parcial) {
-            parcial = parcial || {};
-            var formData = new FormData();
-            formData.append('atualizar_estado_remoto_ajax', '1');
-            formData.append('canal', canal);
-            formData.append('usuario', Object.prototype.hasOwnProperty.call(parcial, 'usuario') ? parcial.usuario : (ultimoEstadoRemoto && ultimoEstadoRemoto.usuario ? ultimoEstadoRemoto.usuario : ''));
-            formData.append('posto', Object.prototype.hasOwnProperty.call(parcial, 'posto') ? parcial.posto : (ultimoEstadoRemoto && ultimoEstadoRemoto.posto ? ultimoEstadoRemoto.posto : ''));
-            formData.append('regional', Object.prototype.hasOwnProperty.call(parcial, 'regional') ? parcial.regional : (ultimoEstadoRemoto && ultimoEstadoRemoto.regional ? ultimoEstadoRemoto.regional : ''));
-            formData.append('resumo', typeof parcial.resumo === 'string' ? parcial.resumo : obterResumoEstadoAtual());
-            formData.append('lacre_iipr', typeof parcial.lacre_iipr === 'string' ? parcial.lacre_iipr : (ultimoEstadoRemoto && ultimoEstadoRemoto.lacre_iipr ? ultimoEstadoRemoto.lacre_iipr : ''));
-            formData.append('lacre_correios', typeof parcial.lacre_correios === 'string' ? parcial.lacre_correios : (ultimoEstadoRemoto && ultimoEstadoRemoto.lacre_correios ? ultimoEstadoRemoto.lacre_correios : ''));
-            formData.append('etiqueta_correios', typeof parcial.etiqueta_correios === 'string' ? parcial.etiqueta_correios : (ultimoEstadoRemoto && ultimoEstadoRemoto.etiqueta_correios ? ultimoEstadoRemoto.etiqueta_correios : ''));
-            formData.append('campo_ativo', Object.prototype.hasOwnProperty.call(parcial, 'campo_ativo') ? parcial.campo_ativo : (ultimoEstadoRemoto && ultimoEstadoRemoto.campo_ativo ? ultimoEstadoRemoto.campo_ativo : ''));
-            formData.append('row_key_ativo', Object.prototype.hasOwnProperty.call(parcial, 'row_key_ativo') ? parcial.row_key_ativo : (ultimoEstadoRemoto && ultimoEstadoRemoto.row_key_ativo ? ultimoEstadoRemoto.row_key_ativo : ''));
-            formData.append('foco_token', Object.prototype.hasOwnProperty.call(parcial, 'foco_token') ? parcial.foco_token : (ultimoEstadoRemoto && ultimoEstadoRemoto.foco_token ? ultimoEstadoRemoto.foco_token : ''));
-
-            return fetch('conferencia_pacotes.php', { method: 'POST', body: formData })
-                .then(function(resp) { return resp.json(); })
-                .then(function(data) {
-                    if (!data || !data.success) {
-                        throw new Error('Falha ao publicar estado remoto');
-                    }
-                    ultimoEstadoRemoto = ultimoEstadoRemoto || {};
-                    ultimoEstadoRemoto.usuario = formData.get('usuario');
-                    ultimoEstadoRemoto.posto = formData.get('posto');
-                    ultimoEstadoRemoto.regional = formData.get('regional');
-                    ultimoEstadoRemoto.resumo = formData.get('resumo');
-                    ultimoEstadoRemoto.lacre_iipr = formData.get('lacre_iipr');
-                    ultimoEstadoRemoto.lacre_correios = formData.get('lacre_correios');
-                    ultimoEstadoRemoto.etiqueta_correios = formData.get('etiqueta_correios');
-                    ultimoEstadoRemoto.campo_ativo = formData.get('campo_ativo');
-                    ultimoEstadoRemoto.row_key_ativo = formData.get('row_key_ativo');
-                    ultimoEstadoRemoto.foco_token = formData.get('foco_token');
-                });
-        }
-
-        function ativarCampoNaPrevia(campo) {
-            var campoNormalizado = normalizarCampoAtivo(campo);
-            if (!campoNormalizado) return;
-            destacarInputAtivo(campoNormalizado);
-            publicarEstadoRemotoParcial({
-                campo_ativo: campoNormalizado,
-                row_key_ativo: '',
-                foco_token: criarTokenFoco()
-            }).catch(function() {});
-        }
 
         function normalizarNumero(valor, limite) {
             return String(valor || '').replace(/\D+/g, '').slice(0, limite || 35);
@@ -399,13 +240,34 @@ if ($controle_canal === '') {
         }
 
         function publicarEstadoDigitado(acao, payload) {
-            return publicarEstadoRemotoParcial({
-                lacre_iipr: acao === 'atribuir_iipr' ? payload.valor : undefined,
-                lacre_correios: acao === 'atribuir_correios' ? payload.valor : undefined,
-                etiqueta_correios: acao === 'atribuir_display' ? payload.valorAux : undefined,
-                campo_ativo: acaoParaCampo(acao) || (ultimoEstadoRemoto && ultimoEstadoRemoto.campo_ativo ? ultimoEstadoRemoto.campo_ativo : ''),
-                foco_token: acaoParaCampo(acao) ? criarTokenFoco() : (ultimoEstadoRemoto && ultimoEstadoRemoto.foco_token ? ultimoEstadoRemoto.foco_token : '')
-            });
+            var formData = new FormData();
+            formData.append('atualizar_estado_remoto_ajax', '1');
+            formData.append('canal', canal);
+            formData.append('usuario', ultimoEstadoRemoto && ultimoEstadoRemoto.usuario ? ultimoEstadoRemoto.usuario : '');
+            formData.append('posto', ultimoEstadoRemoto && ultimoEstadoRemoto.posto ? ultimoEstadoRemoto.posto : '');
+            formData.append('regional', ultimoEstadoRemoto && ultimoEstadoRemoto.regional ? ultimoEstadoRemoto.regional : (estadoRegional ? estadoRegional.textContent : ''));
+            formData.append('resumo', obterResumoEstadoAtual());
+            formData.append('lacre_iipr', acao === 'atribuir_iipr' ? payload.valor : (ultimoEstadoRemoto && ultimoEstadoRemoto.lacre_iipr ? ultimoEstadoRemoto.lacre_iipr : ''));
+            formData.append('lacre_correios', acao === 'atribuir_correios' ? payload.valor : (ultimoEstadoRemoto && ultimoEstadoRemoto.lacre_correios ? ultimoEstadoRemoto.lacre_correios : ''));
+            formData.append('etiqueta_correios', acao === 'atribuir_display' ? payload.valorAux : (ultimoEstadoRemoto && ultimoEstadoRemoto.etiqueta_correios ? ultimoEstadoRemoto.etiqueta_correios : ''));
+
+            return fetch('conferencia_pacotes.php', { method: 'POST', body: formData })
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    if (!data || !data.success) {
+                        throw new Error('Falha ao publicar estado remoto');
+                    }
+                    ultimoEstadoRemoto = ultimoEstadoRemoto || {};
+                    ultimoEstadoRemoto.regional = ultimoEstadoRemoto.regional || (estadoRegional ? estadoRegional.textContent : '');
+                    ultimoEstadoRemoto.resumo = obterResumoEstadoAtual();
+                    if (acao === 'atribuir_iipr') {
+                        ultimoEstadoRemoto.lacre_iipr = payload.valor;
+                    } else if (acao === 'atribuir_correios') {
+                        ultimoEstadoRemoto.lacre_correios = payload.valor;
+                    } else if (acao === 'atribuir_display') {
+                        ultimoEstadoRemoto.etiqueta_correios = payload.valorAux;
+                    }
+                });
         }
 
         function montarPayload(acao) {
@@ -422,8 +284,6 @@ if ($controle_canal === '') {
             } else if (acao === 'atribuir_display') {
                 comando = 'atribuir_display';
                 valorAux = normalizarNumero(inputEtiquetaCorreiosRemoto ? inputEtiquetaCorreiosRemoto.value : '', 35);
-            } else if (acao === 'adicionar_linha') {
-                comando = 'adicionar_linha';
             }
 
             return { comando: comando, valor: valor, valorAux: valorAux };
@@ -452,10 +312,6 @@ if ($controle_canal === '') {
                 return;
             }
 
-            if (acaoParaCampo(acao)) {
-                ativarCampoNaPrevia(acaoParaCampo(acao));
-            }
-
             var formData = new FormData();
             formData.append('enviar_comando_remoto_ajax', '1');
             formData.append('canal', canal);
@@ -476,10 +332,6 @@ if ($controle_canal === '') {
                             if (acao === 'atribuir_iipr' && inputLacreIiprRemoto) inputLacreIiprRemoto.value = '';
                             if (acao === 'atribuir_correios' && inputLacreCorreiosRemoto) inputLacreCorreiosRemoto.value = '';
                             if (acao === 'atribuir_display' && inputEtiquetaCorreiosRemoto) inputEtiquetaCorreiosRemoto.value = '';
-                            if (acao === 'adicionar_linha') {
-                                atualizarStatus('Linha extra solicitada para o contexto atual.', 'ok');
-                                return carregarEstado();
-                            }
                             atualizarStatus('Operação enviada: ' + acao.replace(/_/g, ' '), 'ok');
                             carregarEstado();
                         });
@@ -490,9 +342,6 @@ if ($controle_canal === '') {
         }
 
         function registrarToque(acao) {
-            if (acaoParaCampo(acao)) {
-                ativarCampoNaPrevia(acaoParaCampo(acao));
-            }
             var agora = Date.now();
             if (!toques[acao] || (agora - toques[acao].ultimo) > 1300) {
                 toques[acao] = { total: 0, ultimo: agora };
@@ -507,25 +356,6 @@ if ($controle_canal === '') {
             }
 
             atualizarStatus('Confirme a operação com 3 toques: ' + acao.replace(/_/g, ' ') + ' (' + toques[acao].total + '/3)', '');
-        }
-
-        function bindEntradas() {
-            var mapa = [
-                { input: inputLacreIiprRemoto, campo: 'lacre_iipr' },
-                { input: inputLacreCorreiosRemoto, campo: 'lacre_correios' },
-                { input: inputEtiquetaCorreiosRemoto, campo: 'etiqueta_correios' }
-            ];
-            for (var i = 0; i < mapa.length; i++) {
-                (function(item) {
-                    if (!item.input) return;
-                    item.input.addEventListener('focus', function() {
-                        ativarCampoNaPrevia(item.campo);
-                    });
-                    item.input.addEventListener('click', function() {
-                        ativarCampoNaPrevia(item.campo);
-                    });
-                })(mapa[i]);
-            }
         }
 
         function bindBotoes() {
@@ -548,19 +378,16 @@ if ($controle_canal === '') {
                         estadoRegional.textContent = '-';
                         estadoAtualizado.textContent = '-';
                         estadoResumo.textContent = 'Aguardando contexto conferido no PC.';
-                        destacarInputAtivo('');
                         return;
                     }
-                    estadoRegional.textContent = formatarRegionalExibicao(estado.regional || '');
+                    estadoRegional.textContent = estado.posto || estado.regional || '-';
                     estadoAtualizado.textContent = estado.atualizado_em || '-';
                     estadoResumo.textContent = estado.resumo || 'A prévia vai espelhar os lacres do contexto atual.';
-                    destacarInputAtivo(normalizarCampoAtivo(estado.campo_ativo || ''));
                 })
                 .catch(function() {});
         }
 
         bindBotoes();
-        bindEntradas();
         carregarEstado();
         window.setInterval(carregarEstado, 1500);
     })();

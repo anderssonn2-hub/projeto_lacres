@@ -253,6 +253,49 @@ if (isset($_POST['salvar_conferencia_pt_ajax'])) {
     }
 }
 
+if (isset($_POST['remover_conferencia_pt_ajax'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if (!$pdo_controle) {
+            throw new Exception('Conexao com o banco de dados nao disponivel.');
+        }
+
+        $payload = isset($_POST['itens']) ? $_POST['itens'] : '';
+        $itens = json_decode($payload, true);
+        if (!is_array($itens) || empty($itens)) {
+            throw new Exception('Nenhum lote informado para remover a conferencia.');
+        }
+
+        $stmt = $pdo_controle->prepare("UPDATE conferencia_pacotes
+                                        SET conf = 'n', conferido_em = NULL
+                                        WHERE nposto = ? AND nlote = ? AND dataexp = ?");
+        $stmtFallback = $pdo_controle->prepare("UPDATE conferencia_pacotes
+                                                SET conf = 'n', conferido_em = NULL
+                                                WHERE nposto = ? AND nlote = ?");
+
+        $afetados = 0;
+        foreach ($itens as $item) {
+            $posto = isset($item['posto']) ? preg_replace('/\D+/', '', (string)$item['posto']) : '';
+            $lote = isset($item['lote']) ? preg_replace('/\D+/', '', (string)$item['lote']) : '';
+            $dataexp = isset($item['dataexp']) ? trim((string)$item['dataexp']) : '';
+            if ($posto === '' || $lote === '') {
+                continue;
+            }
+            if ($dataexp !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataexp)) {
+                $stmt->execute(array($posto, $lote, $dataexp));
+                $afetados += (int)$stmt->rowCount();
+            } else {
+                $stmtFallback->execute(array($posto, $lote));
+                $afetados += (int)$stmtFallback->rowCount();
+            }
+        }
+
+        die(json_encode(array('success' => true, 'afetados' => $afetados)));
+    } catch (Exception $e) {
+        die(json_encode(array('success' => false, 'erro' => $e->getMessage())));
+    }
+}
+
 /* ============================================================
    1.1) Processar salvamento do ofício (se acao=salvar_oficio_completo)
    ============================================================ */
@@ -1031,6 +1074,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .controles-pagina button.btn-sucesso:hover{background:#1e7e34}
 .controles-pagina button.btn-imprimir{background:#6c757d}
 .controles-pagina button.btn-imprimir:hover{background:#545b62}
+.controles-pagina button.btn-excluir{background:#dc3545}
+.controles-pagina button.btn-excluir:hover{background:#bd2130}
 
 /* Folha A4 - v9.20.1: Layout vertical (uma página abaixo da outra) */
 .folha-a4-oficio{
@@ -1961,6 +2006,11 @@ if (document.readyState === 'loading') {
     <button type="button" onclick="imprimirSelecionados();" class="btn-imprimir">
         ✅ Imprimir Selecionados
     </button>
+
+    <!-- Botão retirar conferência do que está visível -->
+    <button type="button" onclick="removerConferenciaVisivelPT();" class="btn-excluir">
+        ↺ Retirar Conferência da Tela
+    </button>
   </div>
 
 <?php if ($temDados): ?>
@@ -2301,6 +2351,104 @@ function salvarConferenciaPt(codigoPosto, numeroLote, quantidade, dataCarga, cod
     });
 }
 
+function removerConferenciaPt(itens) {
+    var formData = new FormData();
+    formData.append('remover_conferencia_pt_ajax', '1');
+    formData.append('itens', JSON.stringify(itens || []));
+    return fetch(window.location.href, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    }).then(function(response) {
+        return response.json();
+    }).catch(function(error) {
+        console.error('Erro AJAX ao remover conferência PT:', error);
+        return { success: false, erro: String(error) };
+    });
+}
+
+function aplicarEstadoVisualConferenciaLinha(linha, conferido) {
+    if (!linha) return;
+    linha.classList.toggle('conferido', !!conferido);
+    linha.setAttribute('data-conferido', conferido ? '1' : '0');
+    var checkboxLinha = linha.querySelector('.checkbox-lote');
+    if (checkboxLinha) {
+        checkboxLinha.setAttribute('data-conferido', conferido ? '1' : '0');
+    }
+    var tds = linha.querySelectorAll('td');
+    for (var i = 0; i < tds.length; i++) {
+        if (i === 0) continue;
+        tds[i].classList.toggle('lote-conferido', !!conferido);
+    }
+}
+
+function sincronizarConferenciasVisuaisPT() {
+    var containers = document.querySelectorAll('.folha-a4-oficio[data-posto]');
+    for (var c = 0; c < containers.length; c++) {
+        var container = containers[c];
+        var posto = container.getAttribute('data-posto') || '';
+        var linhas = container.querySelectorAll('tr.linha-lote');
+        for (var i = 0; i < linhas.length; i++) {
+            var linha = linhas[i];
+            var checkbox = linha.querySelector('.checkbox-lote');
+            var conferido = false;
+            if (checkbox && checkbox.getAttribute('data-conferido') === '1') {
+                conferido = true;
+            } else if (linha.classList.contains('conferido')) {
+                conferido = true;
+            }
+            aplicarEstadoVisualConferenciaLinha(linha, conferido);
+        }
+        if (posto) {
+            atualizarContadores(posto, true);
+        }
+    }
+}
+
+function coletarItensConferenciaVisiveisPT() {
+    var linhas = document.querySelectorAll('.folha-a4-oficio tr.linha-lote');
+    var itens = [];
+    var mapa = {};
+    for (var i = 0; i < linhas.length; i++) {
+        var linha = linhas[i];
+        if (!linha || linha.offsetParent === null) continue;
+        var posto = String(linha.getAttribute('data-posto') || '').trim();
+        var lote = String(linha.getAttribute('data-lote') || '').trim();
+        var dataexp = String(linha.getAttribute('data-data-carga') || '').trim();
+        if (!posto || !lote) continue;
+        var chave = posto + '|' + lote + '|' + dataexp;
+        if (mapa[chave]) continue;
+        mapa[chave] = true;
+        itens.push({ posto: posto, lote: lote, dataexp: dataexp });
+    }
+    return itens;
+}
+
+function removerConferenciaVisivelPT() {
+    var itens = coletarItensConferenciaVisiveisPT();
+    if (!itens.length) {
+        alert('Nenhum lote visível foi encontrado para retirar a conferência.');
+        return;
+    }
+    if (!confirm('Deseja retirar a conferência de tudo que aparece na tela atual?')) {
+        return;
+    }
+    removerConferenciaPt(itens).then(function(data) {
+        if (!data || !data.success) {
+            alert(data && data.erro ? data.erro : 'Não foi possível retirar a conferência da tela atual.');
+            return;
+        }
+        var linhas = document.querySelectorAll('.folha-a4-oficio tr.linha-lote');
+        for (var i = 0; i < linhas.length; i++) {
+            var linha = linhas[i];
+            if (!linha || linha.offsetParent === null) continue;
+            aplicarEstadoVisualConferenciaLinha(linha, false);
+        }
+        sincronizarConferenciasVisuaisPT();
+        alert('Conferência removida dos lotes exibidos na tela.');
+    });
+}
+
 // v9.9.4: Função para conferir lote via código de barras (extrai lote de 8 dígitos)
 function conferirLote(codigoPosto) {
     var input = document.getElementById('input_conferencia_' + codigoPosto);
@@ -2528,7 +2676,7 @@ function conferirLote(codigoPosto) {
 }
 
 // v9.9.0: Atualiza contadores de conferência
-function atualizarContadores(codigoPosto) {
+function atualizarContadores(codigoPosto, silencioso) {
     var tabela = document.getElementById('tabela_lotes_' + codigoPosto);
     var container3 = document.querySelector('.folha-a4-oficio[data-posto="' + codigoPosto + '"]');
     var totalLotes = 0;
@@ -2566,7 +2714,7 @@ function atualizarContadores(codigoPosto) {
     if (spanPendentes) spanPendentes.textContent = pendentes;
     
     // Se todos foram conferidos, mostra mensagem
-    if (pendentes === 0 && totalLotes > 0) {
+    if (!silencioso && pendentes === 0 && totalLotes > 0) {
         setTimeout(function() {
             alert('✅ Todos os lotes foram conferidos!\nTotal: ' + conferidos + ' lotes');
         }, 100);
@@ -2588,6 +2736,7 @@ document.addEventListener('keydown', function(e) {
 // v9.9.0: Foco automático no primeiro campo de conferência ao carregar
 window.addEventListener('load', function() {
     var primeiroInput = document.querySelector('.input-conferencia');
+    sincronizarConferenciasVisuaisPT();
     if (primeiroInput) {
         setTimeout(function() {
             primeiroInput.focus();
