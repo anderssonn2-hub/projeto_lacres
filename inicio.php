@@ -95,6 +95,8 @@
     .btn-bloq { background: linear-gradient(135deg, #512da8 0%, #7e57c2 100%); }
     .btn-cons { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
     .btn-devol { background: linear-gradient(135deg, #ff6f00 0%, #ffb300 100%); }
+    .btn-controle { background: linear-gradient(135deg, #004d40 0%, #00796b 100%); }
+    .btn-previa { background: linear-gradient(135deg, #6d4c41 0%, #8d6e63 100%); }
 
     @media (max-width: 900px) {
       body { padding: 18px; }
@@ -119,6 +121,14 @@
           <a class="btn btn-conf" href="conferencia_pacotes.php">
             Iniciar conferencia
             <span>Leitura e validacao de pacotes</span>
+          </a>
+          <a class="btn btn-controle" href="conferencia_pacotes_controle.php">
+            Pagina de controle
+            <span>Operacao remota de lacres e etiqueta</span>
+          </a>
+          <a class="btn btn-previa" href="conferencia_pacotes_previa.php">
+            Pagina de previa
+            <span>Segunda tela para acompanhar o oficio</span>
           </a>
           <a class="btn btn-vocal" href="encontra_posto.php">
             Quem eu sou?

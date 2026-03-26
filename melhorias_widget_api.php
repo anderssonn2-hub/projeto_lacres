@@ -40,8 +40,8 @@ function melhorias_garantir_tabela(PDO $pdo) {
         status ENUM('pendente','implementado') NOT NULL DEFAULT 'pendente',
         criado_por VARCHAR(80) NULL,
         atualizado_por VARCHAR(80) NULL,
-        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        criado_em DATETIME NOT NULL,
+        atualizado_em DATETIME NOT NULL,
         PRIMARY KEY (id),
         KEY idx_status (status),
         KEY idx_pagina (pagina),
@@ -78,8 +78,8 @@ try {
             $status = 'pendente';
         }
 
-        $stmt = $pdo->prepare("INSERT INTO ciMelhoriasProjeto (titulo, descricao, pagina, status, criado_por, atualizado_por)
-                               VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO ciMelhoriasProjeto (titulo, descricao, pagina, status, criado_por, atualizado_por, criado_em, atualizado_em)
+                       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())");
         $stmt->execute(array($titulo, $descricao, $pagina, $status, $usuario, $usuario));
         melhorias_json(array('success' => true, 'id' => (int)$pdo->lastInsertId()), 200);
     }
@@ -93,7 +93,7 @@ try {
         if ($status !== 'pendente' && $status !== 'implementado') {
             melhorias_json(array('success' => false, 'erro' => 'Status invalido'), 400);
         }
-        $stmt = $pdo->prepare("UPDATE ciMelhoriasProjeto SET status = ?, atualizado_por = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE ciMelhoriasProjeto SET status = ?, atualizado_por = ?, atualizado_em = NOW() WHERE id = ?");
         $stmt->execute(array($status, $usuario, $id));
         melhorias_json(array('success' => true), 200);
     }

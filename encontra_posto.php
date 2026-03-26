@@ -990,6 +990,8 @@ var lotesSemUpload = [];
 var historicoLeituras = [];
 var audioFilaAtiva = false;
 var audioFila = [];
+var ultimaFalaTexto = '';
+var ultimaFalaEm = 0;
 
 var leituraFila = [];
 var leituraAtiva = false;
@@ -1167,6 +1169,15 @@ document.addEventListener('keydown', function(ev) {
 function falar(texto) {
     if (!vozAtiva) return;
     if (typeof speechSynthesis === 'undefined') return;
+    texto = String(texto || '').trim();
+    if (texto === '') return;
+
+    var agora = new Date().getTime();
+    if (ultimaFalaTexto === texto && (agora - ultimaFalaEm) < 2500) {
+        return;
+    }
+    ultimaFalaTexto = texto;
+    ultimaFalaEm = agora;
 
     try {
         audioFila = [];
@@ -1176,7 +1187,7 @@ function falar(texto) {
 
     var utt = new SpeechSynthesisUtterance(texto);
     utt.lang = 'pt-BR';
-    utt.rate = 1.15;
+    utt.rate = 1.32;
     utt.pitch = 1;
     utt.volume = 1;
 
@@ -1202,6 +1213,41 @@ function tocarBeep() {
         audio.currentTime = 0;
         audio.play();
     } catch (e) {}
+}
+
+function preverVozLocal(codbar) {
+    var limpo = String(codbar || '').replace(/\D+/g, '');
+    var postoPad;
+    var regionalPad;
+    var postoInt;
+    var postosPt = {
+        '005': true, '006': true, '023': true, '024': true, '025': true,
+        '026': true, '028': true, '080': true, '110': true, '315': true,
+        '375': true, '487': true, '526': true, '527': true, '667': true,
+        '730': true, '747': true, '790': true, '825': true, '880': true
+    };
+    if (limpo.length < 14) {
+        return '';
+    }
+    regionalPad = limpo.substr(8, 3);
+    postoPad = limpo.substr(11, 3);
+    postoInt = parseInt(postoPad, 10);
+    if (isNaN(postoInt)) {
+        return '';
+    }
+    if (postosPt[postoPad]) {
+        return 'Poupa Tempo ' + postoInt;
+    }
+    if (postoPad === '002') {
+        return 'Posto 1';
+    }
+    if (postoPad === '001') {
+        return 'Posto 001';
+    }
+    if (regionalPad === '000' || regionalPad === '999') {
+        return 'Posto ' + postoInt;
+    }
+    return 'Regional ' + regionalPad;
 }
 
 function finalizarLeitura() {
@@ -1238,6 +1284,7 @@ function buscarPosto(codbar) {
     }
     leituraAtiva = true;
     tocarBeep();
+    falar(preverVozLocal(codbar));
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -1747,6 +1794,17 @@ setInterval(function() {
     }
     atualizarIndicadorFoco();
 }, 30000);
+
+try {
+    if (typeof speechSynthesis !== 'undefined') {
+        speechSynthesis.getVoices();
+        if (typeof speechSynthesis.onvoiceschanged !== 'undefined') {
+            speechSynthesis.onvoiceschanged = function() {
+                try { speechSynthesis.getVoices(); } catch (eVoices) {}
+            };
+        }
+    }
+} catch (eWarmup) {}
 
 atualizarIndicadorFoco();
 var inputIni = document.getElementById('data_ini_estante');

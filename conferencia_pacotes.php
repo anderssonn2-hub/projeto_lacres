@@ -1691,6 +1691,31 @@ try {
         }
         .card-resumo h4 { margin: 0; font-size: 12px; color: #555; text-transform: uppercase; }
         .card-resumo .valor { font-size: 20px; font-weight: 700; color: #007bff; margin-top: 6px; }
+        .btn-topo-pagina {
+            position: fixed;
+            left: 18px;
+            bottom: 18px;
+            z-index: 1190;
+            display: none;
+            width: 46px;
+            height: 46px;
+            border: none;
+            border-radius: 999px;
+            background: #1f2b6d;
+            color: #fff;
+            font-size: 22px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.24);
+        }
+        .btn-topo-pagina.visivel {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-topo-pagina:hover {
+            background: #162057;
+        }
 
         .painel-estante {
             background: #ffffff;
@@ -7099,7 +7124,34 @@ if (document.readyState === 'loading') {
 })();
 </script>
 
+<button type="button" id="btnTopoPagina" class="btn-topo-pagina" title="Voltar ao topo">↑</button>
+
 <?php include __DIR__ . '/melhorias_widget.php'; ?>
+
+<script>
+(function() {
+    var btnTopo = document.getElementById('btnTopoPagina');
+    if (!btnTopo) {
+        return;
+    }
+
+    function atualizarVisibilidadeTopo() {
+        var topoAtual = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        if (topoAtual > 320) {
+            btnTopo.className = 'btn-topo-pagina visivel';
+        } else {
+            btnTopo.className = 'btn-topo-pagina';
+        }
+    }
+
+    btnTopo.addEventListener('click', function() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    window.addEventListener('scroll', atualizarVisibilidadeTopo);
+    atualizarVisibilidadeTopo();
+})();
+</script>
 
 </body>
 </html>
