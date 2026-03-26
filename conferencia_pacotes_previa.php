@@ -634,19 +634,14 @@ try {
                 </div>
             </div>
 
-            <div class="documento-meta">
-                <div>Ofício Correios consolidado por malote.</div>
+            <div class="documento-meta" style="display:none;">
                 <div id="metaUltimoOficio">Último ofício Correios: <?php echo (int)$ultimoOficioCorreios; ?></div>
             </div>
-
-            <div class="subtitulo-quadro">Quando o mesmo posto usa mais de um conjunto de malotes, ele aparece em linhas separadas conforme os grupos fechados na conferência por chips.</div>
-
-            <div class="texto-abertura">Segue abaixo o modelo do ofício dos Correios já montado com base nos malotes conferidos. Antes de gravar, os campos de lacre IIPR, lacre Correios e etiqueta Correios podem ser ajustados manualmente nesta própria grade.</div>
 
             <div id="areaGrade" class="vazio">Aguardando dados da conferência.</div>
 
             <div class="rodape">
-                <div class="texto-rodape-lotes" id="textoRodapeLotes">Nenhuma linha pronta foi consolidada.</div>
+                <div class="texto-rodape-lotes" id="textoRodapeLotes">Nenhuma linha pronta do ofício foi gerada.</div>
                 <div class="assinaturas">
                     <div class="assinatura" id="assinaturaEsquerda">RESPONSÁVEL CELEPAR - Data: -</div>
                     <div class="assinatura">RESPONSÁVEL CORREIOS</div>
@@ -859,7 +854,7 @@ try {
             var codigo = parseInt(item.regional_codigo || 0, 10) || 0;
             if (codigo === 0) return 'CAPITAL';
             if (codigo === 1) return 'METROPOLITANA';
-            if (codigo === 999) return 'CENTRAL';
+            if (codigo === 999) return 'CENTRAL IIPR';
             return 'REGIONAIS';
         }
 
@@ -1027,9 +1022,9 @@ try {
             }
 
             if (linhas.length) {
-                textoRodapeLotes.textContent = linhas.length + ' linha(s) visíveis na prévia. Você pode ajustar lacre IIPR, lacre Correios e etiqueta aqui antes da gravação definitiva, se necessário.';
+                textoRodapeLotes.textContent = linhas.length + ' linha(s) disponíveis no ofício. Você pode ajustar lacre IIPR, lacre Correios e etiqueta antes da gravação definitiva, se necessário.';
             } else {
-                textoRodapeLotes.textContent = 'Nenhuma linha pronta foi consolidada.';
+                textoRodapeLotes.textContent = 'Nenhuma linha pronta do ofício foi gerada.';
             }
         }
 
@@ -1055,7 +1050,7 @@ try {
                 'POSTO 001': [],
                 'CAPITAL': [],
                 'METROPOLITANA': [],
-                'CENTRAL': [],
+                'CENTRAL IIPR': [],
                 'REGIONAIS': []
             };
             for (var i = 0; i < linhas.length; i++) {
@@ -1066,7 +1061,7 @@ try {
             if (grupos['POSTO 001'].length) html += montarTabela('POSTO 001', grupos['POSTO 001']);
             if (grupos['CAPITAL'].length) html += montarTabela('CAPITAL', grupos['CAPITAL']);
             if (grupos['METROPOLITANA'].length) html += montarTabela('METROPOLITANA', grupos['METROPOLITANA']);
-            if (grupos['CENTRAL'].length) html += montarTabela('CENTRAL', grupos['CENTRAL']);
+            if (grupos['CENTRAL IIPR'].length) html += montarTabela('CENTRAL IIPR', grupos['CENTRAL IIPR']);
             if (grupos['REGIONAIS'].length) html += montarTabela('REGIONAIS', grupos['REGIONAIS']);
 
             areaGrade.className = '';

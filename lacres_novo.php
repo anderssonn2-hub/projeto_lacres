@@ -5546,33 +5546,6 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
     <?php endif; ?>
 </div>
 
-<?php if (!empty($resumo_oficio_correios)): ?>
-<div class="quadro-resumo-oficio">
-    <h3>Ofício Correios consolidado por malote</h3>
-    <div class="subtitulo">Quando o mesmo posto usa mais de um conjunto de malotes, ele aparece em linhas separadas conforme os grupos fechados na conferência por chips.</div>
-    <table>
-        <thead>
-            <tr>
-                <th>Regionais</th>
-                <th>Lacre IIPR</th>
-                <th>Lacre Correios</th>
-                <th>Etiqueta Correios</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($resumo_oficio_correios as $linha_resumo): ?>
-            <tr>
-                <td><?php echo htmlspecialchars($linha_resumo['posto_nome'], ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?php echo htmlspecialchars($linha_resumo['lacre_iipr'] !== '' ? $linha_resumo['lacre_iipr'] : '-', ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?php echo htmlspecialchars($linha_resumo['lacre_correios'] !== '' ? $linha_resumo['lacre_correios'] : '-', ENT_QUOTES, 'UTF-8'); ?></td>
-                <td><?php echo htmlspecialchars($linha_resumo['etiqueta_correios'] !== '' ? $linha_resumo['etiqueta_correios'] : '-', ENT_QUOTES, 'UTF-8'); ?></td>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-</div>
-<?php endif; ?>
-
 <div class="quadro quadro-adicionar">
     <h3>Adicionar Posto Manualmente</h3>
     <form method="post" class="form-adicionar">
@@ -5595,7 +5568,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 
 <?php foreach ($dados as $grupo => $itens): if (empty($itens)) continue; ?>
-    <table id="tabela-<?php echo strtolower(str_replace(' ', '-', $grupo)) ?>" data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>" class="<?php echo !empty($resumo_oficio_correios) ? 'nao-imprimir' : ''; ?>">
+    <table id="tabela-<?php echo strtolower(str_replace(' ', '-', $grupo)) ?>" data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>">
         <thead>
             <tr>
                 <th><?php echo $grupo ?></th>
