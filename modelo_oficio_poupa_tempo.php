@@ -204,6 +204,28 @@ function e($s){
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
+function normalizarDataPtSql($valor) {
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
+        return $valor;
+    }
+    if (preg_match('/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/', $valor, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    return '';
+}
+
+function formatarDataPtBr($valorSql) {
+    $valorSql = normalizarDataPtSql($valorSql);
+    if ($valorSql === '') {
+        return '';
+    }
+    return substr($valorSql, 8, 2) . '-' . substr($valorSql, 5, 2) . '-' . substr($valorSql, 0, 4);
+}
+
 /* ============================================================
    1) Conexão com o banco "controle"
    ============================================================ */
@@ -267,8 +289,8 @@ if (isset($_POST['remover_conferencia_pt_ajax'])) {
         }
 
         $stmt = $pdo_controle->prepare("UPDATE conferencia_pacotes
-                                        SET conf = 'n', conferido_em = NULL
-                                        WHERE nposto = ? AND nlote = ? AND dataexp = ?");
+                        SET conf = 'n', conferido_em = NULL
+                        WHERE nposto = ? AND nlote = ? AND (dataexp = ? OR dataexp = ? OR DATE(dataexp) = ?)");
         $stmtFallback = $pdo_controle->prepare("UPDATE conferencia_pacotes
                                                 SET conf = 'n', conferido_em = NULL
                                                 WHERE nposto = ? AND nlote = ?");
@@ -282,7 +304,7 @@ if (isset($_POST['remover_conferencia_pt_ajax'])) {
                 continue;
             }
             if ($dataexp !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataexp)) {
-                $stmt->execute(array($posto, $lote, $dataexp));
+                $stmt->execute(array($posto, $lote, $dataexp, formatarDataPtBr($dataexp), $dataexp));
                 $afetados += (int)$stmt->rowCount();
             } else {
                 $stmtFallback->execute(array($posto, $lote));
@@ -550,6 +572,75 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             }
         }
 
+        $lotesSelecionadosPorPosto = array();
+        foreach ($folhas_selecionadas as $folhaIdSelecionada) {
+            if (!isset($folhas_post[$folhaIdSelecionada])) continue;
+            $postoSelecionado = preg_replace('/\D+/', '', (string)$folhas_post[$folhaIdSelecionada]);
+            if ($postoSelecionado === '') continue;
+            $postoSelecionado = str_pad($postoSelecionado, 3, '0', STR_PAD_LEFT);
+            $listaLotesFolha = isset($lotes_post[$folhaIdSelecionada]) ? trim((string)$lotes_post[$folhaIdSelecionada]) : '';
+            if ($listaLotesFolha === '') continue;
+            $partesLote = explode(',', $listaLotesFolha);
+            foreach ($partesLote as $loteSelecionado) {
+                $loteSelecionado = preg_replace('/\D+/', '', (string)$loteSelecionado);
+                if ($loteSelecionado === '') continue;
+                if (!isset($lotesSelecionadosPorPosto[$postoSelecionado])) {
+                    $lotesSelecionadosPorPosto[$postoSelecionado] = array();
+                }
+                $lotesSelecionadosPorPosto[$postoSelecionado][str_pad($loteSelecionado, 8, '0', STR_PAD_LEFT)] = true;
+            }
+        }
+
+        if (!empty($lotesSelecionadosPorPosto) && !empty($datasStr_post)) {
+            $datasPersistencia = array();
+            foreach (explode(',', $datasStr_post) as $dataPersistida) {
+                $dataPersistida = normalizarDataPtSql($dataPersistida);
+                if ($dataPersistida !== '') {
+                    $datasPersistencia[] = $dataPersistida;
+                }
+            }
+            $datasPersistencia = array_values(array_unique($datasPersistencia));
+
+            if (!empty($datasPersistencia)) {
+                $postosPersistencia = array_keys($lotesSelecionadosPorPosto);
+                $placePostos = implode(',', array_fill(0, count($postosPersistencia), '?'));
+                $placeDatas = implode(',', array_fill(0, count($datasPersistencia), '?'));
+                $paramsPersistencia = array_merge($postosPersistencia, $datasPersistencia);
+                $sqlBuscaConferencia = "SELECT LPAD(CAST(posto AS UNSIGNED), 3, '0') AS posto,
+                                               LPAD(CAST(lote AS UNSIGNED), 8, '0') AS lote,
+                                               COALESCE(quantidade, 0) AS quantidade,
+                                               DATE(dataCarga) AS data_carga
+                                        FROM ciPostosCsv
+                                        WHERE LPAD(CAST(posto AS UNSIGNED), 3, '0') IN ($placePostos)
+                                          AND DATE(dataCarga) IN ($placeDatas)";
+                $stmtBuscaConferencia = $pdo_controle->prepare($sqlBuscaConferencia);
+                $stmtBuscaConferencia->execute($paramsPersistencia);
+
+                $stmtPersistirConferencia = $pdo_controle->prepare("INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario, conferido_em)
+                                                                     VALUES (?, ?, ?, ?, ?, ?, 's', ?, NOW())
+                                                                     ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), dataexp=VALUES(dataexp), usuario=VALUES(usuario), conferido_em=NOW(), codbar=IF(VALUES(codbar) <> '', VALUES(codbar), codbar)");
+                $usuarioConferencia = isset($_SESSION['usuario']) && $_SESSION['usuario'] !== '' ? trim((string)$_SESSION['usuario']) : 'poupatempo';
+
+                while ($rowConferencia = $stmtBuscaConferencia->fetch(PDO::FETCH_ASSOC)) {
+                    $postoLinha = isset($rowConferencia['posto']) ? (string)$rowConferencia['posto'] : '';
+                    $loteLinha = isset($rowConferencia['lote']) ? (string)$rowConferencia['lote'] : '';
+                    if ($postoLinha === '' || $loteLinha === '') continue;
+                    if (!isset($lotesSelecionadosPorPosto[$postoLinha][$loteLinha])) continue;
+                    $dataCargaLinha = isset($rowConferencia['data_carga']) ? normalizarDataPtSql($rowConferencia['data_carga']) : '';
+                    if ($dataCargaLinha === '') continue;
+                    $stmtPersistirConferencia->execute(array(
+                        '000',
+                        $loteLinha,
+                        $postoLinha,
+                        $dataCargaLinha,
+                        isset($rowConferencia['quantidade']) ? (int)$rowConferencia['quantidade'] : 0,
+                        '',
+                        $usuarioConferencia
+                    ));
+                }
+            }
+        }
+
         // v9.22.4: inserir lotes PT em ciDespachoLotes com data_carga/responsaveis
         $datasSql = array();
         if (!empty($datasStr_post)) {
@@ -707,9 +798,15 @@ if (!empty($datasStr)) {
     foreach ($tmp as $d) {
         $d = trim($d);
         if ($d !== '') {
-            $datasNorm[] = $d;
+            $dSql = normalizarDataPtSql($d);
+            if ($dSql !== '') {
+                $datasNorm[] = $dSql;
+            }
         }
     }
+}
+if (!empty($datasNorm)) {
+    $datasNorm = array_values(array_unique($datasNorm));
 }
 
 if (isset($_POST['pt_postos_sel'])) {
@@ -825,10 +922,19 @@ if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
             $inPostos = "'" . implode("','", array_map('strval', $postosList)) . "'";
             $sqlConf = "SELECT DISTINCT nlote, nposto
                         FROM conferencia_pacotes
-                        WHERE conf = 's'
+                        WHERE conf IN ('s', 'S', '1', 1)
                           AND nposto IN ($inPostos)";
             if (!empty($datasNorm)) {
-                $sqlConf .= " AND dataexp IN ($in) ";
+                $datasBr = array();
+                foreach ($datasNorm as $dataSqlPt) {
+                    $dataBrPt = formatarDataPtBr($dataSqlPt);
+                    if ($dataBrPt !== '') {
+                        $datasBr[] = $dataBrPt;
+                    }
+                }
+                $datasBr = array_values(array_unique($datasBr));
+                $inBr = !empty($datasBr) ? ("'" . implode("','", array_map('strval', $datasBr)) . "'") : "''";
+                $sqlConf .= " AND (dataexp IN ($in) OR dataexp IN ($inBr) OR DATE(dataexp) IN ($in)) ";
             }
             try {
                 $stmtConf = $pdo_controle->query($sqlConf);

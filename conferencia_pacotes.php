@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.17
+/* conferencia_pacotes.php — v0.9.25.18
  * CHANGELOG v9.25.12:
  * - [NOVO] Controle remoto por celular com comandos de malote sincronizados via servidor
  * - [NOVO] Canal remoto para operar lacres e etiqueta sem depender de voz no navegador
@@ -1461,7 +1461,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.17</title>
+    <title>Conferência de Pacotes v0.9.25.18</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2690,10 +2690,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.17</div>
+    <div class="versao">v0.9.25.18</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.17</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.18</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -4342,7 +4342,7 @@ function iniciarConferenciaPacotes() {
         });
 
         return {
-            versao: '0.9.25.17',
+            versao: '0.9.25.18',
             gerado_em: formatarDataHoraAtual(),
             usuario: usuarioAtual || '',
             contexto_selecionado: contextoSelecionadoMalote || '',

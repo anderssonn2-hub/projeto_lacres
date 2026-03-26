@@ -379,14 +379,24 @@ try {
             gap: 24px;
             width: 100%;
             page-break-inside: avoid;
+            align-items: flex-end;
         }
         .assinatura {
-            width: 45%;
+            width: 38%;
             padding-top: 22px;
             border-top: 1px solid var(--grade);
             text-align: center;
             color: var(--tinta);
             min-width: 220px;
+        }
+        .assinatura-data {
+            width: 24%;
+            min-width: 140px;
+            padding-top: 0;
+            border-top: 0;
+            text-align: center;
+            font-weight: bold;
+            color: var(--tinta);
         }
         .vazio {
             border: 1px dashed rgba(45,43,39,0.4);
@@ -643,13 +653,10 @@ try {
             <div class="rodape">
                 <div class="texto-rodape-lotes" id="textoRodapeLotes">Nenhuma linha pronta do ofício foi gerada.</div>
                 <div class="assinaturas">
-                    <div class="assinatura" id="assinaturaEsquerda">RESPONSÁVEL CELEPAR - Data: -</div>
+                    <div class="assinatura" id="assinaturaEsquerda">RESPONSÁVEL CELEPAR</div>
+                    <div class="assinatura-data" id="assinaturaData">Data: -</div>
                     <div class="assinatura">RESPONSÁVEL CORREIOS</div>
                 </div>
-            </div>
-
-            <div class="footer-impressao">
-                <p id="footerDocumentoGerado">Documento gerado em -</p>
             </div>
         </div>
     </div>
@@ -696,7 +703,7 @@ try {
         var numeroRodape = document.getElementById('numeroRodape');
         var textoRodapeLotes = document.getElementById('textoRodapeLotes');
         var assinaturaEsquerda = document.getElementById('assinaturaEsquerda');
-        var footerDocumentoGerado = document.getElementById('footerDocumentoGerado');
+        var assinaturaData = document.getElementById('assinaturaData');
         var metaUltimoOficio = document.getElementById('metaUltimoOficio');
         var modalGravacao = document.getElementById('modalGravacao');
         var modalTextoBase = document.getElementById('modalTextoBase');
@@ -1001,10 +1008,10 @@ try {
             textoUsuario.textContent = usuario;
             metaUltimoOficio.textContent = 'Último ofício Correios: ' + ultimoTexto;
             if (assinaturaEsquerda) {
-                assinaturaEsquerda.textContent = 'RESPONSÁVEL CELEPAR - Data: ' + geradoEm;
+                assinaturaEsquerda.textContent = 'RESPONSÁVEL CELEPAR';
             }
-            if (footerDocumentoGerado) {
-                footerDocumentoGerado.textContent = 'Documento gerado em ' + geradoEm;
+            if (assinaturaData) {
+                assinaturaData.textContent = 'Data: ' + geradoEm;
             }
 
             if (numeroAtual > 0) {
