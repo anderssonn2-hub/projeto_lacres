@@ -8856,5 +8856,7 @@ if (isset($_SESSION['auto_imprimir_correios']) && $_SESSION['auto_imprimir_corre
 }
 ?>
 
+<?php include __DIR__ . '/melhorias_widget.php'; ?>
+
 </body>
 </html>

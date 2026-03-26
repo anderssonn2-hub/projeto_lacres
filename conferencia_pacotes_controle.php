@@ -392,5 +392,6 @@ if ($controle_canal === '') {
         window.setInterval(carregarEstado, 1500);
     })();
     </script>
+<?php include __DIR__ . '/melhorias_widget.php'; ?>
 </body>
 </html>

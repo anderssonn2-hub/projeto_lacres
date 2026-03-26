@@ -1,6 +1,11 @@
 <?php
 /**
- * consulta_producao.php - Versao 9.22.6
+ * consulta_producao.php - Versao 9.22.7
+ * 
+ * CHANGELOG v9.22.7:
+ * - [NOVO] Link Ver Detalhes navega direto para a area de detalhes do despacho
+ * - [MELHORADO] Detalhes PT exibem Conferido Por a partir da conferencia_pacotes
+ * - [MELHORADO] Detalhes PT propagam Lacre IIPR por posto e lote
  * 
  * CHANGELOG v9.22.6:
  * - [MELHORADO] Detalhes PT listam lotes via ciPostosCsv (por data e posto)
@@ -81,6 +86,22 @@ if (!isset($_SESSION)) {
 
 function e($s) {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+}
+
+function normalizarCodigo3($valor) {
+    $valor = preg_replace('/\D+/', '', (string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    return str_pad($valor, 3, '0', STR_PAD_LEFT);
+}
+
+function normalizarLote8($valor) {
+    $valor = preg_replace('/\D+/', '', (string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    return str_pad($valor, 8, '0', STR_PAD_LEFT);
 }
 
 // Conexao com banco de dados
@@ -833,7 +854,7 @@ try {
                                 ?>
                             </td>
                             <td class="acoes">
-                                <a href="?grupo=<?php echo urlencode($f_grupo); ?>&data_ini=<?php echo urlencode($f_data_ini); ?>&data_fim=<?php echo urlencode($f_data_fim); ?>&etiqueta=<?php echo urlencode($f_etiqueta); ?>&lote=<?php echo urlencode($f_lote); ?>&posto=<?php echo urlencode($f_posto); ?>&id=<?php echo (int)$d['id']; ?>">
+                                <a href="?grupo=<?php echo urlencode($f_grupo); ?>&data_ini=<?php echo urlencode($f_data_ini); ?>&data_fim=<?php echo urlencode($f_data_fim); ?>&etiqueta=<?php echo urlencode($f_etiqueta); ?>&lote=<?php echo urlencode($f_lote); ?>&posto=<?php echo urlencode($f_posto); ?>&id=<?php echo (int)$d['id']; ?>#detalhes-despacho">
                                     Ver Detalhes
                                 </a>
                             </td>
@@ -852,6 +873,9 @@ try {
             $itens = array();
             $lotes = array();
             $itens_detalhe = array();
+            $datasSql = array();
+            $mapaConferenciaPt = array();
+            $mapaLacrePtPorPosto = array();
             try {
                 // Busca o tipo do despacho
                 $stmtTipo = $pdo_controle->prepare("SELECT grupo, datas_str FROM ciDespachos WHERE id = ? LIMIT 1");
@@ -863,6 +887,19 @@ try {
                 $despacho_datas = '';
                 if ($rowTipo && isset($rowTipo['datas_str'])) {
                     $despacho_datas = $rowTipo['datas_str'];
+                }
+                if (!empty($despacho_datas)) {
+                    $tmpDatas = explode(',', $despacho_datas);
+                    foreach ($tmpDatas as $dataItem) {
+                        $dataItem = trim($dataItem);
+                        if ($dataItem === '') continue;
+                        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $dataItem, $m)) {
+                            $datasSql[] = $m[3] . '-' . $m[2] . '-' . $m[1];
+                        } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataItem)) {
+                            $datasSql[] = $dataItem;
+                        }
+                    }
+                    $datasSql = array_values(array_unique($datasSql));
                 }
                 
                 // Busca itens (Poupa Tempo)
@@ -948,6 +985,11 @@ try {
                         }
                         $data_carga = isset($r['l_data_carga']) ? $r['l_data_carga'] : '';
                         $responsaveis = isset($r['l_responsaveis']) ? $r['l_responsaveis'] : '';
+                        $posto3 = normalizarCodigo3($posto);
+
+                        if ($lacre_iipr !== '' && $posto3 !== '' && !isset($mapaLacrePtPorPosto[$posto3])) {
+                            $mapaLacrePtPorPosto[$posto3] = (string)$lacre_iipr;
+                        }
 
                         $conferido = 'N';
                         if (isset($r['conferido_oficio']) && $r['conferido_oficio'] === 'S') {
@@ -993,26 +1035,64 @@ try {
                 $stmtLotes->execute(array($id_despacho));
                 $lotes = $stmtLotes->fetchAll();
 
-                // v9.22.5: fallback para lotes PT via ciPostosCsv quando vazio
-                if ($despacho_tipo === 'POUPA TEMPO' && empty($lotes)) {
-                    $datasSql = array();
-                    if (!empty($despacho_datas)) {
-                        $tmp = explode(',', $despacho_datas);
-                        foreach ($tmp as $d) {
-                            $d = trim($d);
-                            if ($d === '') continue;
-                            if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
-                                $datasSql[] = $m[3] . '-' . $m[2] . '-' . $m[1];
-                            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
-                                $datasSql[] = $d;
-                            }
+                if ($despacho_tipo === 'POUPA TEMPO' && !empty($datasSql)) {
+                    $postosConferencia = array();
+                    foreach ($itens as $itemPt) {
+                        if (isset($itemPt['posto']) && $itemPt['posto'] !== '') {
+                            $postosConferencia[normalizarCodigo3($itemPt['posto'])] = true;
+                        }
+                    }
+                    foreach ($lotes as $lotePt) {
+                        if (isset($lotePt['posto']) && $lotePt['posto'] !== '') {
+                            $postosConferencia[normalizarCodigo3($lotePt['posto'])] = true;
                         }
                     }
 
+                    if (!empty($postosConferencia)) {
+                        $phDatasConf = implode(',', array_fill(0, count($datasSql), '?'));
+                        $postosListConf = array_keys($postosConferencia);
+                        $phPostosConf = implode(',', array_fill(0, count($postosListConf), '?'));
+                        $paramsConf = array_merge($datasSql, $postosListConf);
+                        $stmtConfPt = $pdo_controle->prepare("
+                            SELECT
+                                LPAD(CAST(nposto AS UNSIGNED), 3, '0') AS posto,
+                                LPAD(CAST(nlote AS UNSIGNED), 8, '0') AS lote,
+                                DATE(dataexp) AS data_carga,
+                                GROUP_CONCAT(DISTINCT NULLIF(TRIM(usuario), '') SEPARATOR ', ') AS conferido_por
+                            FROM conferencia_pacotes
+                            WHERE conf = 's'
+                              AND DATE(dataexp) IN ($phDatasConf)
+                              AND LPAD(CAST(nposto AS UNSIGNED), 3, '0') IN ($phPostosConf)
+                            GROUP BY LPAD(CAST(nposto AS UNSIGNED), 3, '0'), LPAD(CAST(nlote AS UNSIGNED), 8, '0'), DATE(dataexp)
+                        ");
+                        $stmtConfPt->execute($paramsConf);
+                        $rowsConfPt = $stmtConfPt->fetchAll();
+                        foreach ($rowsConfPt as $rowConfPt) {
+                            $postoConf = isset($rowConfPt['posto']) ? (string)$rowConfPt['posto'] : '';
+                            $loteConf = isset($rowConfPt['lote']) ? (string)$rowConfPt['lote'] : '';
+                            $dataConf = isset($rowConfPt['data_carga']) ? (string)$rowConfPt['data_carga'] : '';
+                            $usuarioConf = isset($rowConfPt['conferido_por']) ? trim((string)$rowConfPt['conferido_por']) : '';
+                            if ($postoConf === '' || $loteConf === '') {
+                                continue;
+                            }
+                            $registroConf = array(
+                                'conferido' => 'S',
+                                'conferido_por' => $usuarioConf
+                            );
+                            $mapaConferenciaPt[$postoConf . '|' . $loteConf] = $registroConf;
+                            if ($dataConf !== '') {
+                                $mapaConferenciaPt[$postoConf . '|' . $loteConf . '|' . $dataConf] = $registroConf;
+                            }
+                        }
+                    }
+                }
+
+                // v9.22.5: fallback para lotes PT via ciPostosCsv quando vazio
+                if ($despacho_tipo === 'POUPA TEMPO' && empty($lotes)) {
                     $postosFiltro = array();
                     foreach ($itens as $i) {
                         if (isset($i['posto']) && $i['posto'] !== '') {
-                            $postosFiltro[str_pad((string)$i['posto'], 3, '0', STR_PAD_LEFT)] = true;
+                            $postosFiltro[normalizarCodigo3($i['posto'])] = true;
                         }
                     }
 
@@ -1053,22 +1133,49 @@ try {
                     }
                 }
 
+                if ($despacho_tipo === 'POUPA TEMPO' && !empty($lotes)) {
+                    foreach ($lotes as $lx => $l) {
+                        $postoLote = normalizarCodigo3(isset($l['posto']) ? $l['posto'] : '');
+                        $loteLote = normalizarLote8(isset($l['lote']) ? $l['lote'] : '');
+                        $dataLote = isset($l['data_carga']) ? trim((string)$l['data_carga']) : '';
+                        $chaveData = $postoLote . '|' . $loteLote . '|' . $dataLote;
+                        $chaveBase = $postoLote . '|' . $loteLote;
+                        $registroConf = isset($mapaConferenciaPt[$chaveData]) ? $mapaConferenciaPt[$chaveData] : (isset($mapaConferenciaPt[$chaveBase]) ? $mapaConferenciaPt[$chaveBase] : null);
+                        if ($postoLote !== '' && empty($l['etiquetaiipr']) && isset($mapaLacrePtPorPosto[$postoLote])) {
+                            $lotes[$lx]['etiquetaiipr'] = $mapaLacrePtPorPosto[$postoLote];
+                        }
+                        if ($registroConf) {
+                            $lotes[$lx]['conferido'] = 'S';
+                            $lotes[$lx]['conferido_por'] = $registroConf['conferido_por'];
+                        }
+                    }
+                }
+
                 // v9.22.5: preencher data_carga/responsaveis nos itens PT usando lotes
                 if ($despacho_tipo === 'POUPA TEMPO' && !empty($itens) && !empty($lotes)) {
                     $mapaLotes = array();
                     foreach ($lotes as $l) {
-                        $k = (string)$l['posto'] . '|' . (string)$l['lote'];
+                        $k = normalizarCodigo3(isset($l['posto']) ? $l['posto'] : '') . '|' . normalizarLote8(isset($l['lote']) ? $l['lote'] : '');
                         $mapaLotes[$k] = $l;
                     }
 
                     foreach ($itens as $ix => $i) {
                         $dataOk = !empty($i['data_carga']);
                         $respOk = !empty($i['responsaveis']);
+                        $lacreOk = !empty($i['lacre_iipr']) && $i['lacre_iipr'] !== '0';
+                        $usuariosConferencia = array();
+                        $houveConferencia = (isset($i['conferido']) && $i['conferido'] === 'S');
+                        $postoItem = normalizarCodigo3(isset($i['posto']) ? $i['posto'] : '');
                         if ($dataOk && $respOk) {
-                            continue;
+                            if ($lacreOk && $houveConferencia && !empty($i['conferido_por'])) {
+                                continue;
+                            }
                         }
                         $lotesStr = isset($i['lote']) ? (string)$i['lote'] : '';
                         if ($lotesStr === '') {
+                            if (!$lacreOk && $postoItem !== '' && isset($mapaLacrePtPorPosto[$postoItem])) {
+                                $itens[$ix]['lacre_iipr'] = $mapaLacrePtPorPosto[$postoItem];
+                            }
                             continue;
                         }
                         $lotesList = array();
@@ -1079,7 +1186,8 @@ try {
                             }
                         }
                         foreach ($lotesList as $lt) {
-                            $k = (string)$i['posto'] . '|' . $lt;
+                            $loteNorm = normalizarLote8($lt);
+                            $k = $postoItem . '|' . $loteNorm;
                             if (isset($mapaLotes[$k])) {
                                 if (!$dataOk && !empty($mapaLotes[$k]['data_carga'])) {
                                     $itens[$ix]['data_carga'] = $mapaLotes[$k]['data_carga'];
@@ -1089,34 +1197,46 @@ try {
                                     $itens[$ix]['responsaveis'] = $mapaLotes[$k]['responsaveis'];
                                     $respOk = true;
                                 }
+                                if (!$lacreOk && !empty($mapaLotes[$k]['etiquetaiipr']) && $mapaLotes[$k]['etiquetaiipr'] !== '0') {
+                                    $itens[$ix]['lacre_iipr'] = $mapaLotes[$k]['etiquetaiipr'];
+                                    $lacreOk = true;
+                                }
                             }
-                            if ($dataOk && $respOk) {
+
+                            $chaveConfData = $postoItem . '|' . $loteNorm . '|' . (isset($itens[$ix]['data_carga']) ? $itens[$ix]['data_carga'] : '');
+                            if (isset($mapaConferenciaPt[$chaveConfData])) {
+                                $houveConferencia = true;
+                                if (!empty($mapaConferenciaPt[$chaveConfData]['conferido_por'])) {
+                                    $usuariosConferencia[$mapaConferenciaPt[$chaveConfData]['conferido_por']] = true;
+                                }
+                            } elseif (isset($mapaConferenciaPt[$k])) {
+                                $houveConferencia = true;
+                                if (!empty($mapaConferenciaPt[$k]['conferido_por'])) {
+                                    $usuariosConferencia[$mapaConferenciaPt[$k]['conferido_por']] = true;
+                                }
+                            }
+                            if ($dataOk && $respOk && $lacreOk) {
                                 break;
                             }
+                        }
+                        if (!$lacreOk && $postoItem !== '' && isset($mapaLacrePtPorPosto[$postoItem])) {
+                            $itens[$ix]['lacre_iipr'] = $mapaLacrePtPorPosto[$postoItem];
+                        }
+                        if ($houveConferencia) {
+                            $itens[$ix]['conferido'] = 'S';
+                        }
+                        if (!empty($usuariosConferencia)) {
+                            $itens[$ix]['conferido_por'] = implode(', ', array_keys($usuariosConferencia));
                         }
                     }
                 }
 
                 // v9.22.6: montar itens detalhados por lote (PT) via ciPostosCsv
                 if ($despacho_tipo === 'POUPA TEMPO') {
-                    $datasSql = array();
-                    if (!empty($despacho_datas)) {
-                        $tmp = explode(',', $despacho_datas);
-                        foreach ($tmp as $d) {
-                            $d = trim($d);
-                            if ($d === '') continue;
-                            if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
-                                $datasSql[] = $m[3] . '-' . $m[2] . '-' . $m[1];
-                            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
-                                $datasSql[] = $d;
-                            }
-                        }
-                    }
-
                     $postosFiltro = array();
                     foreach ($itens as $i) {
                         if (isset($i['posto']) && $i['posto'] !== '') {
-                            $postosFiltro[str_pad((string)$i['posto'], 3, '0', STR_PAD_LEFT)] = true;
+                            $postosFiltro[normalizarCodigo3($i['posto'])] = true;
                         }
                     }
 
@@ -1153,6 +1273,12 @@ try {
                         if (!empty($rowsItensPt)) {
                             foreach ($rowsItensPt as $rpt) {
                                 $posto = (string)$rpt['posto'];
+                                $postoNorm = normalizarCodigo3($posto);
+                                $loteNorm = normalizarLote8(isset($rpt['lote']) ? $rpt['lote'] : '');
+                                $dataLinha = isset($rpt['data_carga']) ? (string)$rpt['data_carga'] : '';
+                                $chaveConfData = $postoNorm . '|' . $loteNorm . '|' . $dataLinha;
+                                $chaveConf = $postoNorm . '|' . $loteNorm;
+                                $registroConf = isset($mapaConferenciaPt[$chaveConfData]) ? $mapaConferenciaPt[$chaveConfData] : (isset($mapaConferenciaPt[$chaveConf]) ? $mapaConferenciaPt[$chaveConf] : null);
                                 $nome_posto = '';
                                 foreach ($itens as $ii) {
                                     if ((string)$ii['posto'] === $posto && !empty($ii['nome_posto'])) {
@@ -1169,14 +1295,14 @@ try {
                                     'lote' => (string)$rpt['lote'],
                                     'quantidade' => (int)$rpt['quantidade'],
                                     'usuario' => '',
-                                    'lacre_iipr' => '',
+                                    'lacre_iipr' => isset($mapaLacrePtPorPosto[$postoNorm]) ? $mapaLacrePtPorPosto[$postoNorm] : '',
                                     'lacre_correios' => '',
                                     'etiqueta_correios' => '',
                                     'nome_posto' => $nome_posto,
                                     'data_carga' => (string)$rpt['data_carga'],
                                     'responsaveis' => (string)$rpt['responsaveis'],
-                                    'conferido' => 'N',
-                                    'conferido_por' => ''
+                                    'conferido' => $registroConf ? 'S' : 'N',
+                                    'conferido_por' => $registroConf ? $registroConf['conferido_por'] : ''
                                 );
                             }
                         }
@@ -1244,8 +1370,8 @@ try {
                             'nome_posto' => isset($l['nome_posto']) ? $l['nome_posto'] : '',
                             'data_carga' => isset($l['data_carga']) ? $l['data_carga'] : '',
                             'responsaveis' => isset($l['responsaveis']) ? $l['responsaveis'] : '',
-                            'conferido' => $confLote,
-                            'conferido_por' => ''
+                            'conferido' => isset($l['conferido']) && $l['conferido'] === 'S' ? 'S' : $confLote,
+                            'conferido_por' => isset($l['conferido_por']) ? $l['conferido_por'] : ''
                         );
                     }
                 }
@@ -1264,7 +1390,7 @@ try {
                 echo "</div>";
             }
         ?>
-        <div class="painel">
+        <div class="painel" id="detalhes-despacho">
             <div class="painel-titulo">Detalhes do Despacho #<?php echo (int)$id_despacho; ?></div>
             
             <!-- Versao 8.15.2: Resumo funciona para ambos (usa lotes ou itens conforme tipo) -->
@@ -1665,7 +1791,24 @@ function showTab(tabName) {
         }
     }
 }
+
+(function() {
+    if (window.location.hash !== '#detalhes-despacho') {
+        return;
+    }
+    var alvo = document.getElementById('detalhes-despacho');
+    if (!alvo) {
+        return;
+    }
+    setTimeout(function() {
+        if (alvo.scrollIntoView) {
+            alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, 80);
+})();
 </script>
+
+<?php include __DIR__ . '/melhorias_widget.php'; ?>
 
 </body>
 </html>
