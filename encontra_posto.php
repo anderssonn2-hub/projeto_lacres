@@ -315,6 +315,9 @@ try {
             $voz = 'Poupa Tempo ' . $posto_int;
             $tipo_posto = 'poupatempo';
             $label_tipo = 'Poupa Tempo';
+        } elseif ($posto_pad === '002') {
+            $voz = 'Posto 1';
+            $label_tipo = 'Posto 1';
         } elseif ($posto_pad === '001') {
             $voz = 'Posto 001';
             $label_tipo = 'Posto 001';
@@ -1098,14 +1101,22 @@ function falar(texto) {
     if (!vozAtiva) return;
     if (typeof speechSynthesis === 'undefined') return;
 
+    try {
+        audioFila = [];
+        audioFilaAtiva = false;
+        speechSynthesis.cancel();
+    } catch (eCancel) {}
+
     var utt = new SpeechSynthesisUtterance(texto);
     utt.lang = 'pt-BR';
-    utt.rate = 0.9;
+    utt.rate = 1.15;
     utt.pitch = 1;
     utt.volume = 1;
 
-    audioFila.push(utt);
-    processarFilaVoz();
+    utt.onend = function() { audioFilaAtiva = false; };
+    utt.onerror = function() { audioFilaAtiva = false; };
+    audioFilaAtiva = true;
+    speechSynthesis.speak(utt);
 }
 
 function processarFilaVoz() {

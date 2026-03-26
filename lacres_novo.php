@@ -3871,6 +3871,70 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             background: #e9ecef;
         }
 
+        .overlay-processando-global {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.34);
+            z-index: 20000;
+        }
+        .overlay-processando-global.ativo {
+            display: flex;
+        }
+        .overlay-processando-box {
+            min-width: 220px;
+            padding: 18px 22px;
+            border-radius: 12px;
+            background: #ffffff;
+            color: #1f2937;
+            text-align: center;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.25);
+            font-size: 15px;
+            font-weight: 700;
+        }
+        .overlay-processando-box::before {
+            content: '';
+            display: block;
+            width: 28px;
+            height: 28px;
+            margin: 0 auto 10px;
+            border-radius: 50%;
+            border: 3px solid #dbeafe;
+            border-top-color: #2563eb;
+            animation: giro-processando 0.9s linear infinite;
+        }
+        .btn-topo-global {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            width: 42px;
+            height: 42px;
+            border: none;
+            border-radius: 999px;
+            background: #1d4ed8;
+            color: #fff;
+            font-size: 22px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 10px 22px rgba(29, 78, 216, 0.34);
+            display: none;
+            z-index: 12000;
+        }
+        .btn-topo-global:hover {
+            background: #1e40af;
+        }
+        .btn-topo-global.visivel {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        @keyframes giro-processando {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         /* v9.21.6: Banner central com datas do filtro */
         .datas-filtro-banner {
             position: relative;
@@ -5081,6 +5145,12 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </head>
 <body>
 
+<div id="overlay-processando-global" class="overlay-processando-global" aria-hidden="true">
+    <div class="overlay-processando-box" id="overlay-processando-texto">Processando...</div>
+</div>
+
+<button type="button" id="btn-topo-global" class="btn-topo-global nao-imprimir" title="Voltar ao topo">↑</button>
+
 <a href="inicio.php" class="btn-voltar-inicio nao-imprimir">← Inicio</a>
 
 <input type="hidden" id="id_despacho" value="<?php echo isset($_SESSION['id_despacho_correios']) && $_SESSION['id_despacho_correios'] > 0 ? (int)$_SESSION['id_despacho_correios'] : (int)$id_despacho_atual; ?>">
@@ -5638,19 +5708,19 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                             data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
                             data-posicao="abaixo"
                             onclick="abrirModalInserir(this);">
-                        Adicionar linha abaixo
+                        +Abaixo
                     </button>
                     <?php elseif ($grupo === 'REGIONAIS'): ?>
                     <button type="button" class="btn-excluir-regional"
                             onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
-                        Excluir Regional
+                        Excluir
                     </button>
                     <button type="button" class="btn-add-below"
                             data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
                             data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
                             data-posicao="abaixo"
                             onclick="abrirModalInserir(this);">
-                        Adicionar linha abaixo
+                        +Abaixo
                     </button>
                     <?php else: ?>
                     <button type="button" class="btn-excluir"
@@ -5662,7 +5732,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                             data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
                             data-posicao="abaixo"
                             onclick="abrirModalInserir(this);">
-                        Adicionar linha abaixo
+                        +Abaixo
                     </button>
                     <?php endif; ?>
                 </td>
@@ -6969,6 +7039,60 @@ if (document.readyState === 'loading') {
 } else {
     inicializarMonitoramentoAlteracoes();
 }
+
+(function() {
+    var overlay = document.getElementById('overlay-processando-global');
+    var overlayTexto = document.getElementById('overlay-processando-texto');
+    var btnTopo = document.getElementById('btn-topo-global');
+
+    function exibirProcessando(texto) {
+        if (!overlay) return;
+        if (overlayTexto) {
+            overlayTexto.textContent = texto || 'Processando...';
+        }
+        overlay.className = 'overlay-processando-global ativo';
+        overlay.setAttribute('aria-hidden', 'false');
+    }
+
+    function ocultarProcessando() {
+        if (!overlay) return;
+        overlay.className = 'overlay-processando-global';
+        overlay.setAttribute('aria-hidden', 'true');
+    }
+
+    function atualizarBotaoTopo() {
+        if (!btnTopo) return;
+        if ((window.pageYOffset || document.documentElement.scrollTop || 0) > 260) {
+            btnTopo.className = 'btn-topo-global nao-imprimir visivel';
+        } else {
+            btnTopo.className = 'btn-topo-global nao-imprimir';
+        }
+    }
+
+    window.exibirProcessandoGlobal = exibirProcessando;
+    window.ocultarProcessandoGlobal = ocultarProcessando;
+
+    document.addEventListener('submit', function(evento) {
+        var form = evento.target;
+        if (!form || form.getAttribute('target') === '_blank' || form.getAttribute('data-sem-processando') === '1') {
+            return;
+        }
+        exibirProcessando('Processando...');
+    }, true);
+
+    window.addEventListener('beforeunload', function() {
+        exibirProcessando('Processando...');
+    });
+
+    if (btnTopo) {
+        btnTopo.addEventListener('click', function() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+
+    window.addEventListener('scroll', atualizarBotaoTopo, { passive: true });
+    atualizarBotaoTopo();
+})();
 
 // ============================================================================
 // v8.14.7: SISTEMA DE SNAPSHOT/AUTO-SAVE CONTÍNUO
