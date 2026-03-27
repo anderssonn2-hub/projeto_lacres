@@ -368,19 +368,21 @@ try {
 
         $estante_novo = false;
         try {
-            $stmtCheck = $pdo->prepare("SELECT id FROM lotes_na_estante WHERE lote = ? LIMIT 1");
-            $stmtCheck->execute(array((int)$lote));
-            if (!$stmtCheck->fetch()) {
-                $stmtIns = $pdo->prepare("INSERT INTO lotes_na_estante (lote, regional, posto, quantidade, producao_de, triado_em) VALUES (?,?,?,?,?,NOW())");
-                $stmtIns->execute(array(
-                    (int)$lote,
-                    (int)$regional_real,
-                    (int)$posto_num,
-                    (int)$quantidade,
-                    $data_alvo
-                ));
-                $estante_novo = true;
-            }
+            $stmtIns = $pdo->prepare("INSERT INTO lotes_na_estante (lote, regional, posto, quantidade, producao_de, triado_em)
+                SELECT ?, ?, ?, ?, ?, NOW()
+                FROM DUAL
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM lotes_na_estante WHERE lote = ?
+                )");
+            $stmtIns->execute(array(
+                (int)$lote,
+                (int)$regional_real,
+                (int)$posto_num,
+                (int)$quantidade,
+                $data_alvo,
+                (int)$lote
+            ));
+            $estante_novo = $stmtIns->rowCount() > 0;
         } catch (Exception $e) {
             $estante_novo = false;
         }
@@ -1085,13 +1087,6 @@ function falar(texto) {
     if (typeof speechSynthesis === 'undefined') return;
     texto = String(texto || '').trim();
     if (texto === '') return;
-
-    var agora = new Date().getTime();
-    if (ultimaFalaTexto === texto && (agora - ultimaFalaEm) < 2500) {
-        return;
-    }
-    ultimaFalaTexto = texto;
-    ultimaFalaEm = agora;
 
     try {
         audioFila = [];

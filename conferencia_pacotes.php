@@ -5662,6 +5662,10 @@ function iniciarConferenciaPacotes() {
         chip.classList.add('ativo');
         selecionarContextoMalote(obterContextoMaloteDeChip(chip));
         var linha = chip.closest('.operacao-posto-row');
+        var grupo = chip.closest('.operacao-grupo[data-view]');
+        if (chipsRecolhidos && grupo) {
+            aplicarFocoGrupoOperacao(grupo);
+        }
         if (linha) {
             linha.classList.add('ativo');
             centralizarElemento(linha);
@@ -5894,15 +5898,27 @@ function iniciarConferenciaPacotes() {
 
     function definirRecolhimentoChips(recolhido) {
         chipsRecolhidos = !!recolhido;
-        var grupos = document.querySelectorAll('.operacao-grupo[data-view]');
-        for (var i = 0; i < grupos.length; i++) {
-            grupos[i].classList.toggle('recolhido', chipsRecolhidos);
-        }
+        aplicarFocoGrupoOperacao(null);
         if (btnToggleTodosChips) {
             btnToggleTodosChips.textContent = chipsRecolhidos ? 'Expandir chips' : 'Recolher chips';
             btnToggleTodosChips.setAttribute('aria-expanded', chipsRecolhidos ? 'false' : 'true');
         }
         try { localStorage.setItem(storageChipsRecolhidosKey, chipsRecolhidos ? '1' : '0'); } catch (e) {}
+    }
+
+    function aplicarFocoGrupoOperacao(grupoAtivo) {
+        var grupos = document.querySelectorAll('.operacao-grupo[data-view]');
+        for (var i = 0; i < grupos.length; i++) {
+            if (!chipsRecolhidos) {
+                grupos[i].classList.remove('recolhido');
+                continue;
+            }
+            if (grupoAtivo && grupos[i] === grupoAtivo) {
+                grupos[i].classList.remove('recolhido');
+            } else {
+                grupos[i].classList.add('recolhido');
+            }
+        }
     }
 
     function definirRecolhimentoTradicional(recolhido) {
