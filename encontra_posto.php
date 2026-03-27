@@ -1691,7 +1691,6 @@ function buscarPosto(codbar) {
     }
     leituraAtiva = true;
     tocarBeep();
-    falar(preverVozLocal(codbar));
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
