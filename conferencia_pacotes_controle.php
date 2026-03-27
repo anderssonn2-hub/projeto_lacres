@@ -161,6 +161,7 @@ if ($controle_canal === '') {
         .btn-blue { background: linear-gradient(180deg, #2563eb 0%, #1e40af 100%); }
         .btn-amber { background: linear-gradient(180deg, #d97706 0%, #b45309 100%); }
         .btn-green { background: linear-gradient(180deg, #0f766e 0%, #115e59 100%); }
+        .btn-split { background: linear-gradient(180deg, #be123c 0%, #9f1239 100%); }
         .ajuda {
             margin-top: 10px;
             color: var(--sub);
@@ -263,6 +264,17 @@ if ($controle_canal === '') {
             </div>
             <div class="ajuda">Após atribuir o display, o foco volta automaticamente para o lacre Correios. Se a Central usar o mesmo display, basta mantê-lo preenchido.</div>
             <a class="rodape-link" href="conferencia_pacotes_comandos.php" target="_blank" rel="noopener">Abrir folha de comandos por código de barras</a>
+        </section>
+
+        <section class="card">
+            <div class="bloco-topo">
+                <h2>Split</h2>
+                <div class="valor-atual">Novo bloco</div>
+            </div>
+            <div class="acoes">
+                <button type="button" class="btn-triplo btn-split" data-acao="marcar_split">Marcar split para o próximo bloco</button>
+            </div>
+            <div class="ajuda">Use 3 toques quando quiser separar os próximos malotes em um novo bloco visual, com lacres e displays independentes.</div>
         </section>
     </div>
 
@@ -408,6 +420,8 @@ if ($controle_canal === '') {
             } else if (acao === 'atribuir_display') {
                 comando = 'atribuir_display';
                 valorAux = normalizarNumero(inputEtiquetaCorreiosRemoto ? inputEtiquetaCorreiosRemoto.value : '', 35);
+            } else if (acao === 'marcar_split') {
+                comando = 'marcar_split';
             }
 
             return { comando: comando, valor: valor, valorAux: valorAux };
@@ -460,6 +474,9 @@ if ($controle_canal === '') {
                 atualizarStatus('Leia ou digite o display Correios antes de atribuir.', 'erro');
                 if (inputEtiquetaCorreiosRemoto) inputEtiquetaCorreiosRemoto.focus();
                 return;
+            }
+            if (acao === 'marcar_split') {
+                atualizarStatus('Split preparado para o próximo bloco após 3 toques.', '');
             }
 
             formData.append('enviar_comando_remoto_ajax', '1');

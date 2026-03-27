@@ -3729,6 +3729,7 @@ function iniciarConferenciaPacotes() {
     var ultimoLacreIiprAplicado = '';
     var ultimoLacreCorreiosAplicado = '';
     var ultimaEtiquetaCorreiosAplicada = '';
+    var contextoSplitSequencia = {};
     var valoresDigitadosPorContexto = {};
     var comandosCodigoBarras = {
         '990000000000000000001': { tipo: 'iipr', mensagem: 'Aguardando leitura do lacre IIPR.' },
@@ -3843,6 +3844,47 @@ function iniciarConferenciaPacotes() {
             chave: chave || '',
             rotulo: rotulo || ''
         };
+    }
+
+    function obterChaveContextoMalote(contexto) {
+        if (!contexto || !contexto.tipo || !contexto.chave) return '';
+        return String(contexto.tipo) + '|' + String(contexto.chave);
+    }
+
+    function extrairSegmentoSplitGrupo(grupo) {
+        var texto = String(grupo || '');
+        var match = texto.match(/_S(\d+)(?:_|$)/);
+        if (!match || typeof match[1] === 'undefined') {
+            return 0;
+        }
+        return parseInt(match[1], 10) || 0;
+    }
+
+    function obterMaiorSegmentoContexto(contexto) {
+        var chips = [];
+        var maior = 0;
+        var i;
+        var dados;
+        if (!contexto || !contexto.tipo || !contexto.chave) return 0;
+        chips = document.querySelectorAll('.operacao-chip');
+        for (i = 0; i < chips.length; i++) {
+            dados = obterDadosChipOperacao(chips[i]);
+            if (!dados) continue;
+            var contextoChip = obterContextoMaloteDeDados(dados);
+            if (contextoChip.tipo !== contexto.tipo || contextoChip.chave !== contexto.chave) continue;
+            maior = Math.max(maior, extrairSegmentoSplitGrupo(dados.grupo_correios || dados.grupo_iipr || ''));
+        }
+        return maior;
+    }
+
+    function obterSegmentoAtualContexto(contexto) {
+        var chaveContexto = obterChaveContextoMalote(contexto);
+        if (!chaveContexto) return 0;
+        if (typeof contextoSplitSequencia[chaveContexto] === 'number') {
+            return contextoSplitSequencia[chaveContexto];
+        }
+        contextoSplitSequencia[chaveContexto] = obterMaiorSegmentoContexto(contexto);
+        return contextoSplitSequencia[chaveContexto];
     }
 
     function obterContextoMaloteDeDados(dados) {
@@ -4768,6 +4810,7 @@ function iniciarConferenciaPacotes() {
         var contextoAtual = null;
         var grupoIipr = '';
         var pacotes = [];
+        var segmentoSplit = 0;
         if (!lacreIipr) {
             mostrarConfirmacao('Informe o lacre IIPR antes de atribuir.', true);
             return false;
@@ -4783,7 +4826,8 @@ function iniciarConferenciaPacotes() {
             return false;
         }
         contextoAtual = montarContextoMalote(tipoContextoSelecionadoMalote, contextoSelecionadoMalote, rotuloContextoSelecionadoMalote);
-        grupoIipr = 'GI_' + (contextoAtual.tipo === 'regional' ? ('R' + contextoAtual.chave) : ('P' + contextoAtual.chave)) + '_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+        segmentoSplit = obterSegmentoAtualContexto(contextoAtual);
+        grupoIipr = 'GI_' + (contextoAtual.tipo === 'regional' ? ('R' + contextoAtual.chave) : ('P' + contextoAtual.chave)) + '_S' + segmentoSplit + '_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
 
         for (var i = 0; i < chips.length; i++) {
             var contextoChip = obterContextoMaloteDeChip(chips[i]);
@@ -4823,6 +4867,7 @@ function iniciarConferenciaPacotes() {
         var grupoCorreios = '';
         var chips = [];
         var pacotes = [];
+        var segmentoSplit = 0;
         if (!lacreCorreios) {
             mostrarConfirmacao('Informe o lacre Correios antes de atribuir.', true);
             return false;
@@ -4838,7 +4883,10 @@ function iniciarConferenciaPacotes() {
             return false;
         }
 
-        grupoCorreios = 'GC_' + (tipoContextoSelecionadoMalote === 'regional' ? ('R' + contextoSelecionadoMalote) : ('P' + contextoSelecionadoMalote)) + '_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+        if (gruposMarcados.length) {
+            segmentoSplit = extrairSegmentoSplitGrupo(gruposMarcados[0]);
+        }
+        grupoCorreios = 'GC_' + (tipoContextoSelecionadoMalote === 'regional' ? ('R' + contextoSelecionadoMalote) : ('P' + contextoSelecionadoMalote)) + '_S' + segmentoSplit + '_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
         chips = obterChipsPorGrupoIipr(gruposMarcados);
         for (var i = 0; i < chips.length; i++) {
             var payload = montarPacoteParaPersistencia(chips[i], {
@@ -4966,8 +5014,32 @@ function iniciarConferenciaPacotes() {
         }
     }
 
+    function marcarSplitNoContextoAtual(origem) {
+        var contextoAtual;
+        var chaveContexto;
+        var proximoSegmento;
+        if (!garantirContextoMaloteAtual()) {
+            mostrarConfirmacao('Nenhum contexto ativo foi identificado para aplicar o split.', true);
+            return false;
+        }
+        contextoAtual = montarContextoMalote(tipoContextoSelecionadoMalote, contextoSelecionadoMalote, rotuloContextoSelecionadoMalote);
+        chaveContexto = obterChaveContextoMalote(contextoAtual);
+        if (!chaveContexto) {
+            mostrarConfirmacao('Nenhum contexto ativo foi identificado para aplicar o split.', true);
+            return false;
+        }
+        proximoSegmento = obterSegmentoAtualContexto(contextoAtual) + 1;
+        contextoSplitSequencia[chaveContexto] = proximoSegmento;
+        limparModoVoz('Split preparado' + (origem ? ' por ' + origem : '') + '.');
+        return true;
+    }
+
     function processarComandoRemoto(cmd) {
         if (!cmd || !cmd.comando) return;
+        if (cmd.comando === 'marcar_split') {
+            marcarSplitNoContextoAtual('controle');
+            return;
+        }
         if (cmd.comando === 'atribuir_iipr') {
             aplicarLacreIiprNoContexto(cmd.valor || '', 'controle');
             return;
@@ -5064,12 +5136,26 @@ function iniciarConferenciaPacotes() {
     function obterGruposIiprSemCorreiosNoContexto() {
         var grupos = obterGruposIiprNoContexto();
         var lista = [];
+        var menorSegmento = null;
         for (var chave in grupos) {
             if (!Object.prototype.hasOwnProperty.call(grupos, chave)) continue;
             if (grupos[chave].grupo_correios) continue;
-            lista.push(chave);
+            var segmento = extrairSegmentoSplitGrupo(grupos[chave].grupo_iipr || chave);
+            if (menorSegmento === null || segmento < menorSegmento) {
+                menorSegmento = segmento;
+            }
+            lista.push({ chave: chave, segmento: segmento });
         }
-        return lista;
+        if (menorSegmento === null) {
+            return [];
+        }
+        var filtrados = [];
+        for (var i = 0; i < lista.length; i++) {
+            if (lista[i].segmento === menorSegmento) {
+                filtrados.push(lista[i].chave);
+            }
+        }
+        return filtrados;
     }
 
     function obterChipsPorGrupoIipr(gruposIipr) {
@@ -5120,10 +5206,13 @@ function iniciarConferenciaPacotes() {
             if (grupos[chave].etiqueta_correios) continue;
             encontrados.push(grupos[chave]);
         }
-        if (encontrados.length === 1) {
-            return encontrados[0];
+        if (!encontrados.length) {
+            return null;
         }
-        return null;
+        encontrados.sort(function(a, b) {
+            return extrairSegmentoSplitGrupo(a.grupo_correios || '') - extrairSegmentoSplitGrupo(b.grupo_correios || '');
+        });
+        return encontrados[0];
     }
 
     function obterResumoContextoAtual() {

@@ -350,6 +350,17 @@ try {
         .campo-etiqueta {
             text-align: left;
         }
+        .linha-split td {
+            background: #eef6ff;
+            color: #0f4d85;
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            text-align: center;
+            padding: 4px 6px;
+        }
         .campo-etiqueta:focus {
             border-color: var(--destaque);
             box-shadow: 0 0 0 1px rgba(22,155,65,0.15);
@@ -902,6 +913,13 @@ try {
             return Math.min(6, linhas);
         }
 
+        function extrairSegmentoSplitGrupo(grupo) {
+            var texto = String(grupo || '');
+            var match = texto.match(/_S(\d+)(?:_|$)/);
+            if (!match || typeof match[1] === 'undefined') return 0;
+            return parseInt(match[1], 10) || 0;
+        }
+
         function montarLinhas(snapshot) {
             snapshot = garantirChavesResumo(snapshot, false);
             var resumo = snapshot && snapshot.resumo ? snapshot.resumo : [];
@@ -935,6 +953,7 @@ try {
                     lacre_iipr: item.lacre_iipr || '',
                     lacre_correios: item.lacre_correios || '',
                     etiqueta_correios: item.etiqueta_correios || '',
+                    split_segmento: extrairSegmentoSplitGrupo(item.grupo_correios || item.grupo_iipr || ''),
                     lotes: item.lotes || [],
                     qtd_total: item.qtd_total || 0,
                     pendente_lacre: !!item.pendente_lacre
@@ -981,6 +1000,10 @@ try {
 
             for (var i = 0; i < linhas.length; i++) {
                 var item = linhas[i];
+                var anterior = i > 0 ? linhas[i - 1] : null;
+                if (anterior && item.split_segmento !== anterior.split_segmento) {
+                    html += '<tr class="linha-split"><td colspan="4">Split do próximo bloco</td></tr>';
+                }
                 html += '<tr data-row-key="' + escapeHtml(item.row_key) + '">';
                 html += '<td><div class="destino">' + escapeHtml(item.posto_rotulo) + '</div></td>';
                 html += '<td>' + montarCampoEdicao('campo-lacres-iipr', item.row_key, 'lacre_iipr', item.lacre_iipr || '', 80) + '</td>';
