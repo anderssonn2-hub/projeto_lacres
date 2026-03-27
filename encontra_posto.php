@@ -942,28 +942,6 @@ try {
         <div class="lista-lotes" id="listaSemUpload"></div>
     </div>
 
-    <div class="painel-historico" id="painelHistoricoLeituras">
-        <h3>Pacotes ja lidos na estante</h3>
-        <div class="subtitulo" id="historicoLeiturasSubtitulo">Listagem conforme o periodo aplicado.</div>
-        <div class="historico-tabela-wrap">
-            <table class="historico-tabela">
-                <thead>
-                    <tr>
-                        <th>Lote</th>
-                        <th>Posto</th>
-                        <th>Regional</th>
-                        <th>Qtd</th>
-                        <th>Data producao</th>
-                        <th>Lido em</th>
-                    </tr>
-                </thead>
-                <tbody id="historicoLeiturasBody">
-                    <tr><td colspan="6" class="historico-vazio">Nenhum pacote lido para o filtro atual.</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
     <div class="resultado-posto" id="resultadoPosto">
         <div class="resultado-header" id="resultadoHeader">
             <div class="numero-posto" id="resultadoNumero"></div>
@@ -1002,7 +980,6 @@ var contRegional = 0;
 var contPT = 0;
 var contSemUpload = 0;
 var lotesSemUpload = [];
-var historicoLeituras = [];
 var audioFilaAtiva = false;
 var audioFila = [];
 var ultimaFalaTexto = '';
@@ -1450,12 +1427,16 @@ function exibirResultado(dados) {
     }
     if (dados.sem_upload) {
         contSemUpload = dados.sem_upload.total || 0;
-        lotesSemUpload = dados.sem_upload.lotes || [];
+        if (dados.status_estante === 'sem_upload') {
+            lotesSemUpload = [{
+                lote: String(dados.lote || '').trim(),
+                posto: String(dados.posto || '').trim(),
+                regional: String(dados.regional_csv || dados.regional_pad || dados.regional || '').replace(/\D+/g, '').padStart(3, '0')
+            }];
+        } else {
+            lotesSemUpload = [];
+        }
         renderizarSemUpload();
-    }
-    if (dados.historico) {
-        historicoLeituras = dados.historico || [];
-        renderizarHistoricoLeituras();
     }
 
     if (dados.layout) {
@@ -1513,50 +1494,6 @@ function renderizarSemUpload() {
         html += '<span class="lote-badge" title="Lote ' + lote + ' - Regional ' + regional + ' - Posto ' + posto + '">' + lote + '<small>R ' + regional + ' • P ' + posto + '</small></span>';
     }
     lista.innerHTML = html;
-}
-
-function formatarDataHoraBr(valor) {
-    var texto = String(valor || '').trim();
-    var m = texto.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
-    if (m) {
-        return m[3] + '-' + m[2] + '-' + m[1] + ' ' + m[4] + ':' + m[5] + (m[6] ? ':' + m[6] : '');
-    }
-    return texto;
-}
-
-function renderizarHistoricoLeituras() {
-    var corpo = document.getElementById('historicoLeiturasBody');
-    var subtitulo = document.getElementById('historicoLeiturasSubtitulo');
-    var dataIni = obterDataIni();
-    var dataFim = obterDataFim() || dataIni;
-    var html = '';
-    var i;
-    if (!corpo) return;
-
-    if (subtitulo) {
-        if (dataIni) {
-            subtitulo.textContent = 'Listagem conforme o periodo aplicado: ' + formatarDataBr(dataIni) + ' a ' + formatarDataBr(dataFim) + '.';
-        } else {
-            subtitulo.textContent = 'Listagem conforme o periodo aplicado.';
-        }
-    }
-
-    if (!historicoLeituras || historicoLeituras.length === 0) {
-        corpo.innerHTML = '<tr><td colspan="6" class="historico-vazio">Nenhum pacote lido para o filtro atual.</td></tr>';
-        return;
-    }
-
-    for (i = 0; i < historicoLeituras.length; i++) {
-        html += '<tr>' +
-            '<td><strong>' + historicoLeituras[i].lote + '</strong></td>' +
-            '<td>' + historicoLeituras[i].posto + '</td>' +
-            '<td>' + historicoLeituras[i].regional + '</td>' +
-            '<td>' + String(historicoLeituras[i].quantidade || 0) + '</td>' +
-            '<td>' + formatarDataBr(historicoLeituras[i].producao_de || '') + '</td>' +
-            '<td>' + formatarDataHoraBr(historicoLeituras[i].triado_em || '') + '</td>' +
-            '</tr>';
-    }
-    corpo.innerHTML = html;
 }
 
 var prateleirasCorreiosA = [
@@ -1726,9 +1663,7 @@ function carregarEstanteInicial() {
     var dataFim = obterDataFim();
     if (!dataIni) {
         contTotal = 0; contCapital = 0; contCentral = 0; contRegional = 0; contPT = 0; contSemUpload = 0; lotesSemUpload = [];
-        historicoLeituras = [];
         renderizarSemUpload();
-        renderizarHistoricoLeituras();
         atualizarStats();
         estanteLayout = { correios: {}, poupatempo: {}, totais: {} };
         renderizarEstantes();
@@ -1757,12 +1692,8 @@ function carregarEstanteInicial() {
                     contPT = resp.estante.poupatempo || 0;
                     if (resp.sem_upload) {
                         contSemUpload = resp.sem_upload.total || 0;
-                        lotesSemUpload = resp.sem_upload.lotes || [];
+                        lotesSemUpload = [];
                         renderizarSemUpload();
-                    }
-                    if (resp.historico) {
-                        historicoLeituras = resp.historico || [];
-                        renderizarHistoricoLeituras();
                     }
                     if (resp.layout) {
                         estanteLayout = resp.layout || { correios: {}, poupatempo: {}, totais: {} };
@@ -1881,7 +1812,6 @@ for (var i = 0; i < toggleBtns.length; i++) {
     });
 }
 carregarEstanteInicial();
-renderizarHistoricoLeituras();
 
 </script>
 

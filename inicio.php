@@ -144,10 +144,6 @@
             Lacres e oficios Correios
             <span>Fluxo completo com regras atuais</span>
           </a>
-          <a class="btn btn-lacres-test" href="lacres_correios_teste.php">
-            Lacres Correios (em teste)
-            <span>Planilha simplificada e flexivel</span>
-          </a>
           <a class="btn btn-oficio" href="gera_oficio_poupa_tempo.php">
             Gerar oficio Poupa Tempo
             <span>Selecionar datas e imprimir</span>
