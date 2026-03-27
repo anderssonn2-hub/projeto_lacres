@@ -22,10 +22,64 @@ function formatarDataBr($data) {
 $dbOk = false;
 $mensagem = '';
 $mensagem_tipo = '';
-$consulta_msg = '';
-$consulta_tipo = '';
-$consulta_dados = array();
+$ultimo_movimento = array();
 $responsavel_salvo = isset($_SESSION['ultimo_responsavel_devolucao']) ? trim((string)$_SESSION['ultimo_responsavel_devolucao']) : '';
+
+function resolverPostoMalote($pdo, $leitura) {
+    try {
+        $stmtPosto = $pdo->prepare('SELECT posto FROM cadastroMalotes WHERE leitura = ? ORDER BY id DESC LIMIT 1');
+        $stmtPosto->execute(array($leitura));
+        $postoDb = $stmtPosto->fetchColumn();
+        if ($postoDb !== false && $postoDb !== null && $postoDb !== '') {
+            return str_pad(preg_replace('/\D+/', '', (string)$postoDb), 3, '0', STR_PAD_LEFT);
+        }
+    } catch (Exception $e) {
+    }
+    return null;
+}
+
+function registrarMovimentoEtiqueta($pdo, $leitura_raw, $responsavel, $tipo, &$mensagem, &$mensagem_tipo, &$responsavel_salvo, &$ultimo_movimento) {
+    $leitura = preg_replace('/\D+/', '', (string)$leitura_raw);
+    if ($responsavel === '') {
+        $mensagem = 'Informe o responsavel.';
+        $mensagem_tipo = 'erro';
+        return;
+    }
+    if (strlen($leitura) !== 35) {
+        $mensagem = 'Etiqueta invalida. Informe 35 digitos.';
+        $mensagem_tipo = 'erro';
+        return;
+    }
+
+    $cep = substr($leitura, 0, 8);
+    $sequencial = substr($leitura, -5);
+    $posto = resolverPostoMalote($pdo, $leitura);
+
+    $stmtIns = $pdo->prepare('INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    $stmtIns->execute(array(
+        $leitura,
+        date('Y-m-d'),
+        null,
+        $responsavel,
+        $tipo,
+        $cep,
+        $sequencial,
+        $posto
+    ));
+
+    $_SESSION['ultimo_responsavel_devolucao'] = $responsavel;
+    $responsavel_salvo = $responsavel;
+    $mensagem = $tipo === 1 ? 'Envio de etiqueta registrado com sucesso.' : 'Recebimento de etiqueta registrado com sucesso.';
+    $mensagem_tipo = 'ok';
+    $ultimo_movimento = array(
+        'tipo' => $tipo,
+        'leitura' => $leitura,
+        'posto' => $posto,
+        'responsavel' => $responsavel,
+        'data' => date('d-m-Y')
+    );
+}
 
 try {
     $pdo = new PDO(
@@ -43,115 +97,19 @@ try {
 
 if ($dbOk && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = isset($_POST['acao']) ? trim((string)$_POST['acao']) : '';
+    $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
 
-    if ($acao === 'consultar') {
-        $consulta_raw = isset($_POST['consulta_leitura']) ? trim($_POST['consulta_leitura']) : '';
-        $consulta = preg_replace('/\D+/', '', $consulta_raw);
-        if (strlen($consulta) !== 35) {
-            $consulta_msg = 'Etiqueta invalida. Informe 35 digitos.';
-            $consulta_tipo = 'erro';
-        } else {
-            $stmtEnvio = $pdo->prepare('SELECT data, login, posto FROM ciMalotes WHERE leitura = ? AND tipo = 1 ORDER BY data DESC, id DESC LIMIT 1');
-            $stmtEnvio->execute(array($consulta));
-            $envio = $stmtEnvio->fetch();
-
-            $stmtDev = $pdo->prepare('SELECT data, login, posto FROM ciMalotes WHERE leitura = ? AND tipo = 2 ORDER BY data DESC, id DESC LIMIT 1');
-            $stmtDev->execute(array($consulta));
-            $devolucao = $stmtDev->fetch();
-
-            if ($devolucao) {
-                $consulta_tipo = 'ok';
-                $consulta_msg = 'Etiqueta devolvida.';
-                $consulta_dados = array(
-                    'status' => 'Devolvida',
-                    'data' => formatarDataBr($devolucao['data']),
-                    'responsavel' => $devolucao['login'],
-                    'posto' => $devolucao['posto']
-                );
-            } elseif ($envio) {
-                $consulta_tipo = 'aviso';
-                $consulta_msg = 'Etiqueta em transito.';
-                $consulta_dados = array(
-                    'status' => 'Em transito',
-                    'data' => formatarDataBr($envio['data']),
-                    'responsavel' => $envio['login'],
-                    'posto' => $envio['posto']
-                );
-            } else {
-                $consulta_tipo = 'erro';
-                $consulta_msg = 'Etiqueta nao encontrada.';
-            }
-        }
-    } else {
-        $leitura_raw = isset($_POST['leitura']) ? trim($_POST['leitura']) : '';
-        $responsavel = isset($_POST['responsavel']) ? trim($_POST['responsavel']) : '';
-        $posto_raw = isset($_POST['posto']) ? trim($_POST['posto']) : '';
-
-        if ($responsavel === '') {
-            $mensagem = 'Informe o responsavel.';
-            $mensagem_tipo = 'erro';
-        } else {
-            $leitura = preg_replace('/\D+/', '', $leitura_raw);
-            if (strlen($leitura) !== 35) {
-                $mensagem = 'Etiqueta invalida. Informe 35 digitos.';
-                $mensagem_tipo = 'erro';
-            } else {
-                $cep = substr($leitura, 0, 8);
-                $sequencial = substr($leitura, -5);
-                $posto = preg_replace('/\D+/', '', $posto_raw);
-                if ($posto !== '') {
-                    $posto = str_pad($posto, 3, '0', STR_PAD_LEFT);
-                } else {
-                    $posto = null;
-                    try {
-                        $stmtPosto = $pdo->prepare('SELECT posto FROM cadastroMalotes WHERE leitura = ? ORDER BY id DESC LIMIT 1');
-                        $stmtPosto->execute(array($leitura));
-                        $postoDb = $stmtPosto->fetchColumn();
-                        if ($postoDb !== false && $postoDb !== null && $postoDb !== '') {
-                            $posto = str_pad(preg_replace('/\D+/', '', (string)$postoDb), 3, '0', STR_PAD_LEFT);
-                        }
-                    } catch (Exception $e) {
-                        $posto = null;
-                    }
-                }
-
-                $stmtIns = $pdo->prepare('INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
-                                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-                $stmtIns->execute(array(
-                    $leitura,
-                    date('Y-m-d'),
-                    null,
-                    $responsavel,
-                    2,
-                    $cep,
-                    $sequencial,
-                    $posto
-                ));
-
-                $_SESSION['ultimo_responsavel_devolucao'] = $responsavel;
-                $responsavel_salvo = $responsavel;
-
-                $mensagem = 'Devolucao registrada com sucesso.';
-                $mensagem_tipo = 'ok';
-            }
-        }
+    if ($acao === 'registrar_envio') {
+        registrarMovimentoEtiqueta($pdo, isset($_POST['leitura_envio']) ? $_POST['leitura_envio'] : '', $responsavel, 1, $mensagem, $mensagem_tipo, $responsavel_salvo, $ultimo_movimento);
+    } elseif ($acao === 'registrar_recebimento') {
+        registrarMovimentoEtiqueta($pdo, isset($_POST['leitura_recebimento']) ? $_POST['leitura_recebimento'] : '', $responsavel, 2, $mensagem, $mensagem_tipo, $responsavel_salvo, $ultimo_movimento);
     }
 }
 
-$contagem = array('transito' => 0, 'devolvidos' => 0, 'envios' => 0);
-$recentes = array();
+$contagem = array('transito' => 0);
 if ($dbOk) {
-    $stmtEnvios = $pdo->query("SELECT COUNT(DISTINCT leitura) AS total FROM ciMalotes WHERE tipo = 1");
-    $contagem['envios'] = (int)$stmtEnvios->fetchColumn();
-
-    $stmtDevolvidos = $pdo->query("SELECT COUNT(DISTINCT leitura) AS total FROM ciMalotes WHERE tipo = 2");
-    $contagem['devolvidos'] = (int)$stmtDevolvidos->fetchColumn();
-
     $stmtTransito = $pdo->query("SELECT COUNT(DISTINCT m1.leitura) AS total\n                                 FROM ciMalotes m1\n                                 WHERE m1.tipo = 1\n                                   AND NOT EXISTS (\n                                       SELECT 1\n                                       FROM ciMalotes m2\n                                       WHERE m2.leitura = m1.leitura AND m2.tipo = 2\n                                   )");
     $contagem['transito'] = (int)$stmtTransito->fetchColumn();
-
-    $stmtRecentes = $pdo->query("SELECT leitura, data, login, posto FROM ciMalotes WHERE tipo = 2 ORDER BY data DESC, id DESC LIMIT 20");
-    $recentes = $stmtRecentes->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
 <!DOCTYPE html>
@@ -173,6 +131,7 @@ if ($dbOk) {
             padding: 24px;
         }
         .card {
+            position: relative;
             width: 100%;
             max-width: 760px;
             background: #fff;
@@ -276,129 +235,138 @@ if ($dbOk) {
         }
         .tabela th { color: #444; font-weight: 700; }
         .tabela .mono { font-family: "Courier New", Courier, monospace; }
-        .top-actions {
-            margin-top: 14px;
-        }
-        .voltar {
-            display: inline-block;
-            margin-top: 12px;
-            font-size: 12px;
-            color: #0b3d91;
+        .home-link {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            width: 42px;
+            height: 42px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             text-decoration: none;
+            color: #0b3d91;
+            background: #eef4fb;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .home-link:hover {
+            background: #e3eefb;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .campo-bloco {
+            background: #f7f9fb;
+            border: 1px solid #e3e7ec;
+            border-radius: 12px;
+            padding: 14px;
+        }
+        .campo-bloco h2 {
+            font-size: 15px;
+            color: #1d2b53;
+            margin-bottom: 10px;
+        }
+        .status-box {
+            background: #f7f9fb;
+            border: 1px solid #e3e7ec;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-top: 14px;
         }
         @media (max-width: 600px) {
             .card { padding: 20px; }
             form { grid-template-columns: 1fr; }
             .full { grid-column: span 1; }
+            .form-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
     <div class="card">
+        <a class="home-link" href="inicio.php" title="Voltar ao inicio">⌂</a>
         <h1>Devolucao de etiquetas (Correios) v0.9.25.0</h1>
-        <div class="sub">Leia a etiqueta devolvida para registrar o retorno (tipo = 2).</div>
+        <div class="sub">Leia a etiqueta de envio ou recebimento. O posto sera identificado automaticamente pelo cadastro do malote.</div>
 
         <div class="painel">
             <div class="kpi">
-                <div class="label">Em transito (tipo 1 sem devolucao)</div>
+                <div class="label">Em transito</div>
                 <div class="valor"><?php echo (int)$contagem['transito']; ?></div>
-            </div>
-            <div class="kpi">
-                <div class="label">Devolvidos (tipo 2)</div>
-                <div class="valor"><?php echo (int)$contagem['devolvidos']; ?></div>
-            </div>
-            <div class="kpi">
-                <div class="label">Etiquetas enviadas (tipo 1)</div>
-                <div class="valor"><?php echo (int)$contagem['envios']; ?></div>
             </div>
         </div>
 
-        <form method="post" action="">
-            <input type="hidden" name="acao" value="devolver">
-            <div class="full">
-                <label for="leitura">Leitura da etiqueta (35 digitos)</label>
-                <input type="text" id="leitura" name="leitura" autocomplete="off" autofocus>
-            </div>
-            <div>
-                <label for="responsavel">Responsavel</label>
-                <input type="text" id="responsavel" name="responsavel" autocomplete="off" value="<?php echo e($responsavel_salvo); ?>">
-            </div>
-            <div>
-                <label for="posto">Posto (opcional)</label>
-                <input type="text" id="posto" name="posto" autocomplete="off">
-            </div>
-            <div class="full top-actions">
-                <button class="btn" type="submit">Registrar devolucao</button>
-            </div>
-        </form>
+        <div>
+            <label for="responsavel">Responsavel</label>
+            <input type="text" id="responsavel" name="responsavel" autocomplete="off" value="<?php echo e($responsavel_salvo); ?>">
+        </div>
+
+        <div class="form-grid">
+            <form method="post" action="" id="formEnvio" class="campo-bloco">
+                <input type="hidden" name="acao" value="registrar_envio">
+                <input type="hidden" name="responsavel" value="<?php echo e($responsavel_salvo); ?>" class="responsavel-hidden">
+                <h2>Registrar envio de etiquetas</h2>
+                <label for="leitura_envio">Leitura da etiqueta (35 digitos) - tipo 1</label>
+                <input type="text" id="leitura_envio" name="leitura_envio" autocomplete="off" autofocus>
+            </form>
+
+            <form method="post" action="" id="formRecebimento" class="campo-bloco">
+                <input type="hidden" name="acao" value="registrar_recebimento">
+                <input type="hidden" name="responsavel" value="<?php echo e($responsavel_salvo); ?>" class="responsavel-hidden">
+                <h2>Registrar recebimento de etiquetas</h2>
+                <label for="leitura_recebimento">Leitura da etiqueta (35 digitos) - tipo 2</label>
+                <input type="text" id="leitura_recebimento" name="leitura_recebimento" autocomplete="off">
+            </form>
+        </div>
 
         <?php if ($mensagem !== ''): ?>
             <div class="msg <?php echo e($mensagem_tipo); ?>"><?php echo e($mensagem); ?></div>
         <?php endif; ?>
 
-        <div class="secao">
-            <h2>Consultar etiqueta</h2>
-            <form method="post" action="">
-                <input type="hidden" name="acao" value="consultar">
-                <div class="full">
-                    <label for="consulta_leitura">Leitura da etiqueta (35 digitos)</label>
-                    <input type="text" id="consulta_leitura" name="consulta_leitura" autocomplete="off">
-                </div>
-                <div class="full top-actions">
-                    <button class="btn btn-sec" type="submit">Consultar status</button>
-                </div>
-            </form>
-
-            <?php if ($consulta_msg !== ''): ?>
-                <div class="msg <?php echo e($consulta_tipo); ?>"><?php echo e($consulta_msg); ?></div>
-            <?php endif; ?>
-
-            <?php if (!empty($consulta_dados)): ?>
-                <div class="status-box <?php echo e($consulta_tipo); ?>">
-                    <div class="status-title">Status: <?php echo e($consulta_dados['status']); ?></div>
-                    <div>Data: <?php echo e($consulta_dados['data']); ?></div>
-                    <div>Responsavel: <?php echo e($consulta_dados['responsavel']); ?></div>
-                    <div>Posto: <?php echo e($consulta_dados['posto']); ?></div>
-                </div>
-            <?php endif; ?>
-        </div>
-
-        <div class="secao">
-            <h2>Ultimas devolucoes</h2>
-            <?php if (empty($recentes)): ?>
-                <div class="msg aviso">Nenhuma devolucao registrada.</div>
-            <?php else: ?>
-                <table class="tabela">
-                    <thead>
-                        <tr>
-                            <th>Data</th>
-                            <th>Etiqueta</th>
-                            <th>Responsavel</th>
-                            <th>Posto</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($recentes as $item): ?>
-                            <tr>
-                                <td><?php echo e(formatarDataBr($item['data'])); ?></td>
-                                <td class="mono"><?php echo e($item['leitura']); ?></td>
-                                <td><?php echo e($item['login']); ?></td>
-                                <td><?php echo e($item['posto']); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php endif; ?>
-        </div>
-
-        <a class="voltar" href="inicio.php">Voltar ao inicio</a>
+        <?php if (!empty($ultimo_movimento)): ?>
+            <div class="status-box ok">
+                <div class="status-title"><?php echo e(((int)$ultimo_movimento['tipo'] === 1) ? 'Envio registrado' : 'Recebimento registrado'); ?></div>
+                <div>Etiqueta: <span class="mono"><?php echo e($ultimo_movimento['leitura']); ?></span></div>
+                <div>Responsavel: <?php echo e($ultimo_movimento['responsavel']); ?></div>
+                <div>Posto: <?php echo e($ultimo_movimento['posto'] !== null && $ultimo_movimento['posto'] !== '' ? $ultimo_movimento['posto'] : '-'); ?></div>
+                <div>Data: <?php echo e($ultimo_movimento['data']); ?></div>
+            </div>
+        <?php endif; ?>
     </div>
 
     <script>
         (function() {
-            var input = document.getElementById('leitura');
+            var inputEnvio = document.getElementById('leitura_envio');
+            var inputRecebimento = document.getElementById('leitura_recebimento');
             var responsavelInput = document.getElementById('responsavel');
-            if (!input) return;
+            var responsaveisHidden = document.querySelectorAll('.responsavel-hidden');
+
+            function sincronizarResponsavel() {
+                var valor = responsavelInput ? responsavelInput.value : '';
+                for (var i = 0; i < responsaveisHidden.length; i++) {
+                    responsaveisHidden[i].value = valor;
+                }
+            }
+
+            function prepararLeitura(input) {
+                if (!input) return;
+                input.addEventListener('input', function() {
+                    var digits = this.value.replace(/\D+/g, '');
+                    if (digits.length === 35) {
+                        this.value = digits;
+                        sincronizarResponsavel();
+                        if (responsavelInput) {
+                            localStorage.setItem('responsavel_devolucao', responsavelInput.value);
+                        }
+                        this.form.submit();
+                    }
+                });
+            }
+
             if (responsavelInput) {
                 var salvo = localStorage.getItem('responsavel_devolucao');
                 if (salvo && responsavelInput.value.replace(/^\s+|\s+$/g, '') === '') {
@@ -406,18 +374,12 @@ if ($dbOk) {
                 }
                 responsavelInput.addEventListener('input', function() {
                     localStorage.setItem('responsavel_devolucao', this.value);
+                    sincronizarResponsavel();
                 });
             }
-            input.addEventListener('input', function() {
-                var digits = this.value.replace(/\D+/g, '');
-                if (digits.length === 35) {
-                    this.value = digits;
-                    if (responsavelInput) {
-                        localStorage.setItem('responsavel_devolucao', responsavelInput.value);
-                    }
-                    this.form.submit();
-                }
-            });
+            sincronizarResponsavel();
+            prepararLeitura(inputEnvio);
+            prepararLeitura(inputRecebimento);
         })();
     </script>
 </body>

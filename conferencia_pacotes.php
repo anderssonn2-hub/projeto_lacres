@@ -3784,7 +3784,7 @@ function iniciarConferenciaPacotes() {
     var tradicionalRecolhido = false;
     var wakeLockSentinel = null;
 
-    try { chipsRecolhidos = localStorage.getItem(storageChipsRecolhidosKey) === '1'; } catch (eChips) {}
+    try { chipsRecolhidos = true; localStorage.setItem(storageChipsRecolhidosKey, '1'); } catch (eChips) { chipsRecolhidos = true; }
     try { tradicionalRecolhido = localStorage.getItem(storageTradicionalRecolhidoKey) === '1'; } catch (eTrad) {}
 
     function mostrarConfirmacao(texto, autoFechar) {
@@ -5823,12 +5823,24 @@ function iniciarConferenciaPacotes() {
             if (playPromise && playPromise.catch) {
                 playPromise.catch(function() {
                     try {
+                        var beepClone = beep.cloneNode(true);
+                        beepClone.play().catch(function() {
+                            enfileirarSom(beep);
+                        });
+                    } catch (e2) {
                         enfileirarSom(beep);
-                    } catch (e2) {}
+                    }
                 });
             }
         } catch (e3) {
-            enfileirarSom(beep);
+            try {
+                var beepFallback = beep.cloneNode(true);
+                beepFallback.play().catch(function() {
+                    enfileirarSom(beep);
+                });
+            } catch (e4) {
+                enfileirarSom(beep);
+            }
         }
     }
 
