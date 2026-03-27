@@ -45,6 +45,84 @@ function parseDatasAlvo($raw) {
     return $out;
 }
 
+function obterColunasTabela($pdo, $tabela) {
+    static $cache = array();
+    if (!isset($cache[$tabela])) {
+        $stmtCols = $pdo->query("SHOW COLUMNS FROM `" . $tabela . "`");
+        $cols = $stmtCols->fetchAll(PDO::FETCH_COLUMN, 0);
+        $cache[$tabela] = is_array($cols) ? $cols : array();
+    }
+    return $cache[$tabela];
+}
+
+function tabelaTemColuna($pdo, $tabela, $coluna) {
+    return in_array($coluna, obterColunasTabela($pdo, $tabela), true);
+}
+
+function mapearTurnoCiPostos($turno) {
+    $turno = trim((string)$turno);
+    if ($turno === 'Madrugada') {
+        return 0;
+    }
+    if ($turno === 'Tarde') {
+        return 2;
+    }
+    if ($turno === 'Noite') {
+        return 3;
+    }
+    return 1;
+}
+
+function normalizarDataSqlPacote($valor) {
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    if (preg_match('/^(\d{2})\-(\d{2})\-(\d{4})$/', $valor, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) {
+        return $valor;
+    }
+    return '';
+}
+
+function normalizarDataHoraSql($valor) {
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    $valor = str_replace('T', ' ', $valor);
+    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $valor)) {
+        return $valor . ':00';
+    }
+    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $valor)) {
+        return $valor;
+    }
+    return '';
+}
+
+function resolverNomePostoCiPostos($pdo, $posto) {
+    $posto = trim((string)$posto);
+    if ($posto === '') {
+        return '';
+    }
+    if (!preg_match('/^\d+$/', $posto)) {
+        return $posto;
+    }
+    $postoPad = str_pad((string)((int)$posto), 3, '0', STR_PAD_LEFT);
+    try {
+        $stmt = $pdo->prepare("SELECT posto FROM ciPostos WHERE posto LIKE ? ORDER BY id DESC LIMIT 1");
+        $stmt->execute(array($postoPad . ' -%'));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row && !empty($row['posto'])) {
+            return $row['posto'];
+        }
+    } catch (Exception $e) {
+    }
+    return $postoPad . ' - POSTO';
+}
+
 function montarCondicaoPeriodoSql($campo, $data_ini, $data_fim, $datas_alvo, &$params) {
     $params = array();
     if ($data_ini !== '') {
@@ -193,6 +271,159 @@ try {
         triado_em DATETIME NOT NULL,
         PRIMARY KEY (id)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    if (isset($_POST['inserir_pacotes_nao_listados'])) {
+        header('Content-Type: application/json');
+        $payload = isset($_POST['pacotes']) ? $_POST['pacotes'] : '';
+        $usuario_conf = isset($_POST['usuario']) ? trim($_POST['usuario']) : '';
+        $autor_salvamento = isset($_POST['autor_salvamento']) ? trim($_POST['autor_salvamento']) : '';
+        $criado_salvamento = isset($_POST['criado_salvamento']) ? trim($_POST['criado_salvamento']) : '';
+        $turno_salvamento = isset($_POST['turno_salvamento']) ? trim($_POST['turno_salvamento']) : 'Manhã';
+        $consolidar_salvamento = !empty($_POST['consolidar_salvamento']);
+
+        if ($usuario_conf === '' && $autor_salvamento !== '') {
+            $usuario_conf = $autor_salvamento;
+        }
+        if ($usuario_conf === '') {
+            die(json_encode(array('success' => false, 'erro' => 'Responsavel obrigatorio')));
+        }
+        if ($autor_salvamento === '') {
+            $autor_salvamento = $usuario_conf;
+        }
+
+        $pacotes = json_decode($payload, true);
+        if (!is_array($pacotes) || empty($pacotes)) {
+            die(json_encode(array('success' => false, 'erro' => 'Fila vazia ou invalida')));
+        }
+
+        $criado_sql = normalizarDataHoraSql($criado_salvamento);
+        if ($criado_sql === '') {
+            $criado_sql = date('Y-m-d H:i:s');
+        }
+        $turno_codigo = mapearTurnoCiPostos($turno_salvamento);
+
+        $ok = 0;
+        $ok_postos = 0;
+        $erros = array();
+        $stmtCsv = $pdo->prepare("INSERT INTO ciPostosCsv (lote, posto, regional, quantidade, dataCarga, data, usuario) VALUES (?,?,?,?,?,NOW(),?)");
+        $gruposCiPostos = array();
+
+        foreach ($pacotes as $p) {
+            try {
+                $lote = isset($p['lote']) ? trim((string)$p['lote']) : '';
+                $posto = isset($p['posto']) ? trim((string)$p['posto']) : '';
+                $regional = isset($p['regional']) ? trim((string)$p['regional']) : '';
+                $quantidade = isset($p['quantidade']) ? (int)$p['quantidade'] : 0;
+                $dataexp = isset($p['dataexp']) ? trim((string)$p['dataexp']) : '';
+                $usuario_pacote = isset($p['responsavel']) ? trim((string)$p['responsavel']) : '';
+                if ($usuario_pacote === '') {
+                    $usuario_pacote = $usuario_conf;
+                }
+
+                if ($lote === '' || $posto === '' || $regional === '' || $quantidade <= 0 || $dataexp === '') {
+                    throw new Exception('Campos obrigatorios ausentes');
+                }
+
+                $data_sql = normalizarDataSqlPacote($dataexp);
+                if ($data_sql === '') {
+                    throw new Exception('Data invalida');
+                }
+
+                $stmtCsv->execute(array($lote, $posto, $regional, $quantidade, $data_sql, $usuario_pacote));
+                $ok++;
+
+                $chaveGrupo = $posto . '|' . $data_sql . '|' . ($consolidar_salvamento ? $usuario_pacote : $lote . '|' . $regional);
+                if (!isset($gruposCiPostos[$chaveGrupo])) {
+                    $gruposCiPostos[$chaveGrupo] = array(
+                        'posto' => $posto,
+                        'dia' => $data_sql,
+                        'quantidade' => 0,
+                        'turno' => $turno_codigo,
+                        'autor' => $autor_salvamento,
+                        'criado' => $criado_sql,
+                        'regional' => $regional,
+                        'lote' => $lote,
+                        'responsavel' => $usuario_pacote
+                    );
+                }
+                $gruposCiPostos[$chaveGrupo]['quantidade'] += $quantidade;
+            } catch (Exception $ex) {
+                $erros[] = $ex->getMessage();
+            }
+        }
+
+        foreach ($gruposCiPostos as $grupo) {
+            try {
+                $campos = array();
+                $vals = array();
+                $pars = array();
+
+                if (tabelaTemColuna($pdo, 'ciPostos', 'posto')) {
+                    $campos[] = 'posto';
+                    $vals[] = '?';
+                    $pars[] = resolverNomePostoCiPostos($pdo, $grupo['posto']);
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'dia')) {
+                    $campos[] = 'dia';
+                    $vals[] = '?';
+                    $pars[] = $grupo['dia'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'quantidade')) {
+                    $campos[] = 'quantidade';
+                    $vals[] = '?';
+                    $pars[] = (int)$grupo['quantidade'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'turno')) {
+                    $campos[] = 'turno';
+                    $vals[] = '?';
+                    $pars[] = (int)$grupo['turno'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'autor')) {
+                    $campos[] = 'autor';
+                    $vals[] = '?';
+                    $pars[] = $grupo['autor'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'criado')) {
+                    $campos[] = 'criado';
+                    $vals[] = '?';
+                    $pars[] = $grupo['criado'];
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'regional')) {
+                    $campos[] = 'regional';
+                    $vals[] = '?';
+                    $pars[] = is_numeric($grupo['regional']) ? (int)$grupo['regional'] : null;
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'lote') && !$consolidar_salvamento) {
+                    $campos[] = 'lote';
+                    $vals[] = '?';
+                    $pars[] = is_numeric($grupo['lote']) ? (int)$grupo['lote'] : 0;
+                }
+                if (tabelaTemColuna($pdo, 'ciPostos', 'situacao')) {
+                    $campos[] = 'situacao';
+                    $vals[] = '?';
+                    $pars[] = 0;
+                }
+
+                if (!empty($campos)) {
+                    $sqlPostos = "INSERT INTO ciPostos (" . implode(',', $campos) . ") VALUES (" . implode(',', $vals) . ")";
+                    $stmtPostos = $pdo->prepare($sqlPostos);
+                    $stmtPostos->execute($pars);
+                    $ok_postos++;
+                }
+            } catch (Exception $ex) {
+                $erros[] = $ex->getMessage();
+            }
+        }
+
+        $stmtCsv = null;
+        die(json_encode(array(
+            'success' => $ok > 0,
+            'inseridos' => $ok,
+            'inseridos_postos' => $ok_postos,
+            'consolidado' => $consolidar_salvamento,
+            'erros' => $erros
+        )));
+    }
 
     if (isset($_POST['ajax_estante_status'])) {
         header('Content-Type: application/json');
@@ -562,6 +793,78 @@ try {
             opacity: 0.88;
         }
 
+        .painel-pendencias {
+            background: #ffffff; border-radius: 10px;
+            padding: 16px 20px; margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .painel-pendencias h3 { margin: 0 0 8px; font-size: 15px; color:#1a237e; }
+        .painel-pendencias .resumo { font-size: 12px; color:#5f6b7a; margin-bottom: 12px; }
+        .linha-pendencias {
+            display:grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap:10px;
+            margin-bottom: 12px;
+        }
+        .campo-pendencia label {
+            font-weight: 700; color: #333; display:block; margin-bottom:6px; font-size:12px;
+        }
+        .campo-pendencia input,
+        .campo-pendencia select {
+            width: 100%;
+            padding: 9px 10px;
+            font-size: 13px;
+            border: 1px solid #ccd6eb;
+            border-radius: 6px;
+            background: #fff;
+        }
+        .check-consolidar {
+            display:flex; align-items:center; gap:8px;
+            font-size:12px; color:#455a64; margin-bottom: 10px;
+        }
+        .check-consolidar input { width:auto; }
+        .tabela-pendencias-wrap { overflow-x:auto; }
+        .tabela-pendencias {
+            width: 100%;
+            min-width: 640px;
+            border-collapse: collapse;
+            background: #fff;
+        }
+        .tabela-pendencias th,
+        .tabela-pendencias td {
+            padding: 9px 10px;
+            border-bottom: 1px solid #edf1f5;
+            font-size: 12px;
+            text-align: left;
+        }
+        .tabela-pendencias th {
+            background: #eef3ff;
+            color: #1a237e;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-size: 11px;
+        }
+        .vazio-pendencias {
+            padding: 16px;
+            text-align: center;
+            color: #64748b;
+            font-size: 12px;
+        }
+        .acoes-pendencias {
+            display:flex; gap:10px; flex-wrap:wrap; margin-top: 12px;
+        }
+        .btn-acao {
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-salvar { background:#2e7d32; color:#fff; }
+        .btn-cancelar { background:#eceff1; color:#37474f; }
+        .btn-remover-pendente { background:#ffebee; color:#b71c1c; }
+
         .painel-historico {
             background: #ffffff; border-radius: 10px;
             padding: 16px 20px; margin-bottom: 20px;
@@ -866,6 +1169,57 @@ try {
         <div class="lista-lotes" id="listaSemUpload"></div>
     </div>
 
+    <div class="painel-pendencias" id="painelPendenciasNaoCarregadas">
+        <h3>Fila de lotes nao carregados</h3>
+        <div class="resumo" id="resumoPendenciasNaoCarregadas">Os lotes sem upload lidos neste periodo serao acumulados aqui antes do salvamento.</div>
+        <div class="linha-pendencias">
+            <div class="campo-pendencia">
+                <label for="responsavel_pendencias">Responsavel</label>
+                <input type="text" id="responsavel_pendencias" placeholder="Quem esta montando a carga">
+            </div>
+            <div class="campo-pendencia">
+                <label for="turno_pendencias">Turno</label>
+                <select id="turno_pendencias">
+                    <option>Manhã</option>
+                    <option>Tarde</option>
+                    <option>Noite</option>
+                    <option>Madrugada</option>
+                </select>
+            </div>
+            <div class="campo-pendencia">
+                <label for="criado_pendencias">Criado em</label>
+                <input type="datetime-local" id="criado_pendencias">
+            </div>
+            <div class="campo-pendencia">
+                <label for="periodo_pendencias">Periodo ativo</label>
+                <input type="text" id="periodo_pendencias" readonly>
+            </div>
+        </div>
+        <label class="check-consolidar"><input type="checkbox" id="consolidar_pendencias"> Consolidar lancamentos em ciPostos por responsavel e data</label>
+        <div class="tabela-pendencias-wrap">
+            <table class="tabela-pendencias">
+                <thead>
+                    <tr>
+                        <th>Lote</th>
+                        <th>Regional</th>
+                        <th>Posto</th>
+                        <th>Qtd</th>
+                        <th>Data</th>
+                        <th>Responsavel</th>
+                        <th>Acao</th>
+                    </tr>
+                </thead>
+                <tbody id="listaPendenciasNaoCarregadas">
+                    <tr><td colspan="7" class="vazio-pendencias">Nenhum lote pendente neste periodo.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="acoes-pendencias">
+            <button type="button" class="btn-acao btn-salvar" id="btnSalvarPendencias">Salvar em ciPostosCsv e ciPostos</button>
+            <button type="button" class="btn-acao btn-cancelar" id="btnLimparPendencias">Limpar fila do periodo</button>
+        </div>
+    </div>
+
     <div class="resultado-posto" id="resultadoPosto">
         <div class="resultado-header" id="resultadoHeader">
             <div class="numero-posto" id="resultadoNumero"></div>
@@ -904,6 +1258,7 @@ var contRegional = 0;
 var contPT = 0;
 var contSemUpload = 0;
 var lotesSemUpload = [];
+var pendenciasNaoCarregadas = [];
 var audioFilaAtiva = false;
 var audioFila = [];
 var ultimaFalaTexto = '';
@@ -927,6 +1282,134 @@ function formatarDataBr(valor) {
         return m[3] + '-' + m[2] + '-' + m[1];
     }
     return texto;
+}
+
+function formatarDateTimeLocal(data) {
+    var yyyy = data.getFullYear();
+    var mm = String(data.getMonth() + 1).padStart(2, '0');
+    var dd = String(data.getDate()).padStart(2, '0');
+    var hh = String(data.getHours()).padStart(2, '0');
+    var ii = String(data.getMinutes()).padStart(2, '0');
+    return yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + ii;
+}
+
+function chavePendenciasPeriodo() {
+    var chave = periodoAtualKey();
+    return chave ? ('encontra_posto_pendencias_' + chave) : '';
+}
+
+function normalizarPendencia(item) {
+    if (!item) return null;
+    var lote = String(item.lote || '').replace(/\D+/g, '').padStart(8, '0');
+    var regional = String(item.regional || '').replace(/\D+/g, '').padStart(3, '0');
+    var posto = String(item.posto || '').replace(/\D+/g, '').padStart(3, '0');
+    var quantidade = parseInt(item.quantidade, 10);
+    if (!lote || !regional || !posto || isNaN(quantidade) || quantidade <= 0) {
+        return null;
+    }
+    return {
+        codbar: String(item.codbar || '').replace(/\D+/g, ''),
+        lote: lote,
+        regional: regional,
+        posto: posto,
+        quantidade: quantidade,
+        dataexp: String(item.dataexp || '').trim(),
+        responsavel: String(item.responsavel || '').trim()
+    };
+}
+
+function salvarPendenciasPeriodo() {
+    var chave = chavePendenciasPeriodo();
+    if (!chave) return;
+    localStorage.setItem(chave, JSON.stringify(pendenciasNaoCarregadas));
+}
+
+function limparPendenciasPeriodoPersistidas() {
+    var chave = chavePendenciasPeriodo();
+    if (chave) {
+        localStorage.removeItem(chave);
+    }
+}
+
+function atualizarPeriodoPendencias() {
+    var campo = document.getElementById('periodo_pendencias');
+    var ini = obterDataIni();
+    var fim = obterDataFim() || ini;
+    if (!campo) return;
+    campo.value = ini ? (formatarDataBr(ini) + ' a ' + formatarDataBr(fim)) : '';
+}
+
+function renderizarPendenciasNaoCarregadas() {
+    var corpo = document.getElementById('listaPendenciasNaoCarregadas');
+    var resumo = document.getElementById('resumoPendenciasNaoCarregadas');
+    if (!corpo) return;
+    atualizarPeriodoPendencias();
+    if (!pendenciasNaoCarregadas.length) {
+        corpo.innerHTML = '<tr><td colspan="7" class="vazio-pendencias">Nenhum lote pendente neste periodo.</td></tr>';
+        if (resumo) {
+            resumo.textContent = 'Os lotes sem upload lidos neste periodo serao acumulados aqui antes do salvamento.';
+        }
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < pendenciasNaoCarregadas.length; i++) {
+        var item = pendenciasNaoCarregadas[i];
+        html += '<tr>' +
+            '<td>' + item.lote + '</td>' +
+            '<td>' + item.regional + '</td>' +
+            '<td>' + item.posto + '</td>' +
+            '<td>' + item.quantidade + '</td>' +
+            '<td>' + formatarDataBr(item.dataexp) + '</td>' +
+            '<td>' + (item.responsavel || '') + '</td>' +
+            '<td><button type="button" class="btn-acao btn-remover-pendente" data-remover-pendente="' + i + '">Remover</button></td>' +
+            '</tr>';
+    }
+    corpo.innerHTML = html;
+    if (resumo) {
+        resumo.textContent = pendenciasNaoCarregadas.length + ' lote(s) nao carregados aguardando salvamento neste periodo.';
+    }
+}
+
+function carregarPendenciasPeriodo() {
+    var chave = chavePendenciasPeriodo();
+    pendenciasNaoCarregadas = [];
+    if (!chave) {
+        renderizarPendenciasNaoCarregadas();
+        return;
+    }
+    try {
+        var bruto = localStorage.getItem(chave);
+        var lista = bruto ? JSON.parse(bruto) : [];
+        if (Array.isArray(lista)) {
+            for (var i = 0; i < lista.length; i++) {
+                var item = normalizarPendencia(lista[i]);
+                if (item) pendenciasNaoCarregadas.push(item);
+            }
+        }
+    } catch (e) {
+        pendenciasNaoCarregadas = [];
+    }
+    renderizarPendenciasNaoCarregadas();
+}
+
+function adicionarPendenciaNaoCarregada(item) {
+    var normalizado = normalizarPendencia(item);
+    if (!normalizado) return false;
+    for (var i = 0; i < pendenciasNaoCarregadas.length; i++) {
+        if (pendenciasNaoCarregadas[i].codbar && normalizado.codbar && pendenciasNaoCarregadas[i].codbar === normalizado.codbar) {
+            return false;
+        }
+        if (pendenciasNaoCarregadas[i].lote === normalizado.lote &&
+            pendenciasNaoCarregadas[i].regional === normalizado.regional &&
+            pendenciasNaoCarregadas[i].posto === normalizado.posto &&
+            pendenciasNaoCarregadas[i].dataexp === normalizado.dataexp) {
+            return false;
+        }
+    }
+    pendenciasNaoCarregadas.push(normalizado);
+    salvarPendenciasPeriodo();
+    renderizarPendenciasNaoCarregadas();
+    return true;
 }
 
 function obterDataIni() {
@@ -959,6 +1442,7 @@ function salvarDatasAlvo() {
     }
     atualizarBannerDatas();
     carregarEstanteInicial();
+    carregarPendenciasPeriodo();
 }
 
 function periodoAtualKey() {
@@ -1301,6 +1785,28 @@ function exibirResultado(dados) {
         linhaSem.appendChild(labelSem);
         linhaSem.appendChild(valorSem);
         body.appendChild(linhaSem);
+
+        var linhaFila = document.createElement('div');
+        linhaFila.className = 'info-linha';
+        var labelFila = document.createElement('span');
+        labelFila.className = 'info-label';
+        labelFila.textContent = 'Fila';
+        var valorFila = document.createElement('span');
+        valorFila.className = 'info-valor';
+        var responsavelAtual = document.getElementById('responsavel_pendencias');
+        var adicionado = adicionarPendenciaNaoCarregada({
+            codbar: dados.codbar || '',
+            lote: dados.lote || '',
+            regional: dados.regional_csv || dados.regional_pad || dados.regional || '',
+            posto: dados.posto || '',
+            quantidade: dados.quantidade || 0,
+            dataexp: dados.data_alvo || '',
+            responsavel: responsavelAtual ? responsavelAtual.value.trim() : ''
+        });
+        valorFila.textContent = adicionado ? 'Lote adicionado a fila de nao carregados' : 'Lote ja estava na fila do periodo';
+        linhaFila.appendChild(labelFila);
+        linhaFila.appendChild(valorFila);
+        body.appendChild(linhaFila);
     }
 
     if (dados.status_estante === 'fora_periodo') {
@@ -1581,6 +2087,7 @@ function carregarEstanteInicial() {
     if (!dataIni) {
         contTotal = 0; contCapital = 0; contCentral = 0; contRegional = 0; contPT = 0; contSemUpload = 0; lotesSemUpload = [];
         renderizarSemUpload();
+        carregarPendenciasPeriodo();
         atualizarStats();
         estanteLayout = { correios: {}, poupatempo: {}, totais: {} };
         renderizarEstantes();
@@ -1683,6 +2190,14 @@ try {
 atualizarIndicadorFoco();
 var inputIni = document.getElementById('data_ini_estante');
 var inputFim = document.getElementById('data_fim_estante');
+var responsavelPendencias = document.getElementById('responsavel_pendencias');
+var turnoPendencias = document.getElementById('turno_pendencias');
+var criadoPendencias = document.getElementById('criado_pendencias');
+var consolidarPendencias = document.getElementById('consolidar_pendencias');
+var listaPendenciasNaoCarregadas = document.getElementById('listaPendenciasNaoCarregadas');
+if (criadoPendencias && !criadoPendencias.value) {
+    criadoPendencias.value = formatarDateTimeLocal(new Date());
+}
 if (inputIni && inputFim) {
     var hoje = formatarHoje();
     inputIni.value = hoje;
@@ -1721,11 +2236,82 @@ if (btnCancelar) {
 atualizarBannerDatas();
 confirmarPeriodoAtual();
 fecharModalDatas();
+carregarPendenciasPeriodo();
 var toggleBtns = document.querySelectorAll('#estantesToggle button[data-view]');
 for (var i = 0; i < toggleBtns.length; i++) {
     toggleBtns[i].addEventListener('click', function() {
         var view = this.getAttribute('data-view');
         aplicarVisaoEstantes(view);
+    });
+}
+if (listaPendenciasNaoCarregadas) {
+    listaPendenciasNaoCarregadas.addEventListener('click', function(ev) {
+        var alvo = ev.target;
+        if (!alvo) return;
+        var idx = alvo.getAttribute('data-remover-pendente');
+        if (idx === null) return;
+        idx = parseInt(idx, 10);
+        if (isNaN(idx) || !pendenciasNaoCarregadas[idx]) return;
+        pendenciasNaoCarregadas.splice(idx, 1);
+        salvarPendenciasPeriodo();
+        renderizarPendenciasNaoCarregadas();
+    });
+}
+var btnLimparPendencias = document.getElementById('btnLimparPendencias');
+if (btnLimparPendencias) {
+    btnLimparPendencias.addEventListener('click', function() {
+        pendenciasNaoCarregadas = [];
+        limparPendenciasPeriodoPersistidas();
+        renderizarPendenciasNaoCarregadas();
+    });
+}
+var btnSalvarPendencias = document.getElementById('btnSalvarPendencias');
+if (btnSalvarPendencias) {
+    btnSalvarPendencias.addEventListener('click', function() {
+        var responsavel = responsavelPendencias ? responsavelPendencias.value.trim() : '';
+        var criado = criadoPendencias ? criadoPendencias.value.trim() : '';
+        var turno = turnoPendencias ? turnoPendencias.value : 'Manhã';
+        var formData;
+        if (!pendenciasNaoCarregadas.length) {
+            alert('Nao ha lotes pendentes para salvar neste periodo.');
+            return;
+        }
+        if (!responsavel) {
+            alert('Informe o responsavel antes de salvar.');
+            if (responsavelPendencias) responsavelPendencias.focus();
+            return;
+        }
+        if (!criado) {
+            alert('Informe a data de criacao.');
+            if (criadoPendencias) criadoPendencias.focus();
+            return;
+        }
+        formData = new FormData();
+        formData.append('inserir_pacotes_nao_listados', '1');
+        formData.append('usuario', responsavel);
+        formData.append('autor_salvamento', responsavel);
+        formData.append('turno_salvamento', turno);
+        formData.append('criado_salvamento', criado);
+        if (consolidarPendencias && consolidarPendencias.checked) {
+            formData.append('consolidar_salvamento', '1');
+        }
+        formData.append('pacotes', JSON.stringify(pendenciasNaoCarregadas));
+        fetch('encontra_posto.php', { method: 'POST', body: formData })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data && data.success) {
+                    alert('Salvamento concluido. ' + data.inseridos + ' lote(s) em ciPostosCsv e ' + (data.inseridos_postos || 0) + ' lancamento(s) em ciPostos.');
+                    pendenciasNaoCarregadas = [];
+                    limparPendenciasPeriodoPersistidas();
+                    renderizarPendenciasNaoCarregadas();
+                    carregarEstanteInicial();
+                } else {
+                    alert((data && data.erro) ? data.erro : 'Erro ao salvar lotes nao carregados.');
+                }
+            })
+            .catch(function() {
+                alert('Erro ao salvar lotes nao carregados.');
+            });
     });
 }
 carregarEstanteInicial();
