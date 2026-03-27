@@ -3047,6 +3047,7 @@ try {
             if (!input || input.__fallbackBound) return;
             if (typeof window.iniciarConferenciaPacotes === 'function') return;
             if (typeof window.processarLeituraCodigo === 'function') return;
+            if (window.__conferenciaPrincipalAtiva) return;
             input.__fallbackBound = true;
             var audioDesbloqueado = false;
 
@@ -3207,9 +3208,11 @@ try {
         }
 
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', bindFallback);
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(bindFallback, 1200);
+            });
         } else {
-            bindFallback();
+            setTimeout(bindFallback, 1200);
         }
     })();
     </script>
@@ -3609,6 +3612,7 @@ function substituirMultiplosPadroes(inputString) {
 }
 
 function iniciarConferenciaPacotes() {
+    window.__conferenciaPrincipalAtiva = true;
     if (window.__conferenciaInit) return;
     window.__conferenciaInit = true;
     try {
@@ -6467,6 +6471,48 @@ function iniciarConferenciaPacotes() {
         return null;
     }
 
+    function extrairContextoCodigo(codigo) {
+        var codigoNormalizado = String(codigo || '').replace(/\D+/g, '');
+        if (codigoNormalizado.length < 14) {
+            return null;
+        }
+        return {
+            lote: codigoNormalizado.substr(0, 8),
+            regional: normalizarRegionalValor(codigoNormalizado.substr(8, 3)),
+            posto: codigoNormalizado.substr(11, 3)
+        };
+    }
+
+    function localizarLinhaPorContexto(codigo) {
+        var contexto = extrairContextoCodigo(codigo);
+        var linhas;
+        var linha;
+        var regionalLinha;
+        var linhaConfirmada = null;
+        if (!contexto) return null;
+        linhas = document.querySelectorAll('tbody tr[data-lote][data-posto]');
+        for (var i = 0; i < linhas.length; i++) {
+            linha = linhas[i];
+            regionalLinha = normalizarRegionalValor(linha.getAttribute('data-regional-real') || linha.getAttribute('data-regional') || '');
+            if (String(linha.getAttribute('data-lote') || '') !== contexto.lote) {
+                continue;
+            }
+            if (String(linha.getAttribute('data-posto') || '') !== contexto.posto) {
+                continue;
+            }
+            if (contexto.regional && regionalLinha && regionalLinha !== contexto.regional) {
+                continue;
+            }
+            if (!linha.classList.contains('confirmado')) {
+                return linha;
+            }
+            if (!linhaConfirmada) {
+                linhaConfirmada = linha;
+            }
+        }
+        return linhaConfirmada;
+    }
+
     function processarLeituraCodigo(valorBruto) {
         if (!input) return;
         if (modoConsulta) {
@@ -6543,6 +6589,9 @@ function iniciarConferenciaPacotes() {
         }
 
         var linha = localizarLinhaPorCodigo(valor);
+        if (!linha) {
+            linha = localizarLinhaPorContexto(valor);
+        }
 
         if (!linha) {
             verificarPacoteOutraData(valor, function(resp) {

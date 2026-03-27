@@ -200,7 +200,7 @@ try {
                 $joinCarga = "AND DATE(c.dataCarga) IN ($ph)";
                 $params_upload = $datas_alvo;
             }
-            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
+            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
                 FROM lotes_na_estante l
                 $whereEstante
                 AND NOT EXISTS (
@@ -210,7 +210,11 @@ try {
                 ORDER BY l.lote LIMIT 50");
             $stmtSem->execute(array_merge($params_estante, $params_upload));
             while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
-                $sem_upload['lotes'][] = $row['lote'];
+                $sem_upload['lotes'][] = array(
+                    'lote' => $row['lote'],
+                    'posto' => $row['posto'],
+                    'regional' => $row['regional']
+                );
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
@@ -432,7 +436,7 @@ try {
                 $joinCarga = "AND DATE(c.dataCarga) IN ($ph)";
                 $params_upload = $datas_alvo;
             }
-            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote
+            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
                 FROM lotes_na_estante l
                 $whereEstante
                 AND NOT EXISTS (
@@ -442,7 +446,11 @@ try {
                 ORDER BY l.lote LIMIT 50");
             $stmtSem->execute(array_merge($params_estante, $params_upload));
             while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
-                $sem_upload['lotes'][] = $row['lote'];
+                $sem_upload['lotes'][] = array(
+                    'lote' => $row['lote'],
+                    'posto' => $row['posto'],
+                    'regional' => $row['regional']
+                );
             }
             $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
                 FROM lotes_na_estante l
@@ -621,6 +629,13 @@ try {
         .lista-lotes { display:flex; flex-wrap:wrap; gap:6px; }
         .lote-badge {
             background:#263238; color:#fff; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700;
+        }
+        .lote-badge small {
+            display: inline-block;
+            margin-left: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            opacity: 0.88;
         }
 
         .painel-historico {
@@ -1475,6 +1490,10 @@ function atualizarStats() {
 function renderizarSemUpload() {
     var painel = document.getElementById('painelSemUpload');
     var lista = document.getElementById('listaSemUpload');
+    var item;
+    var lote;
+    var posto;
+    var regional;
     if (!painel || !lista) return;
     if (!lotesSemUpload || lotesSemUpload.length === 0) {
         painel.style.display = 'none';
@@ -1484,7 +1503,14 @@ function renderizarSemUpload() {
     painel.style.display = 'block';
     var html = '';
     for (var i = 0; i < lotesSemUpload.length; i++) {
-        html += '<span class="lote-badge">' + lotesSemUpload[i] + '</span>';
+        item = lotesSemUpload[i] || {};
+        if (typeof item === 'string') {
+            item = { lote: item, posto: '', regional: '' };
+        }
+        lote = String(item.lote || '').trim();
+        posto = String(item.posto || '').trim();
+        regional = String(item.regional || '').trim();
+        html += '<span class="lote-badge" title="Lote ' + lote + ' - Regional ' + regional + ' - Posto ' + posto + '">' + lote + '<small>R ' + regional + ' • P ' + posto + '</small></span>';
     }
     lista.innerHTML = html;
 }
