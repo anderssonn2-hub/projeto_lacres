@@ -1572,6 +1572,9 @@ function falar(texto) {
     texto = String(texto || '').trim();
     if (texto === '') return;
 
+    ultimaFalaTexto = texto;
+    ultimaFalaEm = Date.now();
+
     try {
         audioFila = [];
         audioFilaAtiva = false;
@@ -1641,6 +1644,17 @@ function preverVozLocal(codbar) {
         return 'Posto ' + postoInt;
     }
     return 'Regional ' + regionalPad;
+}
+
+function deveRepetirFalaNaResposta(texto) {
+    texto = String(texto || '').trim();
+    if (texto === '') {
+        return false;
+    }
+    if (ultimaFalaTexto !== texto) {
+        return true;
+    }
+    return (Date.now() - ultimaFalaEm) > 1200;
 }
 
 function finalizarLeitura() {
@@ -1839,7 +1853,9 @@ function exibirResultado(dados) {
 
     div.style.display = 'block';
 
-    falar(dados.voz);
+    if (deveRepetirFalaNaResposta(dados.voz)) {
+        falar(dados.voz);
+    }
 
     if (dados.estante) {
         contTotal = dados.estante.total || 0;
