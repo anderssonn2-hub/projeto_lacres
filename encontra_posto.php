@@ -45,7 +45,80 @@ function parseDatasAlvo($raw) {
     return $out;
 }
 
-function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
+function montarCondicaoPeriodoSql($campo, $data_ini, $data_fim, $datas_alvo, &$params) {
+    $params = array();
+    if ($data_ini !== '') {
+        $params[] = $data_ini;
+        $params[] = $data_fim;
+        return 'DATE(' . $campo . ') BETWEEN ? AND ?';
+    }
+    if (!empty($datas_alvo)) {
+        $params = array_values($datas_alvo);
+        return 'DATE(' . $campo . ') IN (' . implode(',', array_fill(0, count($datas_alvo), '?')) . ')';
+    }
+    return '1 = 0';
+}
+
+function obterLinhasEstanteAtiva($pdo, $data_ini, $data_fim, $datas_alvo) {
+    $params_estante = array();
+    $params_carga = array();
+    $params_conf = array();
+    $cond_estante = montarCondicaoPeriodoSql('l.triado_em', $data_ini, $data_fim, $datas_alvo, $params_estante);
+    $cond_carga = montarCondicaoPeriodoSql('c.dataCarga', $data_ini, $data_fim, $datas_alvo, $params_carga);
+    $cond_conf = montarCondicaoPeriodoSql('cp.dataexp', $data_ini, $data_fim, $datas_alvo, $params_conf);
+
+    $sql = "SELECT DISTINCT
+                LPAD(l.lote,8,'0') AS lote,
+                LPAD(l.posto,3,'0') AS posto,
+                LPAD(l.regional,3,'0') AS regional,
+                LOWER(TRIM(REPLACE(COALESCE(r.entrega,''),' ',''))) AS entrega,
+                LPAD(COALESCE(NULLIF(CAST(csv.regional_csv AS CHAR), ''), CAST(l.regional AS CHAR)),3,'0') AS regional_csv
+            FROM lotes_na_estante l
+            LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
+            LEFT JOIN (
+                SELECT lote, MAX(regional) AS regional_csv
+                FROM ciPostosCsv
+                GROUP BY lote
+            ) csv ON csv.lote = l.lote
+            WHERE $cond_estante
+              AND EXISTS (
+                SELECT 1
+                FROM ciPostosCsv c
+                WHERE c.lote = l.lote
+                  AND LPAD(c.posto,3,'0') = LPAD(l.posto,3,'0')
+                  AND $cond_carga
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM conferencia_pacotes cp
+                WHERE UPPER(TRIM(cp.conf)) = 'S'
+                  AND LPAD(cp.nlote,8,'0') = LPAD(l.lote,8,'0')
+                  AND LPAD(cp.nposto,3,'0') = LPAD(l.posto,3,'0')
+                  AND $cond_conf
+              )
+            ORDER BY LPAD(l.lote,8,'0'), LPAD(l.posto,3,'0')";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_merge($params_estante, $params_carga, $params_conf));
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function acumularStatsEstante(&$stats, $row) {
+    $entrega = strtolower(trim(str_replace(' ', '', (string)(isset($row['entrega']) ? $row['entrega'] : ''))));
+    $regional = isset($row['regional_csv']) ? (int)$row['regional_csv'] : (isset($row['regional']) ? (int)$row['regional'] : 0);
+    $stats['total']++;
+    if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
+        $stats['poupatempo']++;
+    } elseif ($regional === 0) {
+        $stats['capital']++;
+    } elseif ($regional === 999) {
+        $stats['central']++;
+    } else {
+        $stats['regional']++;
+    }
+}
+
+function montarLayoutEstante($linhas_estante) {
     $layout = array(
         'correios' => array(),
         'poupatempo' => array(),
@@ -53,19 +126,10 @@ function montarLayoutEstante($pdo, $whereEstante, $params_estante) {
     );
     $postos_pt = array('005','006','023','024','025','026','028','080','110','315','375','487','526','527','667','730','747','790','825','880');
     $correios_keys = array('022','060','100','105','150','200','250','300','350','400','450','490','500','501','507','550','600','650','700','701','710','750','755','758','779','800','808','809','850','900','950');
-    $stmt = $pdo->prepare("SELECT l.posto, l.regional, l.quantidade, c.regional_csv
-        FROM lotes_na_estante l
-        LEFT JOIN (
-            SELECT lote, MAX(regional) AS regional_csv
-            FROM ciPostosCsv
-            GROUP BY lote
-        ) c ON c.lote = l.lote
-        $whereEstante");
-    $stmt->execute($params_estante);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    foreach ($linhas_estante as $row) {
         $qtd = 1;
-        $posto = (int)$row['posto'];
-        $regional = (int)$row['regional'];
+        $posto = (int)(isset($row['posto']) ? $row['posto'] : 0);
+        $regional = (int)(isset($row['regional']) ? $row['regional'] : 0);
         $regional_csv = isset($row['regional_csv']) ? (int)$row['regional_csv'] : 0;
         $posto_pad = str_pad((string)$posto, 3, '0', STR_PAD_LEFT);
         $is_pt = in_array($posto_pad, $postos_pt, true);
@@ -155,99 +219,18 @@ try {
         }
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
-        $historico = array();
         $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0));
         try {
-            $params_estante = array();
-            if ($data_ini !== '') {
-                $whereEstante = "WHERE DATE(triado_em) BETWEEN ? AND ?";
-                $params_estante[] = $data_ini;
-                $params_estante[] = $data_fim;
-            } else {
-                $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-                $whereEstante = "WHERE DATE(triado_em) IN ($ph)";
-                $params_estante = $datas_alvo;
+            $linhas_estante = obterLinhasEstanteAtiva($pdo, $data_ini, $data_fim, $datas_alvo);
+            foreach ($linhas_estante as $row) {
+                acumularStatsEstante($estante_stats, $row);
             }
-            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
-            $stmtTot->execute($params_estante);
-            $estante_stats['total'] = (int)$stmtTot->fetchColumn();
-
-            $stmtTipos = $pdo->prepare("SELECT DISTINCT l.lote, l.posto, l.regional, r.entrega
-                FROM lotes_na_estante l
-                LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
-                $whereEstante");
-            $stmtTipos->execute($params_estante);
-            while ($row = $stmtTipos->fetch(PDO::FETCH_ASSOC)) {
-                $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
-                if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
-                    $estante_stats['poupatempo']++;
-                } elseif ((int)$row['regional'] === 0) {
-                    $estante_stats['capital']++;
-                } elseif ((int)$row['regional'] === 999) {
-                    $estante_stats['central']++;
-                } else {
-                    $estante_stats['regional']++;
-                }
-            }
-
-            $params_upload = array();
-            $joinCarga = '';
-            if ($data_ini !== '') {
-                $joinCarga = 'AND DATE(c.dataCarga) BETWEEN ? AND ?';
-                $params_upload[] = $data_ini;
-                $params_upload[] = $data_fim;
-            } else {
-                $joinCarga = "AND DATE(c.dataCarga) IN ($ph)";
-                $params_upload = $datas_alvo;
-            }
-            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
-                FROM lotes_na_estante l
-                $whereEstante
-                AND NOT EXISTS (
-                    SELECT 1 FROM ciPostosCsv c
-                    WHERE c.lote = l.lote $joinCarga
-                )
-                ORDER BY l.lote LIMIT 50");
-            $stmtSem->execute(array_merge($params_estante, $params_upload));
-            while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
-                $sem_upload['lotes'][] = array(
-                    'lote' => $row['lote'],
-                    'posto' => $row['posto'],
-                    'regional' => $row['regional']
-                );
-            }
-            $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
-                FROM lotes_na_estante l
-                $whereEstante
-                AND NOT EXISTS (
-                    SELECT 1 FROM ciPostosCsv c
-                    WHERE c.lote = l.lote $joinCarga
-                )");
-            $stmtSemTot->execute(array_merge($params_estante, $params_upload));
-            $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
-
-            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, quantidade, producao_de, triado_em
-                FROM lotes_na_estante
-                $whereEstante
-                ORDER BY triado_em DESC, id DESC
-                LIMIT 100");
-            $stmtHist->execute($params_estante);
-            while ($row = $stmtHist->fetch(PDO::FETCH_ASSOC)) {
-                $historico[] = array(
-                    'lote' => $row['lote'],
-                    'posto' => $row['posto'],
-                    'regional' => $row['regional'],
-                    'quantidade' => isset($row['quantidade']) ? (int)$row['quantidade'] : 0,
-                    'producao_de' => $row['producao_de'],
-                    'triado_em' => $row['triado_em']
-                );
-            }
-
-            $layout = montarLayoutEstante($pdo, $whereEstante, $params_estante);
+            $sem_upload = array('total' => 0, 'lotes' => array());
+            $layout = montarLayoutEstante($linhas_estante);
         } catch (Exception $e) {
             // ignore
         }
-        die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload, 'historico' => $historico, 'layout' => $layout)));
+        die(json_encode(array('success' => true, 'estante' => $estante_stats, 'sem_upload' => $sem_upload, 'layout' => $layout)));
     }
 
     if (isset($_POST['ajax_buscar_posto'])) {
@@ -391,95 +374,22 @@ try {
 
         $estante_stats = array('total' => 0, 'capital' => 0, 'central' => 0, 'regional' => 0, 'poupatempo' => 0);
         $sem_upload = array('total' => 0, 'lotes' => array());
-        $historico = array();
         $layout = array('correios' => array(), 'poupatempo' => array(), 'totais' => array('correios_lotes' => 0, 'poupatempo_lotes' => 0));
         try {
-            $params_estante = array();
-            if ($data_ini !== '') {
-                $whereEstante = "WHERE DATE(triado_em) BETWEEN ? AND ?";
-                $params_estante[] = $data_ini;
-                $params_estante[] = $data_fim;
-            } else {
-                $ph = implode(',', array_fill(0, count($datas_alvo), '?'));
-                $whereEstante = "WHERE DATE(triado_em) IN ($ph)";
-                $params_estante = $datas_alvo;
+            $linhas_estante = obterLinhasEstanteAtiva($pdo, $data_ini, $data_fim, $datas_alvo);
+            foreach ($linhas_estante as $row) {
+                acumularStatsEstante($estante_stats, $row);
             }
-            $stmtTot = $pdo->prepare("SELECT COUNT(DISTINCT lote) FROM lotes_na_estante $whereEstante");
-            $stmtTot->execute($params_estante);
-            $estante_stats['total'] = (int)$stmtTot->fetchColumn();
-
-            $stmtTipos = $pdo->prepare("SELECT DISTINCT l.lote, l.posto, l.regional, r.entrega
-                FROM lotes_na_estante l
-                LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
-                $whereEstante");
-            $stmtTipos->execute($params_estante);
-            while ($row = $stmtTipos->fetch(PDO::FETCH_ASSOC)) {
-                $entrega = strtolower(trim(str_replace(' ', '', (string)$row['entrega'])));
-                if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
-                    $estante_stats['poupatempo']++;
-                } elseif ((int)$row['regional'] === 0) {
-                    $estante_stats['capital']++;
-                } elseif ((int)$row['regional'] === 999) {
-                    $estante_stats['central']++;
-                } else {
-                    $estante_stats['regional']++;
-                }
-            }
-
-            $params_upload = array();
-            $joinCarga = '';
-            if ($data_ini !== '') {
-                $joinCarga = 'AND DATE(c.dataCarga) BETWEEN ? AND ?';
-                $params_upload[] = $data_ini;
-                $params_upload[] = $data_fim;
-            } else {
-                $joinCarga = "AND DATE(c.dataCarga) IN ($ph)";
-                $params_upload = $datas_alvo;
-            }
-            $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
-                FROM lotes_na_estante l
-                $whereEstante
-                AND NOT EXISTS (
-                    SELECT 1 FROM ciPostosCsv c
-                    WHERE c.lote = l.lote $joinCarga
-                )
-                ORDER BY l.lote LIMIT 50");
-            $stmtSem->execute(array_merge($params_estante, $params_upload));
-            while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
+            $layout = montarLayoutEstante($linhas_estante);
+            $sem_upload = array('total' => 0, 'lotes' => array());
+            if ($status_estante === 'sem_upload') {
+                $sem_upload['total'] = 1;
                 $sem_upload['lotes'][] = array(
-                    'lote' => $row['lote'],
-                    'posto' => $row['posto'],
-                    'regional' => $row['regional']
+                    'lote' => str_pad((string)$lote, 8, '0', STR_PAD_LEFT),
+                    'posto' => str_pad((string)$posto_num, 3, '0', STR_PAD_LEFT),
+                    'regional' => str_pad((string)((int)$regional_csv), 3, '0', STR_PAD_LEFT)
                 );
             }
-            $stmtSemTot = $pdo->prepare("SELECT COUNT(DISTINCT l.lote)
-                FROM lotes_na_estante l
-                $whereEstante
-                AND NOT EXISTS (
-                    SELECT 1 FROM ciPostosCsv c
-                    WHERE c.lote = l.lote $joinCarga
-                )");
-            $stmtSemTot->execute(array_merge($params_estante, $params_upload));
-            $sem_upload['total'] = (int)$stmtSemTot->fetchColumn();
-
-            $stmtHist = $pdo->prepare("SELECT LPAD(lote,8,'0') AS lote, LPAD(posto,3,'0') AS posto, LPAD(regional,3,'0') AS regional, quantidade, producao_de, triado_em
-                FROM lotes_na_estante
-                $whereEstante
-                ORDER BY triado_em DESC, id DESC
-                LIMIT 100");
-            $stmtHist->execute($params_estante);
-            while ($row = $stmtHist->fetch(PDO::FETCH_ASSOC)) {
-                $historico[] = array(
-                    'lote' => $row['lote'],
-                    'posto' => $row['posto'],
-                    'regional' => $row['regional'],
-                    'quantidade' => isset($row['quantidade']) ? (int)$row['quantidade'] : 0,
-                    'producao_de' => $row['producao_de'],
-                    'triado_em' => $row['triado_em']
-                );
-            }
-
-            $layout = montarLayoutEstante($pdo, $whereEstante, $params_estante);
         } catch (Exception $e) {
             // ignore
         }
@@ -502,7 +412,6 @@ try {
             'estante_novo' => $estante_novo,
             'estante' => $estante_stats,
             'sem_upload' => $sem_upload,
-            'historico' => $historico,
             'layout' => $layout,
             'status_estante' => $status_estante,
             'data_alvo' => $data_alvo,
