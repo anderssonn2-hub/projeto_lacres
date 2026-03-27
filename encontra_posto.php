@@ -938,7 +938,7 @@ try {
     </div>
 
     <div class="painel-sem-upload" id="painelSemUpload" style="display:none;">
-        <h3>📦 Lotes sem upload (ciPostosCsv)</h3>
+        <h3>📦 Lote atual sem upload no ciPostosCsv</h3>
         <div class="lista-lotes" id="listaSemUpload"></div>
     </div>
 
@@ -1380,7 +1380,7 @@ function exibirResultado(dados) {
         labelSem.textContent = 'Status';
         var valorSem = document.createElement('span');
         valorSem.className = 'info-valor';
-        valorSem.textContent = 'Sem upload (verifique data)';
+        valorSem.textContent = 'Lote atual sem upload no ciPostosCsv';
         linhaSem.appendChild(labelSem);
         linhaSem.appendChild(valorSem);
         body.appendChild(linhaSem);
