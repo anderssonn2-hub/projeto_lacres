@@ -331,15 +331,28 @@ try {
         }
 
         $data_producao = null;
+        $tem_carga_csv = false;
         try {
-            $stmtProd = $pdo->prepare("SELECT DATE(dataCarga) AS data_prod FROM ciPostosCsv WHERE lote = ? ORDER BY dataCarga DESC LIMIT 1");
-            $stmtProd->execute(array((int)$lote));
+            $stmtProd = $pdo->prepare("SELECT COUNT(*) AS total, MAX(DATE(COALESCE(dataCarga, data))) AS data_prod
+                FROM ciPostosCsv
+                WHERE LPAD(CAST(lote AS CHAR),8,'0') = ?
+                  AND LPAD(CAST(posto AS CHAR),3,'0') = ?
+                  AND LPAD(CAST(regional AS CHAR),3,'0') = ?");
+            $stmtProd->execute(array(
+                str_pad((string)$lote, 8, '0', STR_PAD_LEFT),
+                str_pad((string)$posto_num, 3, '0', STR_PAD_LEFT),
+                str_pad((string)((int)$regional_csv), 3, '0', STR_PAD_LEFT)
+            ));
             $rowProd = $stmtProd->fetch(PDO::FETCH_ASSOC);
+            if ($rowProd && (int)$rowProd['total'] > 0) {
+                $tem_carga_csv = true;
+            }
             if ($rowProd && !empty($rowProd['data_prod'])) {
                 $data_producao = $rowProd['data_prod'];
             }
         } catch (Exception $e) {
             $data_producao = null;
+            $tem_carga_csv = false;
         }
 
         $fora_periodo = false;
@@ -350,7 +363,7 @@ try {
             $fora_periodo = true;
         }
 
-        $status_estante = $data_producao ? ($fora_periodo ? 'fora_periodo' : 'ok') : 'sem_upload';
+        $status_estante = $tem_carga_csv ? ($fora_periodo ? 'fora_periodo' : 'ok') : 'sem_upload';
         $data_alvo = ($data_ini !== '' ? $data_ini : $datas_alvo[0]);
 
         $estante_novo = false;
