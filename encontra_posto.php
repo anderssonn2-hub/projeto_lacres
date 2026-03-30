@@ -1583,7 +1583,7 @@ function falar(texto) {
 
     var utt = new SpeechSynthesisUtterance(texto);
     utt.lang = 'pt-BR';
-    utt.rate = 1.32;
+    utt.rate = 1.5;
     utt.pitch = 1;
     utt.volume = 1;
 
@@ -1668,6 +1668,7 @@ function finalizarLeitura() {
 function buscarPosto(codbar) {
     var dataIni = obterDataIni();
     var dataFim = obterDataFim();
+    var vozPrevista = '';
     if (!dataIni) {
         exibirErro('Informe o periodo da estante');
         return;
@@ -1691,6 +1692,10 @@ function buscarPosto(codbar) {
     }
     leituraAtiva = true;
     tocarBeep();
+    vozPrevista = preverVozLocal(codbar);
+    if (vozPrevista) {
+        falar(vozPrevista);
+    }
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -1852,7 +1857,7 @@ function exibirResultado(dados) {
 
     div.style.display = 'block';
 
-    if (deveRepetirFalaNaResposta(dados.voz)) {
+    if (dados.voz && dados.voz !== preverVozLocal(dados.codbar || '') && deveRepetirFalaNaResposta(dados.voz)) {
         falar(dados.voz);
     }
 
