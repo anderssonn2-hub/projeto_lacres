@@ -148,6 +148,10 @@
             Gerar oficio Poupa Tempo
             <span>Selecionar datas e imprimir</span>
           </a>
+          <a class="btn btn-oficio" href="gera_oficio_poupa_tempo_dinamico.php">
+            Gerar Ofício Poupa Tempo Dinâmico
+            <span>Montagem por leitura de código de barras</span>
+          </a>
         </div>
       </section>
 

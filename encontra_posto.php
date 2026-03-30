@@ -1583,7 +1583,7 @@ function falar(texto) {
 
     var utt = new SpeechSynthesisUtterance(texto);
     utt.lang = 'pt-BR';
-    utt.rate = 1.5;
+    utt.rate = 1.7;
     utt.pitch = 1;
     utt.volume = 1;
 
@@ -1686,13 +1686,17 @@ function buscarPosto(codbar) {
         dataIni = dataFim;
         dataFim = tmp;
     }
+    vozPrevista = preverVozLocal(codbar);
     if (leituraAtiva) {
+        tocarBeep();
+        if (vozPrevista) {
+            falar(vozPrevista);
+        }
         leituraFila.push(codbar);
         return;
     }
     leituraAtiva = true;
     tocarBeep();
-    vozPrevista = preverVozLocal(codbar);
     if (vozPrevista) {
         falar(vozPrevista);
     }

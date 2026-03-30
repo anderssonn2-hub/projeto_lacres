@@ -730,13 +730,16 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                             $row['responsaveis']
                         ));
                     } else {
+                        $payloadInfo = isset($mapaPayloadLotes[$posto]) && isset($mapaPayloadLotes[$posto][$lt])
+                            ? $mapaPayloadLotes[$posto][$lt]
+                            : null;
                         $stInsLote->execute(array(
                             $id_despacho_post,
                             $posto,
                             $lt,
-                            0,
-                            null,
-                            $respFallback
+                            $payloadInfo ? (int)$payloadInfo['quantidade'] : 0,
+                            $payloadInfo && !empty($payloadInfo['data_carga']) ? $payloadInfo['data_carga'] : null,
+                            $payloadInfo && isset($payloadInfo['responsaveis']) && $payloadInfo['responsaveis'] !== '' ? $payloadInfo['responsaveis'] : $respFallback
                         ));
                     }
                 }
@@ -771,6 +774,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
    ============================================================ */
 $datasStr  = '';
 $datasNorm = array();
+$paginasDinamicas = array();
+$mapaPayloadLotes = array();
 // v9.25.x: filtros opcionais do oficio PT
 $postosSelecionados = array();
 $filtrarNaoConferidos = false;
@@ -810,6 +815,66 @@ if (!empty($datasStr)) {
 }
 if (!empty($datasNorm)) {
     $datasNorm = array_values(array_unique($datasNorm));
+}
+
+if (isset($_POST['pt_dinamico_payload']) || isset($_GET['pt_dinamico_payload'])) {
+    $payloadBruto = isset($_POST['pt_dinamico_payload']) ? $_POST['pt_dinamico_payload'] : $_GET['pt_dinamico_payload'];
+    $payload = json_decode($payloadBruto, true);
+    if (is_array($payload) && isset($payload['postos']) && is_array($payload['postos'])) {
+        foreach ($payload['postos'] as $postoPayload) {
+            $codigo = isset($postoPayload['codigo']) ? preg_replace('/\D+/', '', (string)$postoPayload['codigo']) : '';
+            $codigo = str_pad($codigo, 3, '0', STR_PAD_LEFT);
+            if ($codigo === '000') {
+                continue;
+            }
+
+            $nome = isset($postoPayload['nome']) ? trim((string)$postoPayload['nome']) : '';
+            $endereco = isset($postoPayload['endereco']) ? trim((string)$postoPayload['endereco']) : '';
+            $usuario = isset($postoPayload['usuario']) ? trim((string)$postoPayload['usuario']) : '';
+            $lotesPayload = isset($postoPayload['lotes']) && is_array($postoPayload['lotes']) ? $postoPayload['lotes'] : array();
+            $lotesNormalizados = array();
+            $qtdTotalPayload = 0;
+
+            foreach ($lotesPayload as $lotePayload) {
+                $lote = isset($lotePayload['lote']) ? preg_replace('/\D+/', '', (string)$lotePayload['lote']) : '';
+                if ($lote === '') {
+                    continue;
+                }
+                $lote = str_pad($lote, 8, '0', STR_PAD_LEFT);
+                $quantidade = isset($lotePayload['quantidade']) ? (int)$lotePayload['quantidade'] : 0;
+                if ($quantidade < 0) {
+                    $quantidade = 0;
+                }
+                $dataCarga = isset($lotePayload['data_carga']) ? normalizarDataPtSql($lotePayload['data_carga']) : '';
+                $responsaveis = isset($lotePayload['responsaveis']) ? trim((string)$lotePayload['responsaveis']) : $usuario;
+
+                $lotesNormalizados[] = array(
+                    'lote' => $lote,
+                    'quantidade' => $quantidade,
+                    'data_carga' => $dataCarga
+                );
+                $qtdTotalPayload += $quantidade;
+                $mapaPayloadLotes[$codigo][$lote] = array(
+                    'quantidade' => $quantidade,
+                    'data_carga' => $dataCarga,
+                    'responsaveis' => $responsaveis
+                );
+            }
+
+            if (empty($lotesNormalizados)) {
+                continue;
+            }
+
+            $paginasDinamicas[] = array(
+                'codigo' => $codigo,
+                'nome' => $nome,
+                'endereco' => $endereco,
+                'usuario' => $usuario,
+                'lotes' => $lotesNormalizados,
+                'qtd_total' => $qtdTotalPayload
+            );
+        }
+    }
 }
 
 if (isset($_POST['pt_postos_sel'])) {
@@ -855,9 +920,12 @@ if (isset($_GET['debug_pt'])) {
    ============================================================ */
 
 $paginas = array();  // Cada elemento = array('codigo','nome','qtd','endereco')
+$mapaConferidos = array();
 $modo_branco = (isset($_POST['pt_blank']) && $_POST['pt_blank'] === '1') || (isset($_GET['pt_blank']) && $_GET['pt_blank'] === '1');
 
-if (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
+if (!$modo_branco && !empty($paginasDinamicas)) {
+    $paginas = $paginasDinamicas;
+} elseif (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
 
     $in = "'" . implode("','", array_map('strval', $datasNorm)) . "'";
     $filtroPostosSql = '';
@@ -2073,6 +2141,7 @@ if (document.readyState === 'loading') {
   <input type="hidden" name="modo_oficio" id="modo_oficio_pt" value="">
     <!-- v9.22.2: Folhas selecionadas para gravar/imprimir -->
     <input type="hidden" name="folhas_selecionadas" id="folhas_selecionadas" value="">
+        <input type="hidden" name="pt_dinamico_payload" value="<?php echo e(isset($_POST['pt_dinamico_payload']) ? $_POST['pt_dinamico_payload'] : (isset($_GET['pt_dinamico_payload']) ? $_GET['pt_dinamico_payload'] : '')); ?>">
 
   <div class="controles-pagina nao-imprimir">
         <a href="inicio.php" class="btn-voltar-inicio">← Inicio</a>
