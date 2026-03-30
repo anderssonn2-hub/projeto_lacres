@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.18
+/* conferencia_pacotes.php — v0.9.25.19
+ * CHANGELOG v9.25.13:
+ * - [CORRIGIDO] Áudio e aviso de pacote não encontrado só disparam se o lote realmente não estiver na tela
+ * - [CORRIGIDO] Revalidação da linha após checagem assíncrona evita falso pendente com linha já marcada em verde
+ *
  * CHANGELOG v9.25.12:
  * - [NOVO] Controle remoto por celular com comandos de malote sincronizados via servidor
  * - [NOVO] Canal remoto para operar lacres e etiqueta sem depender de voz no navegador
@@ -6630,6 +6634,14 @@ function iniciarConferenciaPacotes() {
         return linhaConfirmada;
     }
 
+    function localizarLinhaNaTela(codigo) {
+        var linhaEncontrada = localizarLinhaPorCodigo(codigo);
+        if (linhaEncontrada) {
+            return linhaEncontrada;
+        }
+        return localizarLinhaPorContexto(codigo);
+    }
+
     function processarLeituraCodigo(valorBruto) {
         if (!input) return;
         if (modoConsulta) {
@@ -6705,13 +6717,21 @@ function iniciarConferenciaPacotes() {
             return;
         }
 
-        var linha = localizarLinhaPorCodigo(valor);
-        if (!linha) {
-            linha = localizarLinhaPorContexto(valor);
-        }
+        var linha = localizarLinhaNaTela(valor);
 
         if (!linha) {
             verificarPacoteOutraData(valor, function(resp) {
+                var linhaRevalidada = localizarLinhaNaTela(valor);
+                if (linhaRevalidada) {
+                    removerPendentePorCodbar(valor);
+                    if (mensagemLeitura && linhaRevalidada.classList.contains('confirmado')) {
+                        mensagemLeitura.textContent = '';
+                    }
+                    registrarHistoricoLeitura('Pacote localizado na tela', 'Aviso de não encontrado ignorado porque a linha apareceu na tela durante a leitura.', valor);
+                    finalizarProcessamento(true);
+                    return;
+                }
+
                 if (resp && resp.success && resp.status === 'outra_data') {
                     if (mensagemLeitura) {
                         mensagemLeitura.innerHTML = '<strong>Pacote de outra data:</strong> ' + formatarDataBr(resp.data || '');
