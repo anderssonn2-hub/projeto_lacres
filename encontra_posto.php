@@ -1,7 +1,7 @@
 <?php
-/* encontra_posto.php — v0.9.25.19
- * - [CORRIGIDO] Vocalizacao de regional/posto ocorre apenas uma vez por leitura do scanner
- * - [CORRIGIDO] Resposta AJAX nao repete a ultima fala automaticamente
+/* encontra_posto.php — v0.9.25.20
+ * - [CORRIGIDO] Vocalizacao do posto usa a classificacao da tabela ciRegionais
+ * - [CORRIGIDO] Cada leitura do scanner vocaliza apenas uma vez, sem repeticao espontanea
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
  * Registra leituras para controle da estante.
@@ -123,6 +123,54 @@ function resolverNomePostoCiPostos($pdo, $posto) {
     } catch (Exception $e) {
     }
     return $postoPad . ' - POSTO';
+}
+
+function normalizarEntregaTipoTriagem($entrega) {
+    $entrega = strtolower(trim(str_replace(' ', '', (string)$entrega)));
+    if ($entrega === '') {
+        return null;
+    }
+    if (strpos($entrega, 'poupa') !== false || strpos($entrega, 'tempo') !== false) {
+        return 'poupatempo';
+    }
+    if (strpos($entrega, 'correio') !== false) {
+        return 'correios';
+    }
+    return null;
+}
+
+function montarDescricaoTriagem($posto_pad, $regional_real, $entrega_tipo) {
+    $posto_int = (int)$posto_pad;
+    $regional_int = (int)$regional_real;
+    $tipo_posto = 'correios';
+    $tipo_estante = 'regional';
+    $voz = '';
+    $label_tipo = '';
+
+    if ($entrega_tipo === 'poupatempo') {
+        $tipo_posto = 'poupatempo';
+        $tipo_estante = 'poupatempo';
+        $voz = 'Poupa Tempo ' . $posto_int;
+        $label_tipo = 'Poupa Tempo ' . $posto_int;
+    } elseif ($regional_int === 0) {
+        $tipo_estante = 'capital';
+        $voz = 'Posto ' . $posto_int . ' capital';
+        $label_tipo = 'Posto ' . $posto_int . ' Capital';
+    } elseif ($regional_int === 999) {
+        $tipo_estante = 'central';
+        $voz = 'Posto ' . $posto_int . ' central';
+        $label_tipo = 'Posto ' . $posto_int . ' Central';
+    } else {
+        $voz = 'Posto ' . $regional_int;
+        $label_tipo = 'Posto ' . $regional_int;
+    }
+
+    return array(
+        'voz' => $voz,
+        'label_tipo' => $label_tipo,
+        'tipo_posto' => $tipo_posto,
+        'tipo_estante' => $tipo_estante
+    );
 }
 
 function montarCondicaoPeriodoSql($campo, $data_ini, $data_fim, $datas_alvo, &$params) {
@@ -515,53 +563,17 @@ try {
         if ($postoRow) {
             $posto_encontrado = true;
             $regional_real = (int)$postoRow['regional'];
-            $entrega_limpo = $postoRow['entrega'];
-            if (!empty($entrega_limpo)) {
-                if (strpos($entrega_limpo, 'poupa') !== false || strpos($entrega_limpo, 'tempo') !== false) {
-                    $entrega_tipo = 'poupatempo';
-                } elseif (strpos($entrega_limpo, 'correio') !== false) {
-                    $entrega_tipo = 'correios';
-                }
-            }
+            $entrega_tipo = normalizarEntregaTipoTriagem($postoRow['entrega']);
         } else {
             $regional_real = (int)$regional_csv;
         }
 
         $posto_int = (int)$posto_num;
-        $voz = '';
-        $tipo_posto = 'correios';
-        $label_tipo = 'Correios';
-
-        if ($entrega_tipo === 'poupatempo') {
-            $voz = 'Poupa Tempo ' . $posto_int;
-            $tipo_posto = 'poupatempo';
-            $label_tipo = 'Poupa Tempo';
-        } elseif ($posto_pad === '002') {
-            $voz = 'Posto 1';
-            $label_tipo = 'Posto 1';
-        } elseif ($posto_pad === '001') {
-            $voz = 'Posto 001';
-            $label_tipo = 'Posto 001';
-        } elseif ($regional_real === 0) {
-            $voz = 'Posto ' . $posto_int;
-            $label_tipo = 'Capital';
-        } elseif ($regional_real === 999) {
-            $voz = 'Posto ' . $posto_int;
-            $label_tipo = 'Central Metropolitana';
-        } else {
-            $regional_pad = str_pad((string)$regional_real, 3, '0', STR_PAD_LEFT);
-            $voz = 'Regional ' . $regional_pad;
-            $label_tipo = 'Regional ' . $regional_pad;
-        }
-
-        $tipo_estante = 'regional';
-        if ($entrega_tipo === 'poupatempo') {
-            $tipo_estante = 'poupatempo';
-        } elseif ($regional_real === 0) {
-            $tipo_estante = 'capital';
-        } elseif ($regional_real === 999) {
-            $tipo_estante = 'central';
-        }
+        $descricao_triagem = montarDescricaoTriagem($posto_pad, $regional_real, $entrega_tipo);
+        $voz = $descricao_triagem['voz'];
+        $tipo_posto = $descricao_triagem['tipo_posto'];
+        $label_tipo = $descricao_triagem['label_tipo'];
+        $tipo_estante = $descricao_triagem['tipo_estante'];
 
         $data_producao = null;
         $tem_carga_csv = false;
@@ -671,6 +683,31 @@ try {
     if (isset($_POST['ajax_buscar_posto'])) {
         header('Content-Type: application/json');
         die(json_encode(array('success' => false, 'erro' => 'Erro de conexao: ' . $e->getMessage())));
+    }
+}
+
+$mapa_postos_triagem = array();
+if ($dbOk) {
+    try {
+        $stmtMapaPostos = $pdo->query("SELECT LPAD(posto,3,'0') AS posto, CAST(regional AS UNSIGNED) AS regional, LOWER(TRIM(REPLACE(COALESCE(entrega,''),' ',''))) AS entrega FROM ciRegionais");
+        while ($rowMapa = $stmtMapaPostos->fetch(PDO::FETCH_ASSOC)) {
+            $postoMapa = isset($rowMapa['posto']) ? (string)$rowMapa['posto'] : '';
+            if ($postoMapa === '') {
+                continue;
+            }
+            $descricaoMapa = montarDescricaoTriagem($postoMapa, isset($rowMapa['regional']) ? (int)$rowMapa['regional'] : 0, normalizarEntregaTipoTriagem(isset($rowMapa['entrega']) ? $rowMapa['entrega'] : ''));
+            $mapa_postos_triagem[$postoMapa] = array(
+                'posto' => $postoMapa,
+                'regional' => isset($rowMapa['regional']) ? (int)$rowMapa['regional'] : 0,
+                'voz' => $descricaoMapa['voz'],
+                'label_tipo' => $descricaoMapa['label_tipo'],
+                'tipo_posto' => $descricaoMapa['tipo_posto'],
+                'tipo_estante' => $descricaoMapa['tipo_estante']
+            );
+        }
+        $stmtMapaPostos = null;
+    } catch (Exception $eMapaPostos) {
+        $mapa_postos_triagem = array();
     }
 }
 ?>
@@ -1266,8 +1303,11 @@ var audioFila = [];
 var ultimaFalaTexto = '';
 var ultimaFalaEm = 0;
 var ultimaFalaCodbar = '';
+var ultimaFalaLeituraId = 0;
 var ultimaLeituraCodbar = '';
 var ultimaLeituraEm = 0;
+var ultimaLeituraId = 0;
+var mapaPostosTriagem = <?php echo json_encode($mapa_postos_triagem); ?>;
 
 var leituraFila = [];
 var leituraAtiva = false;
@@ -1540,7 +1580,8 @@ function processarCodigoBruto(valor) {
     }
     ultimaLeituraCodbar = val;
     ultimaLeituraEm = Date.now();
-    buscarPosto(val);
+    ultimaLeituraId++;
+    buscarPosto(val, ultimaLeituraId);
 }
 
 document.getElementById('input_codbar').addEventListener('input', function() {
@@ -1576,11 +1617,15 @@ document.addEventListener('keydown', function(ev) {
     }
 });
 
-function falar(texto, codbar) {
+function falar(texto, codbar, leituraId) {
     if (!vozAtiva) return;
     if (typeof speechSynthesis === 'undefined') return;
     texto = String(texto || '').trim();
     if (texto === '') return;
+
+    if (leituraId && ultimaFalaLeituraId === leituraId) {
+        return;
+    }
 
     var codbarAtual = String(codbar || '').replace(/\D+/g, '');
     if (codbarAtual && ultimaFalaCodbar === codbarAtual && (Date.now() - ultimaFalaEm) < 2000) {
@@ -1589,6 +1634,9 @@ function falar(texto, codbar) {
 
     ultimaFalaTexto = texto;
     ultimaFalaEm = Date.now();
+    if (leituraId) {
+        ultimaFalaLeituraId = leituraId;
+    }
     if (codbarAtual) {
         ultimaFalaCodbar = codbarAtual;
     }
@@ -1632,36 +1680,16 @@ function tocarBeep() {
 function preverVozLocal(codbar) {
     var limpo = String(codbar || '').replace(/\D+/g, '');
     var postoPad;
-    var regionalPad;
-    var postoInt;
-    var postosPt = {
-        '005': true, '006': true, '023': true, '024': true, '025': true,
-        '026': true, '028': true, '080': true, '110': true, '315': true,
-        '375': true, '487': true, '526': true, '527': true, '667': true,
-        '730': true, '747': true, '790': true, '825': true, '880': true
-    };
+    var infoPosto;
     if (limpo.length < 14) {
         return '';
     }
-    regionalPad = limpo.substr(8, 3);
     postoPad = limpo.substr(11, 3);
-    postoInt = parseInt(postoPad, 10);
-    if (isNaN(postoInt)) {
-        return '';
+    infoPosto = mapaPostosTriagem && mapaPostosTriagem[postoPad] ? mapaPostosTriagem[postoPad] : null;
+    if (infoPosto && infoPosto.voz) {
+        return String(infoPosto.voz);
     }
-    if (postosPt[postoPad]) {
-        return 'Poupa Tempo ' + postoInt;
-    }
-    if (postoPad === '002') {
-        return 'Posto 1';
-    }
-    if (postoPad === '001') {
-        return 'Posto 001';
-    }
-    if (regionalPad === '000' || regionalPad === '999') {
-        return 'Posto ' + postoInt;
-    }
-    return 'Regional ' + regionalPad;
+    return '';
 }
 
 function deveRepetirFalaNaResposta(texto) {
@@ -1679,11 +1707,15 @@ function finalizarLeitura() {
     leituraAtiva = false;
     if (leituraFila.length > 0) {
         var prox = leituraFila.shift();
-        buscarPosto(prox);
+        if (prox && typeof prox === 'object') {
+            buscarPosto(prox.codbar, prox.leituraId || 0);
+            return;
+        }
+        buscarPosto(prox, 0);
     }
 }
 
-function buscarPosto(codbar) {
+function buscarPosto(codbar, leituraId) {
     var dataIni = obterDataIni();
     var dataFim = obterDataFim();
     var vozPrevista = '';
@@ -1708,15 +1740,15 @@ function buscarPosto(codbar) {
     if (leituraAtiva) {
         tocarBeep();
         if (vozPrevista) {
-            falar(vozPrevista, codbar);
+            falar(vozPrevista, codbar, leituraId);
         }
-        leituraFila.push(codbar);
+        leituraFila.push({ codbar: codbar, leituraId: leituraId || 0 });
         return;
     }
     leituraAtiva = true;
     tocarBeep();
     if (vozPrevista) {
-        falar(vozPrevista, codbar);
+        falar(vozPrevista, codbar, leituraId);
     }
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
