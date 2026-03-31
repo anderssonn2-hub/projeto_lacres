@@ -1,5 +1,8 @@
 <?php
 /* conferencia_pacotes.php — v0.9.25.21
+ * CHANGELOG v9.25.17:
+ * - [CORRIGIDO] Capital e Central passam a agrupar pelo atributo de regional real da linha, liberando concluido por posto finalizado
+ *
  * CHANGELOG v9.25.16:
  * - [CORRIGIDO] Audio de concluido em Capital e Central dispara por posto finalizado, sem depender dos demais postos do grupo
  * - [AJUSTE] Tela e snapshot exibem a versao 0.9.25.21
@@ -6604,7 +6607,7 @@ function iniciarConferenciaPacotes() {
 
     function obterRegionalLinha(linha) {
         if (!linha) return '';
-        var v = linha.getAttribute('data-regional') || '';
+        var v = linha.getAttribute('data-regional-real') || linha.getAttribute('data-regional') || '';
         var n = normalizarRegionalValor(v);
         if (!n) {
             n = normalizarRegionalValor(linha.getAttribute('data-pt-group') || '');
