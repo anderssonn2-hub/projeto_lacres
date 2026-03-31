@@ -1,5 +1,14 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.19
+/* conferencia_pacotes.php — v0.9.25.21
+ * CHANGELOG v9.25.15:
+ * - [CORRIGIDO] Leitura usa sempre os últimos 19 dígitos válidos para ignorar sobra residual no input
+ * - [CORRIGIDO] Segmentação de lote, regional, posto e quantidade centralizada para evitar pendentes com dados deslocados
+ * - [CORRIGIDO] Campo do scanner limpa sobras parciais automaticamente e não reprocessa por eventos redundantes
+ *
+ * CHANGELOG v9.25.14:
+ * - [CORRIGIDO] Scanner não processa a mesma leitura por múltiplos canais quando o campo principal está em foco
+ * - [CORRIGIDO] Callback assíncrono de pacote não encontrado é descartado após confirmação recente do mesmo contexto
+ *
  * CHANGELOG v9.25.13:
  * - [CORRIGIDO] Áudio e aviso de pacote não encontrado só disparam se o lote realmente não estiver na tela
  * - [CORRIGIDO] Revalidação da linha após checagem assíncrona evita falso pendente com linha já marcada em verde
@@ -3785,6 +3794,8 @@ function iniciarConferenciaPacotes() {
     var ultimoCodigoProcessado = '';
     var ultimaLeituraProcessadaEm = 0;
     var ultimoAvisoScanner = { chave: '', quando: 0 };
+    var ultimaLeituraConfirmada = { codigo: '', contexto: '', quando: 0 };
+    var limpezaParcialInputTimer = null;
     var chipsRecolhidos = false;
     var tradicionalRecolhido = false;
     var wakeLockSentinel = null;
@@ -6162,13 +6173,14 @@ function iniciarConferenciaPacotes() {
     function abrirModalPacote(codigo, idx) {
         if (!modalPacote) return;
         var cod = codigo || '';
+        var partesCodigo = extrairPartesCodigo(cod);
         if (pacoteIdx) pacoteIdx.value = (typeof idx === 'number') ? String(idx) : '';
         if (pacoteCodbar) pacoteCodbar.value = cod;
-        if (cod.length === 19 && (typeof idx !== 'number')) {
-            if (pacoteLote) pacoteLote.value = cod.substr(0, 8);
-            if (pacoteRegional) pacoteRegional.value = cod.substr(8, 3);
-            if (pacotePosto) pacotePosto.value = cod.substr(11, 3);
-            if (pacoteQtd) pacoteQtd.value = parseInt(cod.substr(14, 5), 10) || '';
+        if (partesCodigo && (typeof idx !== 'number')) {
+            if (pacoteLote) pacoteLote.value = partesCodigo.lote;
+            if (pacoteRegional) pacoteRegional.value = partesCodigo.regional;
+            if (pacotePosto) pacotePosto.value = partesCodigo.posto;
+            if (pacoteQtd) pacoteQtd.value = partesCodigo.quantidade || '';
         }
         if (pacoteDataexp && !pacoteDataexp.value) {
             var now = new Date();
@@ -6287,7 +6299,7 @@ function iniciarConferenciaPacotes() {
     if (btnAdicionarPacote) {
         btnAdicionarPacote.addEventListener('click', function() {
             var obj = {
-                codbar: pacoteCodbar ? pacoteCodbar.value.trim() : '',
+                codbar: pacoteCodbar ? normalizarCodigoLeitura(pacoteCodbar.value.trim()) : '',
                 lote: pacoteLote ? pacoteLote.value.trim() : '',
                 regional: pacoteRegional ? pacoteRegional.value.trim() : '',
                 posto: pacotePosto ? pacotePosto.value.trim() : '',
@@ -6564,6 +6576,28 @@ function iniciarConferenciaPacotes() {
         return d.padStart(3, '0');
     }
 
+    function normalizarCodigoLeitura(valor) {
+        var digits = String(valor || '').replace(/\D+/g, '');
+        if (digits.length > 19) {
+            digits = digits.slice(-19);
+        }
+        return digits;
+    }
+
+    function extrairPartesCodigo(codigo) {
+        var codigoNormalizado = normalizarCodigoLeitura(codigo);
+        if (codigoNormalizado.length !== 19) {
+            return null;
+        }
+        return {
+            codigo: codigoNormalizado,
+            lote: codigoNormalizado.substr(0, 8),
+            regional: codigoNormalizado.substr(8, 3),
+            posto: codigoNormalizado.substr(11, 3),
+            quantidade: parseInt(codigoNormalizado.substr(14, 5), 10) || 1
+        };
+    }
+
     function obterRegionalLinha(linha) {
         if (!linha) return '';
         var v = linha.getAttribute('data-regional') || '';
@@ -6593,15 +6627,55 @@ function iniciarConferenciaPacotes() {
     }
 
     function extrairContextoCodigo(codigo) {
-        var codigoNormalizado = String(codigo || '').replace(/\D+/g, '');
-        if (codigoNormalizado.length < 14) {
+        var partes = extrairPartesCodigo(codigo);
+        if (!partes) {
             return null;
         }
         return {
-            lote: codigoNormalizado.substr(0, 8),
-            regional: normalizarRegionalValor(codigoNormalizado.substr(8, 3)),
-            posto: codigoNormalizado.substr(11, 3)
+            lote: partes.lote,
+            regional: normalizarRegionalValor(partes.regional),
+            posto: partes.posto
         };
+    }
+
+    function obterChaveContextoCodigo(codigo) {
+        var contexto = extrairContextoCodigo(codigo);
+        if (!contexto) return '';
+        return [contexto.lote, contexto.regional, contexto.posto].join('|');
+    }
+
+    function registrarLeituraConfirmada(linha, codigo) {
+        var codigoLinha = '';
+        var contextoLinha = '';
+        if (linha) {
+            codigoLinha = String(linha.getAttribute('data-codigo') || '').replace(/\D+/g, '');
+            contextoLinha = [
+                String(linha.getAttribute('data-lote') || ''),
+                normalizarRegionalValor(linha.getAttribute('data-regional-real') || linha.getAttribute('data-regional') || ''),
+                String(linha.getAttribute('data-posto') || '')
+            ].join('|');
+        }
+        ultimaLeituraConfirmada = {
+            codigo: codigoLinha || String(codigo || '').replace(/\D+/g, ''),
+            contexto: contextoLinha || obterChaveContextoCodigo(codigo),
+            quando: Date.now()
+        };
+    }
+
+    function houveConfirmacaoRecenteRelacionada(codigo) {
+        var agora = Date.now();
+        var codigoNormalizado = String(codigo || '').replace(/\D+/g, '');
+        var contextoAtual = obterChaveContextoCodigo(codigoNormalizado);
+        if (!ultimaLeituraConfirmada.quando || (agora - ultimaLeituraConfirmada.quando) > 2000) {
+            return false;
+        }
+        if (ultimaLeituraConfirmada.codigo && codigoNormalizado && ultimaLeituraConfirmada.codigo === codigoNormalizado) {
+            return true;
+        }
+        if (ultimaLeituraConfirmada.contexto && contextoAtual && ultimaLeituraConfirmada.contexto === contextoAtual) {
+            return true;
+        }
+        return false;
     }
 
     function localizarLinhaPorContexto(codigo) {
@@ -6661,15 +6735,17 @@ function iniciarConferenciaPacotes() {
             input.value = '';
             return;
         }
-        var valor = valorOriginal;
-        valor = valor.replace(/\D+/g, '');
+        var valor = normalizarCodigoLeitura(valorOriginal);
         if (valor.length < 19) {
             return;
         }
-        if (valor.length > 19) {
-            valor = valor.substr(0, 19);
-        }
         if (valor.length !== 19) {
+            input.value = '';
+            return;
+        }
+
+        var partesCodigo = extrairPartesCodigo(valor);
+        if (!partesCodigo) {
             input.value = '';
             return;
         }
@@ -6703,7 +6779,7 @@ function iniciarConferenciaPacotes() {
 
         desbloquearAudio();
 
-        var postoLido = valor.substr(11, 3);
+        var postoLido = partesCodigo.posto;
         if (postosBloqueadosMap[postoLido]) {
             var dadosBloq = postosBloqueadosMap[postoLido] || {};
             var motivoBloq = (dadosBloq.motivo || dadosBloq.nome || '').toString().trim();
@@ -6732,6 +6808,13 @@ function iniciarConferenciaPacotes() {
                     return;
                 }
 
+                if (houveConfirmacaoRecenteRelacionada(valor)) {
+                    removerPendentePorCodbar(valor);
+                    registrarHistoricoLeitura('Aviso descartado', 'Leitura duplicada ignorada para evitar falso pacote não encontrado.', valor);
+                    finalizarProcessamento(true);
+                    return;
+                }
+
                 if (resp && resp.success && resp.status === 'outra_data') {
                     if (mensagemLeitura) {
                         mensagemLeitura.innerHTML = '<strong>Pacote de outra data:</strong> ' + formatarDataBr(resp.data || '');
@@ -6748,11 +6831,11 @@ function iniciarConferenciaPacotes() {
                 var dataPadrao = now.getFullYear() + '-' + mm + '-' + dd;
 
                 var obj = {
-                    codbar: valor,
-                    lote: valor.substr(0, 8),
-                    regional: valor.substr(8, 3),
-                    posto: valor.substr(11, 3),
-                    quantidade: parseInt(valor.substr(14, 5), 10) || 1,
+                    codbar: partesCodigo.codigo,
+                    lote: partesCodigo.lote,
+                    regional: partesCodigo.regional,
+                    posto: partesCodigo.posto,
+                    quantidade: partesCodigo.quantidade,
                     dataexp: dataPadrao,
                     responsavel: ''
                 };
@@ -6867,6 +6950,7 @@ function iniciarConferenciaPacotes() {
         linha.classList.add('confirmado');
         var conferidoAgora = formatarDataHoraAtual();
         linha.setAttribute('data-conferido-em', conferidoAgora);
+        registrarLeituraConfirmada(linha, valor);
         var tdConf = linha.querySelector('.col-conferido-em');
         if (tdConf) tdConf.textContent = conferidoAgora;
         selecionarContextoMalote(obterContextoMaloteDeRegistroTabela(linha));
@@ -6970,33 +7054,27 @@ function iniciarConferenciaPacotes() {
     // Scanner de código de barras
     if (input) {
         input.addEventListener("input", function() {
-            processarLeituraCodigo(input.value);
-        });
-        input.addEventListener("change", function() {
-            processarLeituraCodigo(input.value);
-        });
-        input.addEventListener("paste", function() {
-            setTimeout(function() {
-                processarLeituraCodigo(input.value);
-            }, 0);
-        });
-        input.addEventListener("keydown", function(e) {
-            if (e.keyCode === 13) {
-                e.preventDefault();
-                processarLeituraCodigo(input.value);
+            var digits = normalizarCodigoLeitura(input.value);
+            if (limpezaParcialInputTimer) {
+                clearTimeout(limpezaParcialInputTimer);
+                limpezaParcialInputTimer = null;
+            }
+
+            if (digits.length >= 19) {
+                processarLeituraCodigo(digits);
+                return;
+            }
+
+            if (digits.length > 0) {
+                limpezaParcialInputTimer = setTimeout(function() {
+                    if (!input) return;
+                    var digitsPendentes = normalizarCodigoLeitura(input.value);
+                    if (digitsPendentes.length > 0 && digitsPendentes.length < 19) {
+                        input.value = '';
+                    }
+                }, 180);
             }
         });
-        setInterval(function() {
-            if (!input) return;
-            if (document.activeElement && document.activeElement !== input && entradaBloqueiaScanner(document.activeElement)) return;
-            var valorAtual = (input.value || '').trim();
-            if (!valorAtual || valorAtual === ultimoCodLido) return;
-            ultimoCodLido = valorAtual;
-            processarLeituraCodigo(valorAtual);
-            if ((input.value || '').trim() === '') {
-                ultimoCodLido = '';
-            }
-        }, 300);
     }
 
     var scanBuffer = '';
@@ -7004,6 +7082,10 @@ function iniciarConferenciaPacotes() {
     document.addEventListener('keydown', function(e) {
         if (!e) return;
         var alvo = e.target;
+        if (input && alvo === input) {
+            scanBuffer = '';
+            return;
+        }
         if (entradaBloqueiaScanner(alvo)) {
             scanBuffer = '';
             return;

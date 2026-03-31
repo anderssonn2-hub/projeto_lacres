@@ -1,5 +1,7 @@
 <?php
-/* encontra_posto.php — v0.9.25.18
+/* encontra_posto.php — v0.9.25.19
+ * - [CORRIGIDO] Vocalizacao de regional/posto ocorre apenas uma vez por leitura do scanner
+ * - [CORRIGIDO] Resposta AJAX nao repete a ultima fala automaticamente
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
  * Registra leituras para controle da estante.
@@ -1263,6 +1265,9 @@ var audioFilaAtiva = false;
 var audioFila = [];
 var ultimaFalaTexto = '';
 var ultimaFalaEm = 0;
+var ultimaFalaCodbar = '';
+var ultimaLeituraCodbar = '';
+var ultimaLeituraEm = 0;
 
 var leituraFila = [];
 var leituraAtiva = false;
@@ -1530,6 +1535,11 @@ function processarCodigoBruto(valor) {
     if (val.length > 19) {
         val = val.substr(0, 19);
     }
+    if (ultimaLeituraCodbar === val && (Date.now() - ultimaLeituraEm) < 1500) {
+        return;
+    }
+    ultimaLeituraCodbar = val;
+    ultimaLeituraEm = Date.now();
     buscarPosto(val);
 }
 
@@ -1566,14 +1576,22 @@ document.addEventListener('keydown', function(ev) {
     }
 });
 
-function falar(texto) {
+function falar(texto, codbar) {
     if (!vozAtiva) return;
     if (typeof speechSynthesis === 'undefined') return;
     texto = String(texto || '').trim();
     if (texto === '') return;
 
+    var codbarAtual = String(codbar || '').replace(/\D+/g, '');
+    if (codbarAtual && ultimaFalaCodbar === codbarAtual && (Date.now() - ultimaFalaEm) < 2000) {
+        return;
+    }
+
     ultimaFalaTexto = texto;
     ultimaFalaEm = Date.now();
+    if (codbarAtual) {
+        ultimaFalaCodbar = codbarAtual;
+    }
 
     try {
         audioFila = [];
@@ -1690,7 +1708,7 @@ function buscarPosto(codbar) {
     if (leituraAtiva) {
         tocarBeep();
         if (vozPrevista) {
-            falar(vozPrevista);
+            falar(vozPrevista, codbar);
         }
         leituraFila.push(codbar);
         return;
@@ -1698,7 +1716,7 @@ function buscarPosto(codbar) {
     leituraAtiva = true;
     tocarBeep();
     if (vozPrevista) {
-        falar(vozPrevista);
+        falar(vozPrevista, codbar);
     }
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
@@ -1860,10 +1878,6 @@ function exibirResultado(dados) {
     }
 
     div.style.display = 'block';
-
-    if (dados.voz && dados.voz !== preverVozLocal(dados.codbar || '') && deveRepetirFalaNaResposta(dados.voz)) {
-        falar(dados.voz);
-    }
 
     if (dados.estante) {
         contTotal = dados.estante.total || 0;
