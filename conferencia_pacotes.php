@@ -1,5 +1,8 @@
 <?php
 /* conferencia_pacotes.php — v0.9.25.21
+ * CHANGELOG v9.25.18:
+ * - [CORRIGIDO] Aviso de pacote de outra regional volta a bloquear leituras de outro posto dentro da Capital e da Central
+ *
  * CHANGELOG v9.25.17:
  * - [CORRIGIDO] Capital e Central passam a agrupar pelo atributo de regional real da linha, liberando concluido por posto finalizado
  *
@@ -6138,10 +6141,16 @@ function iniciarConferenciaPacotes() {
     
     // v9.23.2: Variáveis de contexto para sons inteligentes
     var regionalAtual = null;
+    var postoAtual = null;
     var tipoAtual = null; // 'poupatempo' ou 'correios'
     var primeiroConferido = false;
     var ultimaRegionalLida = null;
+    var ultimoPostoLido = null;
     var ultimoTipoLido = null;
+
+    function contextoCorreiosExigeMesmoPosto(regionalNorm) {
+        return regionalNorm === '000' || regionalNorm === '999';
+    }
 
     function obterTipoInicioSelecionado() {
         var radios = document.querySelectorAll('input[name="tipo_inicio"]');
@@ -6166,9 +6175,11 @@ function iniciarConferenciaPacotes() {
         tipoEscolhido = true;
         if (overlayTipo) overlayTipo.style.display = 'none';
         regionalAtual = null;
+        postoAtual = null;
         tipoAtual = null;
         primeiroConferido = false;
         ultimaRegionalLida = null;
+        ultimoPostoLido = null;
         ultimoTipoLido = null;
         try {
             sessionStorage.setItem(storageTipoKey, tipo);
@@ -6880,6 +6891,7 @@ function iniciarConferenciaPacotes() {
         var modoTodos = tipoSelecionado === 'todos';
         var regionalDoPacote = obterRegionalLinha(linha);
         var regionalDoPacoteNorm = normalizarRegionalValor(regionalDoPacote);
+        var postoDoPacote = formatarCodigoComZeros(linha.getAttribute('data-posto') || '', 3);
         var isPoupaTempo = linha.getAttribute('data-ispt') === '1';
         var tipoPacote = isPoupaTempo ? 'poupatempo' : 'correios';
 
@@ -6899,12 +6911,20 @@ function iniciarConferenciaPacotes() {
             if (regionalAtualNormCheck && regionalDoPacoteNorm && regionalDoPacoteNorm !== regionalAtualNormCheck) {
                 somAlerta = pacoteOutraRegional;
                 podeConferir = false;
+            } else if (contextoCorreiosExigeMesmoPosto(regionalAtualNormCheck) && postoAtual && postoDoPacote && postoDoPacote !== postoAtual) {
+                somAlerta = pacoteOutraRegional;
+                podeConferir = false;
             }
         }
 
-        if (ultimaRegionalLida && ultimoTipoLido === tipoPacote && tipoPacote === 'correios' && regionalDoPacoteNorm && regionalDoPacoteNorm !== ultimaRegionalLida) {
-            somAlerta = pacoteOutraRegional;
-            podeConferir = false;
+        if (ultimoTipoLido === tipoPacote && tipoPacote === 'correios') {
+            if (ultimaRegionalLida && regionalDoPacoteNorm && regionalDoPacoteNorm !== ultimaRegionalLida) {
+                somAlerta = pacoteOutraRegional;
+                podeConferir = false;
+            } else if (contextoCorreiosExigeMesmoPosto(ultimaRegionalLida) && ultimoPostoLido && postoDoPacote && postoDoPacote !== ultimoPostoLido) {
+                somAlerta = pacoteOutraRegional;
+                podeConferir = false;
+            }
         }
 
         if (podeConferir && !primeiroConferido) {
@@ -6912,6 +6932,7 @@ function iniciarConferenciaPacotes() {
             if (modoTodos || tipoAtual === tipoPacote) {
                 tipoAtual = tipoPacote;
                 regionalAtual = regionalDoPacoteNorm || regionalDoPacote;
+                postoAtual = tipoPacote === 'correios' ? postoDoPacote : null;
             } else {
                 podeConferir = false;
                 avisarIncompatibilidadeTipo(tipoPacote);
@@ -6933,9 +6954,15 @@ function iniciarConferenciaPacotes() {
                 mensagemLeitura.innerHTML = '<strong>Posto dos Correios:</strong> altere o tipo para Correios ou Todos.';
             }
             avisarSomOuFala('incompatibilidade_correios', pertenceCorreios, 'posto dos correios');
-        } else if (!modoTodos && podeConferir && regionalDoPacoteNorm && regionalDoPacoteNorm !== normalizarRegionalValor(regionalAtual) && tipoPacote === tipoAtual) {
-            somAlerta = pacoteOutraRegional;
-            podeConferir = false;
+        } else if (!modoTodos && podeConferir && tipoPacote === tipoAtual) {
+            var regionalContextoAtual = normalizarRegionalValor(regionalAtual);
+            if (regionalDoPacoteNorm && regionalDoPacoteNorm !== regionalContextoAtual) {
+                somAlerta = pacoteOutraRegional;
+                podeConferir = false;
+            } else if (contextoCorreiosExigeMesmoPosto(regionalContextoAtual) && postoAtual && postoDoPacote && postoDoPacote !== postoAtual) {
+                somAlerta = pacoteOutraRegional;
+                podeConferir = false;
+            }
         }
 
         if (podeConferir && tipoPacote === 'poupatempo') {
@@ -6968,6 +6995,7 @@ function iniciarConferenciaPacotes() {
         tipoAtual = tipoPacote;
         if (tipoPacote === 'correios') {
             regionalAtual = regionalDoPacoteNorm || regionalDoPacote;
+            postoAtual = postoDoPacote;
         }
         atualizarResumoTabela(linha.closest('table'));
 
@@ -6991,6 +7019,7 @@ function iniciarConferenciaPacotes() {
         destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
 
         ultimaRegionalLida = regionalDoPacoteNorm || regionalDoPacote;
+        ultimoPostoLido = tipoPacote === 'correios' ? postoDoPacote : null;
         ultimoTipoLido = tipoPacote;
 
         if (usuarioAtual) {
@@ -7059,9 +7088,11 @@ function iniciarConferenciaPacotes() {
         if (totalCodigosGrupo > 0 && totalCodigosConferidosGrupo === totalCodigosGrupo) {
             enfileirarSom(concluido);
             regionalAtual = null;
+            postoAtual = null;
             tipoAtual = null;
             primeiroConferido = false;
             ultimaRegionalLida = null;
+            ultimoPostoLido = null;
             ultimoTipoLido = null;
         }
 
@@ -7169,9 +7200,11 @@ function iniciarConferenciaPacotes() {
             sincronizarPainelOperacao();
             
             regionalAtual = null;
+            postoAtual = null;
             tipoAtual = null; // v9.2: Reseta tipo
             primeiroConferido = false; // v9.2: Reseta flag
             ultimaRegionalLida = null;
+            ultimoPostoLido = null;
             ultimoTipoLido = null;
             valoresDigitadosPorContexto = {};
             ultimoLacreIiprAplicado = '';
