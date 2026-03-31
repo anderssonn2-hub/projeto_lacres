@@ -334,7 +334,7 @@ $usuarioSessao = isset($_SESSION['usuario']) ? trim((string)$_SESSION['usuario']
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerar Ofício Poupa Tempo Dinâmico v0.9.25.20</title>
+    <title>Gerar Ofício Poupa Tempo Dinâmico v0.9.25.21</title>
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: "Trebuchet MS", Tahoma, Verdana, sans-serif; background: linear-gradient(180deg, #f5f1ea 0%, #eef5f9 100%); color: #22313f; }
@@ -400,7 +400,7 @@ $usuarioSessao = isset($_SESSION['usuario']) ? trim((string)$_SESSION['usuario']
                 <h1>Gerar Ofício Poupa Tempo Dinâmico</h1>
                 <p>Leia os códigos, monte a lista por posto e envie apenas os lotes marcados para o modelo oficial.</p>
             </div>
-            <div class="badge">v0.9.25.20</div>
+            <div class="badge">v0.9.25.21</div>
         </div>
 
         <?php if ($erroConexao !== ''): ?>

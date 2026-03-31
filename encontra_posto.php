@@ -1,6 +1,6 @@
 <?php
-/* encontra_posto.php — v0.9.25.20
- * - [CORRIGIDO] Vocalizacao do posto usa a classificacao da tabela ciRegionais
+/* encontra_posto.php — v0.9.25.21
+ * - [CORRIGIDO] Postos regionais vocalizam "Regional X" conforme a regional da tabela ciRegionais
  * - [CORRIGIDO] Cada leitura do scanner vocaliza apenas uma vez, sem repeticao espontanea
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
@@ -161,8 +161,8 @@ function montarDescricaoTriagem($posto_pad, $regional_real, $entrega_tipo) {
         $voz = 'Posto ' . $posto_int . ' central';
         $label_tipo = 'Posto ' . $posto_int . ' Central';
     } else {
-        $voz = 'Posto ' . $regional_int;
-        $label_tipo = 'Posto ' . $regional_int;
+        $voz = 'Regional ' . $regional_int;
+        $label_tipo = 'Regional ' . $regional_int;
     }
 
     return array(
@@ -716,7 +716,7 @@ if ($dbOk) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto v0.9.25.18 - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.25.21 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1143,8 +1143,8 @@ if ($dbOk) {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.25.18</span>
-        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.18</span>
+        <span class="versao">v0.9.25.21</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.21</span>
         <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">

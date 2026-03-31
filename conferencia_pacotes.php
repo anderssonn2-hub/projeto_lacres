@@ -1,5 +1,9 @@
 <?php
 /* conferencia_pacotes.php — v0.9.25.21
+ * CHANGELOG v9.25.16:
+ * - [CORRIGIDO] Audio de concluido em Capital e Central dispara por posto finalizado, sem depender dos demais postos do grupo
+ * - [AJUSTE] Tela e snapshot exibem a versao 0.9.25.21
+ *
  * CHANGELOG v9.25.15:
  * - [CORRIGIDO] Leitura usa sempre os últimos 19 dígitos válidos para ignorar sobra residual no input
  * - [CORRIGIDO] Segmentação de lote, regional, posto e quantidade centralizada para evitar pendentes com dados deslocados
@@ -1474,7 +1478,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.18</title>
+    <title>Conferência de Pacotes v0.9.25.21</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2733,10 +2737,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.18</div>
+    <div class="versao">v0.9.25.21</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.18</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.21</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -4433,7 +4437,7 @@ function iniciarConferenciaPacotes() {
         });
 
         return {
-            versao: '0.9.25.18',
+            versao: '0.9.25.21',
             gerado_em: formatarDataHoraAtual(),
             usuario: usuarioAtual || '',
             contexto_selecionado: contextoSelecionadoMalote || '',
@@ -7010,7 +7014,7 @@ function iniciarConferenciaPacotes() {
             }
         } else {
             var regionalAtualNorm = normalizarRegionalValor(regionalAtual || regionalDoPacoteNorm);
-            if (regionalAtualNorm === '000' || regionalAtualNorm === '999' || regionalAtualNorm === '001') {
+            if (regionalAtualNorm === '000' || regionalAtualNorm === '999') {
                 grupoAtual = linha.getAttribute('data-posto');
                 for (var i2 = 0; i2 < todasLinhas.length; i2++) {
                     if (obterRegionalLinha(todasLinhas[i2]) === regionalAtualNorm &&
@@ -7030,14 +7034,26 @@ function iniciarConferenciaPacotes() {
             }
         }
 
-        var conferidosDoGrupo = 0;
+        var codigosDoGrupo = {};
+        var codigosConferidosDoGrupo = {};
+        var totalCodigosGrupo = 0;
+        var totalCodigosConferidosGrupo = 0;
         for (var j = 0; j < linhasDoGrupo.length; j++) {
-            if (linhasDoGrupo[j].classList.contains('confirmado')) {
-                conferidosDoGrupo++;
+            var codigoGrupo = String(linhasDoGrupo[j].getAttribute('data-codigo') || '').replace(/\D+/g, '');
+            if (!codigoGrupo) {
+                codigoGrupo = 'linha:' + j;
+            }
+            if (!codigosDoGrupo[codigoGrupo]) {
+                codigosDoGrupo[codigoGrupo] = true;
+                totalCodigosGrupo++;
+            }
+            if (linhasDoGrupo[j].classList.contains('confirmado') && !codigosConferidosDoGrupo[codigoGrupo]) {
+                codigosConferidosDoGrupo[codigoGrupo] = true;
+                totalCodigosConferidosGrupo++;
             }
         }
 
-        if (conferidosDoGrupo === linhasDoGrupo.length && linhasDoGrupo.length > 0) {
+        if (totalCodigosGrupo > 0 && totalCodigosConferidosGrupo === totalCodigosGrupo) {
             enfileirarSom(concluido);
             regionalAtual = null;
             tipoAtual = null;
