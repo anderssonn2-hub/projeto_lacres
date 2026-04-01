@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — Versão 9.25.10
+/* lacres_novo.php — Versão 9.25.23
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v9.25.23 (01/04/2026):
+ * - [NOVO] Botões independentes de Aplicar Lacres para CAPITAL, CENTRAL IIPR e REGIONAIS
+ * - [CORRIGIDO] Recalculo por lacre agora afeta apenas o grupo solicitado
+ * - [VERSAO] Interface atualizada para Versão 0.9.25.23
  *
  * CHANGELOG v9.25.10 (17/03/2026):
  * - [NOVO] Resumo consolidado do ofício por grupos de malote
@@ -3343,10 +3348,24 @@ $recalculo_por_lacre = false;
 if ((isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') || (isset($_POST['recalculo_por_lacre']) && $_POST['recalculo_por_lacre'] === '1')) {
     $recalculo_por_lacre = true;
 }
+$recalculo_grupo = '';
+if (isset($_POST['recalculo_grupo'])) {
+    $recalculo_grupo = trim((string)$_POST['recalculo_grupo']);
+} elseif (isset($_GET['recalculo_grupo'])) {
+    $recalculo_grupo = trim((string)$_GET['recalculo_grupo']);
+}
+$grupos_recalculo_validos = array('CAPITAL', 'CENTRAL IIPR', 'REGIONAIS');
+if (!in_array($recalculo_grupo, $grupos_recalculo_validos, true)) {
+    $recalculo_grupo = '';
+}
 // Se veio snapshot de lacres (adicionar posto), nao recalcular
 if (!empty($_SESSION['snapshot_lacres_ativo'])) {
     $recalculo_por_lacre = false;
+    $recalculo_grupo = '';
 }
+$recalcular_capital = $recalculo_por_lacre && $recalculo_grupo === 'CAPITAL';
+$recalcular_central = $recalculo_por_lacre && $recalculo_grupo === 'CENTRAL IIPR';
+$recalcular_regionais = $recalculo_por_lacre && $recalculo_grupo === 'REGIONAIS';
 
 // v8.13.4: Inicializadores padrão ZERADOS (não preencher automaticamente)
 // Usuário deve digitar lacres iniciais nos inputs do topo para cada grupo
@@ -3364,7 +3383,7 @@ $ultimo_central = null;
 // - Segunda linha: lacre_iipr=N+2, lacre_correios=N+3
 // - Exemplo: lacre inicial=18 → linhas: 18/19, 20/21, 22/23...
 // - Se lacre_capital=0 ou vazio: deixa TODOS os inputs em branco
-if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
+if ($recalcular_capital && (int)$lacre_capital > 0) {
     $lacre_iipr_cur = (int)$lacre_capital;
     $lacre_corr_cur = $lacre_iipr_cur + 1;
     foreach ($dados['CAPITAL'] as &$linha) {
@@ -3407,7 +3426,7 @@ if ($recalculo_por_lacre && (int)$lacre_capital > 0) {
 // - Exemplo: 7 postos com lacre inicial=5 → IIPR: 5,6,7,8,9,10,11 | Correios (todos): 12
 // - Com SPLITs: cada grupo visual tem seu próprio lacre Correios = max(IIPR_grupo) + 1
 // - Se lacre_central=0 ou vazio: deixa TODOS os inputs em branco
-if ($recalculo_por_lacre && (int)$lacre_central > 0) {
+if ($recalcular_central && (int)$lacre_central > 0) {
     $lacre_iipr_cur = (int)$lacre_central;
     foreach ($dados['CENTRAL IIPR'] as &$linha) {
         $indice = $linha['posto_codigo'];
@@ -3442,7 +3461,7 @@ if ($recalculo_por_lacre && (int)$lacre_central > 0) {
 // - Exemplo: último IIPR=11 → lacre Correios de todos=12 (NUNCA 11)
 // - Validação: lacre Correios NUNCA pode ser igual ao último IIPR
 if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
-    if ($recalculo_por_lacre && (int)$lacre_central > 0) {
+    if ($recalcular_central && (int)$lacre_central > 0) {
         // v8.13.4: GARANTIDO - último IIPR + 1 vira lacre Correios de TODOS
         $lacreCorreiosCentral = $ultimo_central + 1;
         // v8.13.4: Validação extra - garantir que Correios ≠ último IIPR
@@ -3526,7 +3545,7 @@ if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
 // - Esses lacres serão aplicados a TODOS os postos daquela regional ao salvar
 // - Lacre IIPR e Lacre Correios DEVEM ser diferentes (ex: 5/6, não 5/5)
 // - Se lacre_regionais=0 ou vazio: deixa TODOS os inputs em branco
-if ($recalculo_por_lacre && (int)$lacre_regionais > 0) {
+if ($recalcular_regionais && (int)$lacre_regionais > 0) {
     $lacre_iipr_cur = (int)$lacre_regionais;
     $lacre_corr_cur = $lacre_iipr_cur + 1;
     foreach ($dados['REGIONAIS'] as &$linha) {
@@ -5174,7 +5193,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 0.9.25.22</div>
+<div class="version-info">Versão 0.9.25.23</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5423,7 +5442,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                            style="width:150px;padding:6px 10px;border:1px solid #ced4da;border-radius:4px;">
                 </div>
                 
-                <button type="submit" style="padding:8px 20px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;vertical-align:bottom;">
+                <button type="submit" onclick="return desativarRecalculoLacres();" style="padding:8px 20px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;vertical-align:bottom;">
                     📅 Aplicar Período
                 </button>
             </div>
@@ -5442,17 +5461,24 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         </div>
 
         <div class="topo-formulario">
-            <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>" required></label>
-            <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>" required></label>
-            <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>" required></label>
-            <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo (isset($_GET['recalculo_por_lacre']) && $_GET['recalculo_por_lacre'] === '1') ? '1' : '0' ?>">
-            <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
-            
-            <!-- v9.21.6: Botão Aplicar Lacres (recálculo automático) -->
-            <button type="submit" onclick="ativarRecalculoLacres();" 
-                    style="padding:8px 16px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;margin-left:10px;">
-                🎯 Aplicar Lacres
+            <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>"></label>
+            <button type="submit" onclick="return ativarRecalculoLacres('CAPITAL');" 
+                    style="padding:8px 14px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
+                🎯 Aplicar Capital
             </button>
+            <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>"></label>
+            <button type="submit" onclick="return ativarRecalculoLacres('CENTRAL IIPR');" 
+                    style="padding:8px 14px;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
+                🎯 Aplicar Central
+            </button>
+            <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>"></label>
+            <button type="submit" onclick="return ativarRecalculoLacres('REGIONAIS');" 
+                    style="padding:8px 14px;background:#6f42c1;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
+                🎯 Aplicar Regionais
+            </button>
+            <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo $recalculo_por_lacre ? '1' : '0' ?>">
+            <input type="hidden" name="recalculo_grupo" id="recalculo_grupo" value="<?php echo htmlspecialchars($recalculo_grupo, ENT_QUOTES, 'UTF-8') ?>">
+            <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
             <!-- v8.14.9.3: Exibir último lacre usado -->
             <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
                 <strong style="color:#1976d2;">Últimos Lacres:</strong><br>
@@ -5984,10 +6010,16 @@ function salvarEstadoEtiquetasCorreios() {
 // Forca salvar mesmo quando recalculo_por_lacre estiver ativo
 function salvarEstadoEtiquetasCorreiosForcado() {
     var recalEl = document.getElementById('recalculo_por_lacre');
+    var grupoEl = document.getElementById('recalculo_grupo');
     var antigo = null;
+    var grupoAntigo = null;
     if (recalEl) {
         antigo = recalEl.value;
         recalEl.value = '0';
+    }
+    if (grupoEl) {
+        grupoAntigo = grupoEl.value;
+        grupoEl.value = '';
     }
     try {
         salvarEstadoEtiquetasCorreios();
@@ -5996,6 +6028,9 @@ function salvarEstadoEtiquetasCorreiosForcado() {
     }
     if (recalEl && antigo !== null) {
         recalEl.value = antigo;
+    }
+    if (grupoEl && grupoAntigo !== null) {
+        grupoEl.value = grupoAntigo;
     }
 }
 
@@ -6485,36 +6520,68 @@ function limparColuna(grupo, tipoColuna) {
     alert('Coluna "' + nomeColuna + '" do grupo "' + grupo + '" foi limpa com sucesso!');
 }
 
-// v9.21.4: Ativa recálculo automático de lacres ao filtrar (botão verde "Filtrar por data(s)")
-// Esta função ativa a flag que dispara a lógica v9.13.0:
+// v9.25.23: Ativa recálculo automático apenas para o grupo solicitado
+// Esta função ativa a flag que dispara a lógica v9.13.0 apenas no grupo alvo:
 // - CAPITAL: lacre_iipr=N, lacre_correios=N+1, incremento +2 (N, N+2, N+4...)
 // - CENTRAL: lacre_iipr sequencial +1 (5,6,7...), lacre_correios = último+1 para TODOS
 // - REGIONAIS: lacre_iipr=N, lacre_correios=N+1, incremento +2 (igual Capital)
-function ativarRecalculoLacres() {
+function ativarRecalculoLacres(grupo) {
     var recalEl = document.getElementById('recalculo_por_lacre');
+    var grupoEl = document.getElementById('recalculo_grupo');
+    var camposPorGrupo = {
+        'CAPITAL': 'lacre_capital_input',
+        'CENTRAL IIPR': 'lacre_central_input',
+        'REGIONAIS': 'lacre_regionais_input'
+    };
+    var nomesPorGrupo = {
+        'CAPITAL': 'Capital',
+        'CENTRAL IIPR': 'Central IIPR',
+        'REGIONAIS': 'Regionais'
+    };
+    var campoId = camposPorGrupo[grupo] || '';
+    var campo = campoId ? document.getElementById(campoId) : null;
+    var valor = campo ? parseInt(campo.value, 10) : 0;
+
+    if (!campo || campo.value === '' || isNaN(valor) || valor < 1) {
+        alert('Informe um lacre inicial válido para ' + (nomesPorGrupo[grupo] || 'o grupo selecionado') + '.');
+        if (campo) {
+            campo.focus();
+        }
+        return false;
+    }
+
     if (recalEl) {
         recalEl.value = '1';
     }
+    if (grupoEl) {
+        grupoEl.value = grupo;
+    }
+    return true;
 }
 
-// v8.11.2: Limpar lacres de forma silenciosa (sem confirmacao) quando ha recalculo por lacre
-// Esta funcao eh chamada automaticamente antes de submeter o filtro quando o usuario altera lacres iniciais
+function desativarRecalculoLacres() {
+    var recalEl = document.getElementById('recalculo_por_lacre');
+    var grupoEl = document.getElementById('recalculo_grupo');
+    if (recalEl) {
+        recalEl.value = '0';
+    }
+    if (grupoEl) {
+        grupoEl.value = '';
+    }
+    return true;
+}
+
+// v9.25.23: Limpar lacres apenas do grupo que sera recalculado
 function limparLacresPorRecalculo() {
     var recalEl = document.getElementById('recalculo_por_lacre');
-    var lacreCap = document.getElementById('lacre_capital_input');
-    var lacreCentral = document.getElementById('lacre_central_input');
-    var lacreRegionais = document.getElementById('lacre_regionais_input');
+    var grupoEl = document.getElementById('recalculo_grupo');
+    var grupo = grupoEl ? String(grupoEl.value || '') : '';
     
-    // So limpar se recalculo_por_lacre == '1'
-    if (!recalEl || String(recalEl.value) !== '1') {
+    if (!recalEl || String(recalEl.value) !== '1' || grupo === '') {
         return;
     }
-    
-    // Determinar quais grupos tiveram alteracao no lacre inicial
-    // Se algum foi alterado, limpamos esse grupo
-    
-    // CAPITAL
-    if (lacreCap && lacreCap.value !== '') {
+
+    if (grupo === 'CAPITAL') {
         var tabelaCap = document.getElementById('tabela-capital');
         if (tabelaCap) {
             var inputsCap = tabelaCap.querySelectorAll('input[name^="lacre_iipr["], input[name^="lacre_correios["]');
@@ -6523,9 +6590,8 @@ function limparLacresPorRecalculo() {
             }
         }
     }
-    
-    // CENTRAL IIPR
-    if (lacreCentral && lacreCentral.value !== '') {
+
+    if (grupo === 'CENTRAL IIPR') {
         var tabelaCentral = document.getElementById('tabela-central-iipr');
         if (!tabelaCentral) {
             tabelaCentral = document.getElementById('tblCentralIIPR');
@@ -6537,9 +6603,8 @@ function limparLacresPorRecalculo() {
             }
         }
     }
-    
-    // REGIONAIS
-    if (lacreRegionais && lacreRegionais.value !== '') {
+
+    if (grupo === 'REGIONAIS') {
         var tabelaRegionais = document.getElementById('tabela-regionais');
         if (tabelaRegionais) {
             var inputsRegionais = tabelaRegionais.querySelectorAll('input[name^="lacre_iipr["], input[name^="lacre_correios["]');
@@ -6898,21 +6963,23 @@ function inicializarMonitoramentoAlteracoes() {
         });
     }
 
-    // Se o usuário alterar os lacres iniciais no formulário de filtro, marcar que
-    // estamos fazendo um recálculo por lacre para que a restauração do localStorage
-    // seja pulada (apenas neste caso). Isso evita que a restauração destrua os
-    // valores calculados quando o usuário quer recalcular.
+    // v9.25.23: Alterar um lacre inicial nao deve manter uma selecao antiga de recálculo.
+    // O grupo passa a ser definido apenas pelo clique no botao correspondente.
     try {
         var lacreCap = document.getElementById('lacre_capital_input');
         var lacreCentral = document.getElementById('lacre_central_input');
         var lacreRegionais = document.getElementById('lacre_regionais_input');
         var recalEl = document.getElementById('recalculo_por_lacre');
-        var setRecal = function() {
-            try { if (recalEl) recalEl.value = '1'; } catch (e) {}
+        var recalGrupoEl = document.getElementById('recalculo_grupo');
+        var limparSelecaoRecalculo = function() {
+            try {
+                if (recalEl) recalEl.value = '0';
+                if (recalGrupoEl) recalGrupoEl.value = '';
+            } catch (e) {}
         };
-        if (lacreCap) { lacreCap.addEventListener('input', setRecal); lacreCap.addEventListener('change', setRecal); }
-        if (lacreCentral) { lacreCentral.addEventListener('input', setRecal); lacreCentral.addEventListener('change', setRecal); }
-        if (lacreRegionais) { lacreRegionais.addEventListener('input', setRecal); lacreRegionais.addEventListener('change', setRecal); }
+        if (lacreCap) { lacreCap.addEventListener('input', limparSelecaoRecalculo); lacreCap.addEventListener('change', limparSelecaoRecalculo); }
+        if (lacreCentral) { lacreCentral.addEventListener('input', limparSelecaoRecalculo); lacreCentral.addEventListener('change', limparSelecaoRecalculo); }
+        if (lacreRegionais) { lacreRegionais.addEventListener('input', limparSelecaoRecalculo); lacreRegionais.addEventListener('change', limparSelecaoRecalculo); }
 
         var avisoChave = 'aviso_lacres_iniciais_v1';
         var avisoLacres = function() {
