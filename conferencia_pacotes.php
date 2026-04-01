@@ -1,6 +1,8 @@
 <?php
 /* conferencia_pacotes.php — v0.9.25.23
  * CHANGELOG v9.25.23:
+ * - [CORRIGIDO] Vocalizacao da regional/posto passa a disparar imediatamente na leitura confirmada
+ * - [CORRIGIDO] Anuncio por voz ocorre apenas uma vez por leitura do mesmo codigo
  * - [AJUSTE] Versao atualizada para 0.9.25.23
  *
  * CHANGELOG v9.25.18:
@@ -5961,14 +5963,89 @@ function iniciarConferenciaPacotes() {
         }
     }
 
+    function obterVozPtBrPreferida() {
+        if (!window.speechSynthesis || typeof window.speechSynthesis.getVoices !== 'function') return null;
+        try {
+            var vozes = window.speechSynthesis.getVoices() || [];
+            var fallback = null;
+            for (var i = 0; i < vozes.length; i++) {
+                if (!fallback && /^pt/i.test(String(vozes[i].lang || ''))) {
+                    fallback = vozes[i];
+                }
+                if (String(vozes[i].lang || '').toLowerCase() === 'pt-br') {
+                    return vozes[i];
+                }
+            }
+            return fallback;
+        } catch (e) {
+            return null;
+        }
+    }
+
     function falarTexto(texto) {
         if (!window.speechSynthesis || !texto) return;
         try {
             var ut = new SpeechSynthesisUtterance(texto);
-            ut.lang = 'pt-BR';
+            var voz = obterVozPtBrPreferida();
+            ut.lang = voz && voz.lang ? voz.lang : 'pt-BR';
+            ut.rate = 1.18;
+            ut.pitch = 1;
+            if (voz) {
+                ut.voice = voz;
+            }
             window.speechSynthesis.cancel();
+            if (typeof window.speechSynthesis.resume === 'function') {
+                window.speechSynthesis.resume();
+            }
             window.speechSynthesis.speak(ut);
         } catch (e) {}
+    }
+
+    function obterNumeroFaladoCodigo(valor) {
+        var texto = String(valor == null ? '' : valor).replace(/\D+/g, '');
+        if (!texto) {
+            return String(valor == null ? '' : valor).trim();
+        }
+        return String(parseInt(texto, 10));
+    }
+
+    function obterTextoLocucaoLeitura(linha) {
+        if (!linha) return '';
+        var isPt = linha.getAttribute('data-ispt') === '1';
+        var regionalNorm = normalizarRegionalValor(linha.getAttribute('data-regional-real') || linha.getAttribute('data-regional') || '');
+        var posto = formatarCodigoComZeros(linha.getAttribute('data-posto') || '', 3);
+        var postoFalado = obterNumeroFaladoCodigo(posto);
+        var regionalFalada = obterNumeroFaladoCodigo(regionalNorm);
+
+        if (isPt && postoFalado) {
+            return 'posto ' + postoFalado;
+        }
+        if (contextoCorreiosExigeMesmoPosto(regionalNorm) && postoFalado) {
+            return 'posto ' + postoFalado;
+        }
+        if (regionalFalada) {
+            return 'regional ' + regionalFalada;
+        }
+        if (postoFalado) {
+            return 'posto ' + postoFalado;
+        }
+        return '';
+    }
+
+    function anunciarDestinoLeitura(linha, codigo) {
+        var texto = obterTextoLocucaoLeitura(linha);
+        var codigoNormalizado = String(codigo || (linha ? (linha.getAttribute('data-codigo') || '') : '')).replace(/\D+/g, '');
+        var agora = Date.now();
+        if (!texto) return;
+        if (ultimaLocucaoLeitura.codigo === codigoNormalizado && ultimaLocucaoLeitura.texto === texto && (agora - ultimaLocucaoLeitura.quando) < 500) {
+            return;
+        }
+        ultimaLocucaoLeitura = {
+            codigo: codigoNormalizado,
+            texto: texto,
+            quando: agora
+        };
+        falarTexto(texto);
     }
 
     function avisoScannerFoiEmitido(chave) {
@@ -6150,6 +6227,7 @@ function iniciarConferenciaPacotes() {
     var ultimaRegionalLida = null;
     var ultimoPostoLido = null;
     var ultimoTipoLido = null;
+    var ultimaLocucaoLeitura = { codigo: '', texto: '', quando: 0 };
 
     function contextoCorreiosExigeMesmoPosto(regionalNorm) {
         return regionalNorm === '000' || regionalNorm === '999';
@@ -6899,6 +6977,7 @@ function iniciarConferenciaPacotes() {
         var tipoPacote = isPoupaTempo ? 'poupatempo' : 'correios';
 
         if (linha.classList.contains('confirmado')) {
+            anunciarDestinoLeitura(linha, valor);
             enfileirarSom(pacoteJaConferido);
             destacarChipOperacao(linha.getAttribute('data-codigo') || valor);
             registrarHistoricoLeitura('Pacote já conferido', 'O pacote já estava marcado como conferido.', valor);
@@ -7001,6 +7080,8 @@ function iniciarConferenciaPacotes() {
             postoAtual = postoDoPacote;
         }
         atualizarResumoTabela(linha.closest('table'));
+
+        anunciarDestinoLeitura(linha, valor);
 
         tocarBeepLeitura();
         if (somAlerta) {
