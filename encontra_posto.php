@@ -1,6 +1,7 @@
 <?php
 /* encontra_posto.php — v0.9.25.23
- * - [CORRIGIDO] Vocalizacao passa a acontecer apenas na resposta final da leitura, sem repeticao espontanea
+ * - [CORRIGIDO] Vocalizacao da regional/posto passa a disparar imediatamente na leitura
+ * - [CORRIGIDO] Cada codigo de barras vocaliza apenas uma vez por leitura
  * - [CORRIGIDO] Lotes fora do periodo falam "Lote de outra data" e lotes sem upload falam "Lote não carregado"
  * - [MELHORADO] Cabecalho do resultado aparece imediatamente com pre-visualizacao local da leitura
  * - [CORRIGIDO] Postos regionais vocalizam "Regional X" conforme a regional da tabela ciRegionais
@@ -1635,9 +1636,6 @@ function falar(texto, codbar, leituraId) {
     }
 
     var codbarAtual = String(codbar || '').replace(/\D+/g, '');
-    if (codbarAtual && ultimaFalaCodbar === codbarAtual && (Date.now() - ultimaFalaEm) < 10000) {
-        return;
-    }
 
     ultimaFalaTexto = texto;
     ultimaFalaEm = Date.now();
@@ -1652,6 +1650,9 @@ function falar(texto, codbar, leituraId) {
         audioFila = [];
         audioFilaAtiva = false;
         speechSynthesis.cancel();
+        if (typeof speechSynthesis.resume === 'function') {
+            speechSynthesis.resume();
+        }
     } catch (eCancel) {}
 
     var utt = new SpeechSynthesisUtterance(texto);
@@ -1697,6 +1698,12 @@ function preverVozLocal(codbar) {
         return String(infoPosto.voz);
     }
     return '';
+}
+
+function falarPrevisaoLeitura(codbar, leituraId) {
+    var vozPrevista = preverVozLocal(codbar);
+    if (!vozPrevista) return;
+    falar(vozPrevista, codbar, leituraId);
 }
 
 function finalizarLeitura(codbarConcluido) {
@@ -1826,6 +1833,7 @@ function buscarPosto(codbar, leituraId) {
         dataFim = tmp;
     }
     exibirResultadoParcial(codbar);
+    falarPrevisaoLeitura(codbar, leituraId);
     if (leituraAtiva) {
         tocarBeep();
         leituraFila.push({ codbar: codbar, leituraId: leituraId || 0 });
