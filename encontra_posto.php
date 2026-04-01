@@ -1,7 +1,9 @@
 <?php
-/* encontra_posto.php — v0.9.25.21
+/* encontra_posto.php — v0.9.25.22
+ * - [CORRIGIDO] Vocalizacao passa a acontecer apenas na resposta final da leitura, sem repeticao espontanea
+ * - [CORRIGIDO] Lotes fora do periodo falam "Lote de outra data" e lotes sem upload falam "Lote não carregado"
+ * - [MELHORADO] Cabecalho do resultado aparece imediatamente com pre-visualizacao local da leitura
  * - [CORRIGIDO] Postos regionais vocalizam "Regional X" conforme a regional da tabela ciRegionais
- * - [CORRIGIDO] Cada leitura do scanner vocaliza apenas uma vez, sem repeticao espontanea
  * Triagem rapida: leitura de codigo de barras, busca em ciRegionais,
  * vocalizacao e exibicao visual do posto.
  * Registra leituras para controle da estante.
@@ -716,7 +718,7 @@ if ($dbOk) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encontra Posto v0.9.25.21 - Triagem Rapida</title>
+    <title>Encontra Posto v0.9.25.22 - Triagem Rapida</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1143,8 +1145,8 @@ if ($dbOk) {
     <div style="display:flex; align-items:center; gap:12px;">
         <a href="inicio.php" class="btn-voltar">&larr; Inicio</a>
         <h1>Encontra Posto</h1>
-        <span class="versao">v0.9.25.21</span>
-        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.21</span>
+        <span class="versao">v0.9.25.22</span>
+        <span style="font-size:12px; font-weight:700; color:#ffeb3b;">versao 0.9.25.22</span>
         <span style="font-size:11px; opacity:0.85;">build <?php echo date('d-m-Y H:i'); ?></span>
     </div>
     <label class="toggle-voz">
@@ -1307,6 +1309,7 @@ var ultimaFalaLeituraId = 0;
 var ultimaLeituraCodbar = '';
 var ultimaLeituraEm = 0;
 var ultimaLeituraId = 0;
+var codigosEmLeitura = {};
 var mapaPostosTriagem = <?php echo json_encode($mapa_postos_triagem); ?>;
 
 var leituraFila = [];
@@ -1573,7 +1576,10 @@ function processarCodigoBruto(valor) {
         return;
     }
     if (val.length > 19) {
-        val = val.substr(0, 19);
+        val = val.slice(-19);
+    }
+    if (codigosEmLeitura[val]) {
+        return;
     }
     if (ultimaLeituraCodbar === val && (Date.now() - ultimaLeituraEm) < 1500) {
         return;
@@ -1581,6 +1587,7 @@ function processarCodigoBruto(valor) {
     ultimaLeituraCodbar = val;
     ultimaLeituraEm = Date.now();
     ultimaLeituraId++;
+    codigosEmLeitura[val] = true;
     buscarPosto(val, ultimaLeituraId);
 }
 
@@ -1628,7 +1635,7 @@ function falar(texto, codbar, leituraId) {
     }
 
     var codbarAtual = String(codbar || '').replace(/\D+/g, '');
-    if (codbarAtual && ultimaFalaCodbar === codbarAtual && (Date.now() - ultimaFalaEm) < 2000) {
+    if (codbarAtual && ultimaFalaCodbar === codbarAtual && (Date.now() - ultimaFalaEm) < 10000) {
         return;
     }
 
@@ -1692,18 +1699,11 @@ function preverVozLocal(codbar) {
     return '';
 }
 
-function deveRepetirFalaNaResposta(texto) {
-    texto = String(texto || '').trim();
-    if (texto === '') {
-        return false;
+function finalizarLeitura(codbarConcluido) {
+    var codigo = String(codbarConcluido || '').replace(/\D+/g, '');
+    if (codigo) {
+        delete codigosEmLeitura[codigo];
     }
-    if (ultimaFalaTexto !== texto) {
-        return true;
-    }
-    return (Date.now() - ultimaFalaEm) > 1200;
-}
-
-function finalizarLeitura() {
     leituraAtiva = false;
     if (leituraFila.length > 0) {
         var prox = leituraFila.shift();
@@ -1715,15 +1715,104 @@ function finalizarLeitura() {
     }
 }
 
+function extrairDadosLocaisCodbar(codbar) {
+    var limpo = String(codbar || '').replace(/\D+/g, '');
+    var postoPad;
+    var infoPosto;
+    if (limpo.length < 19) {
+        return null;
+    }
+    limpo = limpo.slice(-19);
+    postoPad = limpo.substr(11, 3);
+    infoPosto = mapaPostosTriagem && mapaPostosTriagem[postoPad] ? mapaPostosTriagem[postoPad] : null;
+    return {
+        codbar: limpo,
+        lote: limpo.substr(0, 8),
+        regional_csv: limpo.substr(8, 3),
+        posto: postoPad,
+        quantidade: limpo.substr(14, 5),
+        info_posto: infoPosto
+    };
+}
+
+function aplicarCabecalhoResultado(dados) {
+    var header = document.getElementById('resultadoHeader');
+    var numDiv = document.getElementById('resultadoNumero');
+    var tipoDiv = document.getElementById('resultadoTipo');
+    if (!header || !numDiv || !tipoDiv || !dados) return;
+
+    header.className = 'resultado-header';
+    numDiv.style.fontSize = '';
+    tipoDiv.style.fontSize = '';
+    tipoDiv.style.fontWeight = '';
+
+    if (dados.entrega === 'poupatempo') {
+        header.className += ' bg-poupatempo';
+        numDiv.textContent = 'Posto ' + dados.posto;
+        tipoDiv.textContent = 'Poupa Tempo';
+    } else if (dados.regional === 0) {
+        header.className += ' bg-capital';
+        numDiv.textContent = 'Posto ' + dados.posto;
+        tipoDiv.textContent = dados.label_tipo || 'Capital';
+    } else if (dados.regional === 999) {
+        header.className += ' bg-central';
+        numDiv.textContent = 'Posto ' + dados.posto;
+        tipoDiv.textContent = dados.label_tipo || 'Central';
+    } else if (dados.posto_encontrado) {
+        header.className += ' bg-regional';
+        numDiv.textContent = 'Regional ' + dados.regional_pad;
+        tipoDiv.textContent = 'Posto ' + dados.posto;
+        numDiv.style.fontSize = '64px';
+        tipoDiv.style.fontSize = '18px';
+        tipoDiv.style.fontWeight = '700';
+    } else {
+        header.className += ' bg-desconhecido';
+        numDiv.textContent = 'Posto ' + dados.posto;
+        tipoDiv.textContent = dados.label_tipo || 'Posto não localizado';
+    }
+}
+
+function exibirResultadoParcial(codbar) {
+    var dadosLocais = extrairDadosLocaisCodbar(codbar);
+    var div = document.getElementById('resultadoPosto');
+    var body = document.getElementById('resultadoBody');
+    var infoPosto;
+    if (!dadosLocais || !div || !body) return;
+    infoPosto = dadosLocais.info_posto || null;
+    aplicarCabecalhoResultado({
+        entrega: infoPosto ? infoPosto.tipo_posto : null,
+        regional: infoPosto ? parseInt(infoPosto.regional, 10) || 0 : parseInt(dadosLocais.regional_csv, 10) || 0,
+        regional_pad: infoPosto ? String(infoPosto.regional || '').replace(/\D+/g, '').padStart(3, '0') : dadosLocais.regional_csv,
+        posto: dadosLocais.posto,
+        posto_encontrado: !!infoPosto,
+        label_tipo: infoPosto ? String(infoPosto.label_tipo || '') : ''
+    });
+    body.innerHTML = '<div class="info-linha"><span class="info-label">Leitura</span><span class="info-valor">Processando...</span></div>';
+    div.style.display = 'block';
+}
+
+function obterTextoVozResultado(dados) {
+    if (!dados) return '';
+    if (dados.status_estante === 'fora_periodo') {
+        return 'Lote de outra data';
+    }
+    if (dados.status_estante === 'sem_upload') {
+        return 'Lote não carregado';
+    }
+    return String(dados.voz || '').trim();
+}
+
 function buscarPosto(codbar, leituraId) {
     var dataIni = obterDataIni();
     var dataFim = obterDataFim();
-    var vozPrevista = '';
+    var vozResposta = '';
     if (!dataIni) {
+        delete codigosEmLeitura[String(codbar || '').replace(/\D+/g, '')];
         exibirErro('Informe o periodo da estante');
         return;
     }
     if (!periodoConfirmado()) {
+        delete codigosEmLeitura[String(codbar || '').replace(/\D+/g, '')];
         exibirErro('Confirme o periodo da estante');
         abrirModalDatas();
         return;
@@ -1736,20 +1825,14 @@ function buscarPosto(codbar, leituraId) {
         dataIni = dataFim;
         dataFim = tmp;
     }
-    vozPrevista = preverVozLocal(codbar);
+    exibirResultadoParcial(codbar);
     if (leituraAtiva) {
         tocarBeep();
-        if (vozPrevista) {
-            falar(vozPrevista, codbar, leituraId);
-        }
         leituraFila.push({ codbar: codbar, leituraId: leituraId || 0 });
         return;
     }
     leituraAtiva = true;
     tocarBeep();
-    if (vozPrevista) {
-        falar(vozPrevista, codbar, leituraId);
-    }
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'encontra_posto.php', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -1760,6 +1843,10 @@ function buscarPosto(codbar, leituraId) {
                     var resp = JSON.parse(xhr.responseText);
                     if (resp.success) {
                         exibirResultado(resp);
+                        vozResposta = obterTextoVozResultado(resp);
+                        if (vozResposta) {
+                            falar(vozResposta, codbar, leituraId);
+                        }
                     } else {
                         exibirErro(resp.erro || 'Erro desconhecido');
                     }
@@ -1769,7 +1856,7 @@ function buscarPosto(codbar, leituraId) {
             } else {
                 exibirErro('Erro de conexao');
             }
-            finalizarLeitura();
+            finalizarLeitura(codbar);
         }
     };
     xhr.send('ajax_buscar_posto=1&codbar=' + encodeURIComponent(codbar) + '&data_ini=' + encodeURIComponent(dataIni) + '&data_fim=' + encodeURIComponent(dataFim));
@@ -1777,43 +1864,9 @@ function buscarPosto(codbar, leituraId) {
 
 function exibirResultado(dados) {
     var div = document.getElementById('resultadoPosto');
-    var header = document.getElementById('resultadoHeader');
-    var numDiv = document.getElementById('resultadoNumero');
-    var tipoDiv = document.getElementById('resultadoTipo');
     var body = document.getElementById('resultadoBody');
 
-    header.className = 'resultado-header';
-    if (dados.entrega === 'poupatempo') {
-        header.className += ' bg-poupatempo';
-    } else if (dados.regional === 0) {
-        header.className += ' bg-capital';
-    } else if (dados.regional === 999) {
-        header.className += ' bg-central';
-    } else if (dados.posto_encontrado) {
-        header.className += ' bg-regional';
-    } else {
-        header.className += ' bg-desconhecido';
-    }
-
-    numDiv.style.fontSize = '';
-    tipoDiv.style.fontSize = '';
-    tipoDiv.style.fontWeight = '';
-    if (dados.entrega === 'poupatempo') {
-        numDiv.textContent = 'Posto ' + dados.posto;
-        tipoDiv.textContent = 'Poupa Tempo';
-    } else if (String(dados.posto) === '001') {
-        numDiv.textContent = 'Posto 001';
-        tipoDiv.textContent = 'Posto 001';
-    } else if (dados.regional !== 0 && dados.regional !== 999 && dados.posto_encontrado) {
-        numDiv.textContent = 'Regional ' + dados.regional_pad;
-        tipoDiv.textContent = 'Posto ' + dados.posto;
-        numDiv.style.fontSize = '64px';
-        tipoDiv.style.fontSize = '18px';
-        tipoDiv.style.fontWeight = '700';
-    } else {
-        numDiv.textContent = 'Posto ' + dados.posto;
-        tipoDiv.textContent = dados.label_tipo;
-    }
+    aplicarCabecalhoResultado(dados);
 
     body.innerHTML = '';
 
@@ -1853,7 +1906,7 @@ function exibirResultado(dados) {
         labelSem.textContent = 'Status';
         var valorSem = document.createElement('span');
         valorSem.className = 'info-valor';
-        valorSem.textContent = 'Lote atual sem upload no ciPostosCsv';
+        valorSem.textContent = 'Lote não carregado no ciPostosCsv';
         linhaSem.appendChild(labelSem);
         linhaSem.appendChild(valorSem);
         body.appendChild(linhaSem);
@@ -1889,7 +1942,7 @@ function exibirResultado(dados) {
         labelFora.textContent = 'Status';
         var valorFora = document.createElement('span');
         valorFora.className = 'info-valor';
-        valorFora.textContent = 'Fora do periodo (contabilizado no periodo ativo)';
+        valorFora.textContent = 'Lote de outra data';
         linhaFora.appendChild(labelFora);
         linhaFora.appendChild(valorFora);
         body.appendChild(linhaFora);

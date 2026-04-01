@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.21
+/* conferencia_pacotes.php — v0.9.25.22
  * CHANGELOG v9.25.18:
  * - [CORRIGIDO] Aviso de pacote de outra regional volta a bloquear leituras de outro posto dentro da Capital e da Central
  *
@@ -8,7 +8,7 @@
  *
  * CHANGELOG v9.25.16:
  * - [CORRIGIDO] Audio de concluido em Capital e Central dispara por posto finalizado, sem depender dos demais postos do grupo
- * - [AJUSTE] Tela e snapshot exibem a versao 0.9.25.21
+ * - [AJUSTE] Tela e snapshot exibem a versao 0.9.25.22
  *
  * CHANGELOG v9.25.15:
  * - [CORRIGIDO] Leitura usa sempre os últimos 19 dígitos válidos para ignorar sobra residual no input
@@ -1484,7 +1484,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.21</title>
+    <title>Conferência de Pacotes v0.9.25.22</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2743,10 +2743,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.21</div>
+    <div class="versao">v0.9.25.22</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.21</h2>
+<h2>📋 Conferência de Pacotes v0.9.25.22</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -4443,7 +4443,7 @@ function iniciarConferenciaPacotes() {
         });
 
         return {
-            versao: '0.9.25.21',
+            versao: '0.9.25.22',
             gerado_em: formatarDataHoraAtual(),
             usuario: usuarioAtual || '',
             contexto_selecionado: contextoSelecionadoMalote || '',
