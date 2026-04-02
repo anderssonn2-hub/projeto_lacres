@@ -6625,6 +6625,45 @@ function obterInputLacreLinha(linha, tipo) {
     return null;
 }
 
+function obterIndicesSplitCentralOrdenados(totalLinhas) {
+    var indices = window.splitVisualIndices || [];
+    var lista = [];
+    var vistos = {};
+    for (var i = 0; i < indices.length; i++) {
+        var idx = parseInt(indices[i], 10);
+        if (isNaN(idx) || idx < 0) continue;
+        if (typeof totalLinhas === 'number' && totalLinhas > 0 && idx >= (totalLinhas - 1)) continue;
+        if (vistos[idx]) continue;
+        vistos[idx] = true;
+        lista.push(idx);
+    }
+    lista.sort(function(a, b) { return a - b; });
+    return lista;
+}
+
+function obterFaixasSplitCentral(totalLinhas) {
+    var faixas = [];
+    var indices = obterIndicesSplitCentralOrdenados(totalLinhas);
+    var inicio = 0;
+    if (!totalLinhas || totalLinhas < 1) return faixas;
+    for (var i = 0; i < indices.length; i++) {
+        faixas.push({ start: inicio, end: indices[i] });
+        inicio = indices[i] + 1;
+    }
+    faixas.push({ start: inicio, end: totalLinhas - 1 });
+    return faixas;
+}
+
+function obterFaixaDaLinhaCentral(rowIndex, totalLinhas) {
+    var faixas = obterFaixasSplitCentral(totalLinhas);
+    for (var i = 0; i < faixas.length; i++) {
+        if (rowIndex >= faixas[i].start && rowIndex <= faixas[i].end) {
+            return faixas[i];
+        }
+    }
+    return null;
+}
+
 function obterLinhaPaiCampo(campo) {
     var linha = campo;
     while (linha && linha.tagName !== 'TR') {
@@ -6693,7 +6732,7 @@ function obterFaixasCentralPlanilha() {
     var linhas = obterLinhasGrupoLacres('CENTRAL IIPR');
     var total = linhas.length;
     var faixas = [];
-    var indices = typeof obterIndicesSplitCentralOrdenados === 'function' ? obterIndicesSplitCentralOrdenados(total) : [];
+    var indices = obterIndicesSplitCentralOrdenados(total);
     var inicio = 0;
     if (!total) return faixas;
     for (var i = 0; i < indices.length; i++) {
