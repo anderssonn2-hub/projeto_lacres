@@ -956,7 +956,12 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         // 2) Cabeçalho em ciDespachos (UPSERT pelo hash de grupo+datas)
         // v8.14.9.3: Implementar lógica "Criar Novo" vs "Sobrescrever" para Correios
         $grupo   = 'CORREIOS';
-        $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
+        $usuario = isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== ''
+            ? trim((string)$_POST['responsavel'])
+            : (isset($_SESSION['ultimo_responsavel']) && trim((string)$_SESSION['ultimo_responsavel']) !== ''
+                ? trim((string)$_SESSION['ultimo_responsavel'])
+                : (isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia'));
+        $_SESSION['ultimo_responsavel'] = $usuario;
         
         $id_desp = null;
         $id_sobrescrever = isset($_POST['id_oficio_sobrescrever']) ? (int)$_POST['id_oficio_sobrescrever'] : 0;
@@ -2818,7 +2823,14 @@ if (!empty($datas_filtro)) {
 }
 
 // v8.14.9.1: Definir $responsavel ANTES de usar (corrige warning linha 2166)
-$responsavel = isset($_GET['responsavel']) ? $_GET['responsavel'] : 'Responsável Não Informado';
+$responsavel = 'Responsável Não Informado';
+if (isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== '') {
+    $responsavel = trim((string)$_POST['responsavel']);
+} elseif (isset($_GET['responsavel']) && trim((string)$_GET['responsavel']) !== '') {
+    $responsavel = trim((string)$_GET['responsavel']);
+} elseif (isset($_SESSION['ultimo_responsavel']) && trim((string)$_SESSION['ultimo_responsavel']) !== '') {
+    $responsavel = trim((string)$_SESSION['ultimo_responsavel']);
+}
 
 // v8.14.9.3: Buscar o maior lacre usado (IIPR e Correios) para exibir na tela
 $ultimo_lacre_iipr = 0;
@@ -2887,7 +2899,9 @@ $_SESSION['ultimo_lacre_capital'] = $lacre_capital;
 $_SESSION['ultimo_lacre_central'] = $lacre_central;
 $_SESSION['ultimo_lacre_regionais'] = $lacre_regionais;
 // Persistir responsavel selecionado
-$_SESSION['ultimo_responsavel'] = $responsavel;
+if (trim((string)$responsavel) !== '') {
+    $_SESSION['ultimo_responsavel'] = $responsavel;
+}
 $cliente = isset($_GET['cliente']) ? $_GET['cliente'] : 'Cliente Não Informado';
 $data_geracao = date('d-m-Y');
 
@@ -3840,6 +3854,11 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         .quadro { border: 1px solid black; padding: 6px; margin-bottom: 8px; }
         .topo-formulario { display: flex; flex-wrap: wrap; gap: 12px; }
         .topo-formulario label { display: flex; flex-direction: column; }
+        .lacre-topo-legado { display: none; }
+        .split-central-separador td {
+            border-top: 14px solid #ffffff;
+            box-shadow: inset 0 2px 0 rgba(31, 79, 191, 0.16);
+        }
         .alinhado { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
         .texto-ajuda { font-size: 11px; color: #666; margin-top: 6px; }
         
@@ -5466,21 +5485,23 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         </div>
 
         <div class="topo-formulario">
-            <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>"></label>
-            <button type="submit" onclick="return ativarRecalculoLacres('CAPITAL');" 
-                    style="padding:8px 14px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
-                🎯 Aplicar Capital
-            </button>
-            <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>"></label>
-            <button type="submit" onclick="return ativarRecalculoLacres('CENTRAL IIPR');" 
-                    style="padding:8px 14px;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
-                🎯 Aplicar Central
-            </button>
-            <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>"></label>
-            <button type="submit" onclick="return ativarRecalculoLacres('REGIONAIS');" 
-                    style="padding:8px 14px;background:#6f42c1;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
-                🎯 Aplicar Regionais
-            </button>
+            <div class="lacre-topo-legado" aria-hidden="true">
+                <label>Lacre Capital: <input type="number" name="lacre_capital" id="lacre_capital_input" value="<?php echo $lacre_capital ?>"></label>
+                <button type="submit" onclick="return ativarRecalculoLacres('CAPITAL');" 
+                        style="padding:8px 14px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
+                    🎯 Aplicar Capital
+                </button>
+                <label>Lacre Central: <input type="number" name="lacre_central" id="lacre_central_input" value="<?php echo $lacre_central ?>"></label>
+                <button type="submit" onclick="return ativarRecalculoLacres('CENTRAL IIPR');" 
+                        style="padding:8px 14px;background:#17a2b8;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
+                    🎯 Aplicar Central
+                </button>
+                <label>Lacre Regionais: <input type="number" name="lacre_regionais" id="lacre_regionais_input" value="<?php echo $lacre_regionais ?>"></label>
+                <button type="submit" onclick="return ativarRecalculoLacres('REGIONAIS');" 
+                        style="padding:8px 14px;background:#6f42c1;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
+                    🎯 Aplicar Regionais
+                </button>
+            </div>
             <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo $recalculo_por_lacre ? '1' : '0' ?>">
             <input type="hidden" name="recalculo_grupo" id="recalculo_grupo" value="<?php echo htmlspecialchars($recalculo_grupo, ENT_QUOTES, 'UTF-8') ?>">
             <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
@@ -6862,6 +6883,7 @@ function limparEtiquetasCentral() {
         // Remover classes visuais das linhas da central
         var linhasCentral = document.querySelectorAll('tr.linha-central');
         for (var r = 0; r < linhasCentral.length; r++) {
+            removerClasse(linhasCentral[r], 'split-central-separador');
             for (var g = 1; g <= 5; g++) {
                 removerClasse(linhasCentral[r], 'split-central-grupo' + g);
             }
@@ -7704,6 +7726,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         // Remover classes antigas
         for (var i = 0; i < linhasCentral.length; i++) {
+            removerClasse(linhasCentral[i], 'split-central-separador');
             for (var g = 1; g <= 5; g++) {
                 removerClasse(linhasCentral[i], 'split-central-grupo' + g);
             }
@@ -7718,6 +7741,9 @@ document.addEventListener("DOMContentLoaded", function() {
             var start = indices[gi] + 1; // linhas abaixo do split
             var end = (gi + 1 < indices.length) ? (indices[gi+1]) : (total - 1);
             var classe = 'split-central-grupo' + (gi + 1);
+            if (start >= 0 && start < total) {
+                adicionarClasse(linhasCentral[start], 'split-central-separador');
+            }
             for (var r = start; r <= end; r++) {
                 if (r >= 0 && r < total) {
                     adicionarClasse(linhasCentral[r], classe);
