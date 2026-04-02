@@ -5959,6 +5959,16 @@ function prepararLacresCorreiosParaSubmit(form) {
 
 // v8.11: Persistencia de lacres/etiquetas em localStorage
 // Salva estado dos inputs de lacre IIPR, lacre Correios e etiqueta Correios
+function obterContextoStorageLacresCorreios() {
+    var path = window.location && window.location.pathname ? String(window.location.pathname) : '';
+    var search = window.location && typeof window.location.search === 'string' ? String(window.location.search) : '';
+    return path + '|' + search;
+}
+
+function montarChaveStorageLacres(idDespacho, regionalCodigo, postoCodigo) {
+    return 'oficioCorreios:' + String(idDespacho || '') + ':' + String(regionalCodigo || '0') + ':' + String(postoCodigo || '') + ':' + obterContextoStorageLacresCorreios();
+}
+
 function salvarEstadoEtiquetasCorreios() {
     if (typeof window.localStorage === 'undefined') {
         return;
@@ -5997,7 +6007,7 @@ function salvarEstadoEtiquetasCorreios() {
         var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
         var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
-        var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
+        var chaveBase = montarChaveStorageLacres(idDespacho, regionalCodigo, postoCodigo);
         var valor = { 
             lacre_iipr: valI,
             lacre_correios: valC,
@@ -6178,7 +6188,7 @@ function salvarSomenteEtiquetasCorreios() {
         var valC = inpCorr ? String(inpCorr.value || '').trim() : '';
         var valE = inpEtiq ? String(inpEtiq.value || '').trim() : '';
 
-        var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
+        var chaveBase = montarChaveStorageLacres(idDespacho, regionalCodigo, postoCodigo);
         var valor = { 
             lacre_iipr: valI,
             lacre_correios: valC,
@@ -6216,8 +6226,13 @@ function restaurarEstadoEtiquetasCorreios() {
 
         if (!postoCodigo) continue;
 
-        var chaveBase = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
+        var chaveBase = montarChaveStorageLacres(idDespacho, regionalCodigo, postoCodigo);
+        var chaveLegada = 'oficioCorreios:' + idDespacho + ':' + regionalCodigo + ':' + postoCodigo;
         var json = window.localStorage.getItem(chaveBase);
+
+        if (!json) {
+            json = window.localStorage.getItem(chaveLegada);
+        }
 
         if (!json) continue;
 
@@ -6948,8 +6963,10 @@ function inicializarMonitoramentoAlteracoes() {
     // Inicializar array de indices visuais (v8.11.1)
     window.splitVisualIndices = window.splitVisualIndices || [];
 
-    // v8.14.9.2: NÃO restaurar localStorage automaticamente
-    // restaurarEstadoEtiquetasCorreios(); // DESABILITADO
+    // v9.25.24: restaurar automaticamente no mesmo contexto da URL atual
+    try {
+        restaurarEstadoEtiquetasCorreios();
+    } catch (e) { /* ignore */ }
     
     // Encontrar todos os botoes de gravar
     var btns = document.querySelectorAll('button[onclick*="gravar"], button[onclick*="Gravar"]');
@@ -6962,9 +6979,11 @@ function inicializarMonitoramentoAlteracoes() {
     for (var i = 0; i < inputs.length; i++) {
         inputs[i].addEventListener('input', function() {
             marcarComoNaoSalvo();
+            try { salvarEstadoEtiquetasCorreios(); } catch (e) { /* ignore */ }
         });
         inputs[i].addEventListener('change', function() {
             marcarComoNaoSalvo();
+            try { salvarEstadoEtiquetasCorreios(); } catch (e) { /* ignore */ }
         });
     }
 
@@ -7100,6 +7119,15 @@ function inicializarMonitoramentoAlteracoes() {
     if (typeof restaurarEstadoTemporarioLacres === 'function') {
         restaurarEstadoTemporarioLacres();
     }
+
+    try {
+        window.addEventListener('beforeunload', function() {
+            salvarEstadoEtiquetasCorreiosForcado();
+        });
+        window.addEventListener('pagehide', function() {
+            salvarEstadoEtiquetasCorreiosForcado();
+        });
+    } catch (eSave) { /* ignore */ }
     
     // VERSAO 3: Iniciar SEM pulsacao (so pulsa quando ha mudanca)
     // Pagina recarrega apos salvar, entao comeca sempre sem pulsacao
