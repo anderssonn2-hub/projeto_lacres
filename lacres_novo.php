@@ -5490,6 +5490,9 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 <span style="color:#0d47a1;">IIPR: <strong><?php echo number_format($ultimo_lacre_iipr, 0, ',', '.'); ?></strong></span> | 
                 <span style="color:#0d47a1;">Correios: <strong><?php echo number_format($ultimo_lacre_correios, 0, ',', '.'); ?></strong></span>
             </div>
+            <div style="display:block; width:100%; margin-top:8px; font-size:12px; color:#495057;">
+                Preenchimento direto ativo: digite o lacre IIPR na primeira linha de Capital e Regionais, e na primeira linha de cada bloco da Central.
+            </div>
         </div>
     </form>
     
@@ -6540,6 +6543,197 @@ function limparColuna(grupo, tipoColuna) {
     alert('Coluna "' + nomeColuna + '" do grupo "' + grupo + '" foi limpa com sucesso!');
 }
 
+function inteiroPositivoOuZero(valor) {
+    var numero = parseInt(String(valor || '').replace(/\D+/g, ''), 10);
+    if (isNaN(numero) || numero < 0) {
+        return 0;
+    }
+    return numero;
+}
+
+function obterLinhasGrupoLacres(grupo) {
+    var tabela = document.getElementById('tabela-' + String(grupo || '').toLowerCase().replace(/ /g, '-'));
+    if (!tabela && grupo === 'CENTRAL IIPR') {
+        tabela = document.getElementById('tblCentralIIPR') || document.getElementById('tabela-central-iipr');
+    }
+    if (!tabela) return [];
+    return tabela.querySelectorAll('tbody tr[data-posto-codigo], tr[data-posto-codigo]');
+}
+
+function obterInputLacreLinha(linha, tipo) {
+    if (!linha) return null;
+    if (tipo === 'iipr') {
+        return linha.querySelector('input[data-tipo="iipr"], input[name^="lacre_iipr["]');
+    }
+    if (tipo === 'correios') {
+        return linha.querySelector('input[data-tipo="correios"], input[name^="lacre_correios["]');
+    }
+    return null;
+}
+
+function atualizarInputsTopoPorPlanilha() {
+    var linhasCapital = obterLinhasGrupoLacres('CAPITAL');
+    var linhasCentral = obterLinhasGrupoLacres('CENTRAL IIPR');
+    var linhasRegionais = obterLinhasGrupoLacres('REGIONAIS');
+    var topoCapital = document.getElementById('lacre_capital_input');
+    var topoCentral = document.getElementById('lacre_central_input');
+    var topoRegionais = document.getElementById('lacre_regionais_input');
+    var inputCapital = linhasCapital.length ? obterInputLacreLinha(linhasCapital[0], 'iipr') : null;
+    var inputCentral = linhasCentral.length ? obterInputLacreLinha(linhasCentral[0], 'iipr') : null;
+    var inputRegionais = linhasRegionais.length ? obterInputLacreLinha(linhasRegionais[0], 'iipr') : null;
+
+    if (topoCapital && inputCapital) topoCapital.value = inputCapital.value || '';
+    if (topoCentral && inputCentral) topoCentral.value = inputCentral.value || '';
+    if (topoRegionais && inputRegionais) topoRegionais.value = inputRegionais.value || '';
+}
+
+function aplicarSequenciaParPorGrupo(grupo, valorInicial) {
+    var linhas = obterLinhasGrupoLacres(grupo);
+    var atual = inteiroPositivoOuZero(valorInicial);
+    if (!linhas.length) return;
+
+    if (atual <= 0) {
+        for (var z = 0; z < linhas.length; z++) {
+            var limpaI = obterInputLacreLinha(linhas[z], 'iipr');
+            var limpaC = obterInputLacreLinha(linhas[z], 'correios');
+            if (limpaI) limpaI.value = '';
+            if (limpaC) limpaC.value = '';
+        }
+        atualizarInputsTopoPorPlanilha();
+        try { salvarEstadoEtiquetasCorreios(); } catch (e) { }
+        marcarComoNaoSalvo();
+        return;
+    }
+
+    for (var i = 0; i < linhas.length; i++) {
+        var inputI = obterInputLacreLinha(linhas[i], 'iipr');
+        var inputC = obterInputLacreLinha(linhas[i], 'correios');
+        if (inputI) inputI.value = String(atual);
+        if (inputC) inputC.value = String(atual + 1);
+        atual += 2;
+    }
+
+    atualizarInputsTopoPorPlanilha();
+    try { salvarEstadoEtiquetasCorreios(); } catch (e2) { }
+    marcarComoNaoSalvo();
+}
+
+function obterFaixasCentralPlanilha() {
+    var linhas = obterLinhasGrupoLacres('CENTRAL IIPR');
+    var total = linhas.length;
+    var faixas = [];
+    var indices = typeof obterIndicesSplitCentralOrdenados === 'function' ? obterIndicesSplitCentralOrdenados(total) : [];
+    var inicio = 0;
+    if (!total) return faixas;
+    for (var i = 0; i < indices.length; i++) {
+        faixas.push({ start: inicio, end: indices[i] });
+        inicio = indices[i] + 1;
+    }
+    faixas.push({ start: inicio, end: total - 1 });
+    return faixas;
+}
+
+function aplicarSequenciaCentralNoBloco(indiceLinha, valorInicial) {
+    var linhas = obterLinhasGrupoLacres('CENTRAL IIPR');
+    var faixas = obterFaixasCentralPlanilha();
+    var atual = inteiroPositivoOuZero(valorInicial);
+    var faixa = null;
+    var i;
+
+    if (!linhas.length || indiceLinha < 0) return;
+
+    for (i = 0; i < faixas.length; i++) {
+        if (indiceLinha >= faixas[i].start && indiceLinha <= faixas[i].end) {
+            faixa = faixas[i];
+            break;
+        }
+    }
+    if (!faixa) return;
+
+    if (atual <= 0) {
+        for (i = faixa.start; i <= faixa.end; i++) {
+            var limpaI = obterInputLacreLinha(linhas[i], 'iipr');
+            var limpaC = obterInputLacreLinha(linhas[i], 'correios');
+            if (limpaI) limpaI.value = '';
+            if (limpaC) limpaC.value = '';
+        }
+        atualizarInputsTopoPorPlanilha();
+        try { salvarEstadoEtiquetasCorreios(); } catch (e) { }
+        marcarComoNaoSalvo();
+        return;
+    }
+
+    for (i = faixa.start; i <= faixa.end; i++) {
+        var inputI = obterInputLacreLinha(linhas[i], 'iipr');
+        if (inputI) inputI.value = String(atual + (i - faixa.start));
+    }
+
+    var lacreCorreios = atual + (faixa.end - faixa.start) + 1;
+    for (i = faixa.start; i <= faixa.end; i++) {
+        var inputC = obterInputLacreLinha(linhas[i], 'correios');
+        if (inputC) inputC.value = String(lacreCorreios);
+    }
+
+    atualizarInputsTopoPorPlanilha();
+    try { salvarEstadoEtiquetasCorreios(); } catch (e2) { }
+    marcarComoNaoSalvo();
+}
+
+function configurarAtribuicaoPlanilhaLacres() {
+    var linhasCapital = obterLinhasGrupoLacres('CAPITAL');
+    var linhasRegionais = obterLinhasGrupoLacres('REGIONAIS');
+    var linhasCentral = obterLinhasGrupoLacres('CENTRAL IIPR');
+
+    if (linhasCapital.length) {
+        var inputCapital = obterInputLacreLinha(linhasCapital[0], 'iipr');
+        if (inputCapital && inputCapital.getAttribute('data-planilha-vinculada') !== 'capital') {
+            inputCapital.setAttribute('data-planilha-vinculada', 'capital');
+            inputCapital.addEventListener('input', function() {
+                aplicarSequenciaParPorGrupo('CAPITAL', this.value);
+            });
+            inputCapital.addEventListener('change', function() {
+                aplicarSequenciaParPorGrupo('CAPITAL', this.value);
+            });
+        }
+    }
+
+    if (linhasRegionais.length) {
+        var inputRegionais = obterInputLacreLinha(linhasRegionais[0], 'iipr');
+        if (inputRegionais && inputRegionais.getAttribute('data-planilha-vinculada') !== 'regionais') {
+            inputRegionais.setAttribute('data-planilha-vinculada', 'regionais');
+            inputRegionais.addEventListener('input', function() {
+                aplicarSequenciaParPorGrupo('REGIONAIS', this.value);
+            });
+            inputRegionais.addEventListener('change', function() {
+                aplicarSequenciaParPorGrupo('REGIONAIS', this.value);
+            });
+        }
+    }
+
+    for (var i = 0; i < linhasCentral.length; i++) {
+        (function(indice) {
+            var inputCentral = obterInputLacreLinha(linhasCentral[indice], 'iipr');
+            if (!inputCentral) return;
+            if (inputCentral.getAttribute('data-planilha-central') === String(indice)) return;
+            inputCentral.setAttribute('data-planilha-central', String(indice));
+            inputCentral.addEventListener('input', function() {
+                var faixa = obterFaixaDaLinhaCentral(indice, linhasCentral.length);
+                if (faixa && faixa.start === indice) {
+                    aplicarSequenciaCentralNoBloco(indice, this.value);
+                }
+            });
+            inputCentral.addEventListener('change', function() {
+                var faixa = obterFaixaDaLinhaCentral(indice, linhasCentral.length);
+                if (faixa && faixa.start === indice) {
+                    aplicarSequenciaCentralNoBloco(indice, this.value);
+                }
+            });
+        })(i);
+    }
+
+    atualizarInputsTopoPorPlanilha();
+}
+
 // v9.25.23: Ativa recálculo automático apenas para o grupo solicitado
 // Esta função ativa a flag que dispara a lógica v9.13.0 apenas no grupo alvo:
 // - CAPITAL: lacre_iipr=N, lacre_correios=N+1, incremento +2 (N, N+2, N+4...)
@@ -7128,6 +7322,10 @@ function inicializarMonitoramentoAlteracoes() {
             salvarEstadoEtiquetasCorreiosForcado();
         });
     } catch (eSave) { /* ignore */ }
+
+    try {
+        configurarAtribuicaoPlanilhaLacres();
+    } catch (ePlanilha) { /* ignore */ }
     
     // VERSAO 3: Iniciar SEM pulsacao (so pulsa quando ha mudanca)
     // Pagina recarrega apos salvar, entao comeca sempre sem pulsacao
