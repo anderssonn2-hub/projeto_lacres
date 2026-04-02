@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v0.9.25.23
+/* conferencia_pacotes.php — v1.0.0
+ * CHANGELOG v1.0.0:
+ * - [AJUSTE] Versao consolidada para v1.0.0
+ * - [AJUSTE] Tela e snapshot exibem a versao v1.0.0
+ *
  * CHANGELOG v9.25.23:
  * - [AJUSTE] Versao atualizada para 0.9.25.23
  *
@@ -284,9 +288,24 @@ $dbname = 'controle';
 $user = 'controle_mat';
 $pass = '375256';
 
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $user, $pass);
+function criarPdoLegadoControle($host, $dbname, $user, $pass) {
+    $dsn = "mysql:host={$host};dbname={$dbname};charset=utf8mb4";
+    try {
+        $pdo = new PDO($dsn, $user, $pass);
+    } catch (Exception $e) {
+        $dsn = "mysql:host={$host};dbname={$dbname};charset=utf8";
+        $pdo = new PDO($dsn, $user, $pass);
+        try {
+            $pdo->exec("SET NAMES utf8");
+        } catch (Exception $e2) {
+        }
+    }
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    return $pdo;
+}
+
+try {
+    $pdo = criarPdoLegadoControle($host, $dbname, $user, $pass);
 
     // v9.24.0: Postos bloqueados
     $pdo->exec("CREATE TABLE IF NOT EXISTS ciPostosBloqueados (
@@ -1495,7 +1514,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v0.9.25.23</title>
+    <title>Conferência de Pacotes v1.0.0</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2754,10 +2773,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v0.9.25.23</div>
+    <div class="versao">v1.0.0</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v0.9.25.23</h2>
+<h2>📋 Conferência de Pacotes v1.0.0</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -4454,7 +4473,7 @@ function iniciarConferenciaPacotes() {
         });
 
         return {
-            versao: '0.9.25.23',
+            versao: '1.0.0',
             gerado_em: formatarDataHoraAtual(),
             usuario: usuarioAtual || '',
             contexto_selecionado: contextoSelecionadoMalote || '',

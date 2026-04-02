@@ -1,6 +1,10 @@
 <?php
-/* lacres_novo.php — Versão 9.25.24
+/* lacres_novo.php — v1.0.0
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.0 (02/04/2026):
+ * - [VERSAO] Marco de publicação consolidado em v1.0.0
+ * - [VERSAO] Interface e arquivos sincronizados para exibir v1.0.0
  *
  * CHANGELOG v9.25.24 (02/04/2026):
  * - [NOVO] Split da Central IIPR agora suporta 3 ou mais malotes com lacre Correios independente por grupo
@@ -444,9 +448,24 @@
 //   * Snapshot → preserva estado entre usuários
 // - COMPATIBILIDADE: PHP 5.3.3 + ES5 JavaScript
 
+function criarPdoLegado($host, $dbname, $user, $pass) {
+    $dsn = "mysql:host={$host};dbname={$dbname};charset=utf8mb4";
+    try {
+        $pdo = new PDO($dsn, $user, $pass);
+    } catch (Exception $e) {
+        $dsn = "mysql:host={$host};dbname={$dbname};charset=utf8";
+        $pdo = new PDO($dsn, $user, $pass);
+        try {
+            $pdo->exec("SET NAMES utf8");
+        } catch (Exception $e2) {
+        }
+    }
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    return $pdo;
+}
+
 // Conexões com os bancos de dados
-$pdo_controle = new PDO("mysql:host=10.15.61.169;dbname=controle;charset=utf8mb4", "controle_mat", "375256");
-$pdo_controle->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo_controle = criarPdoLegado("10.15.61.169", "controle", "controle_mat", "375256");
 $pdo_controle->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_lacres (
     id INT NOT NULL AUTO_INCREMENT,
     codbar VARCHAR(25) NOT NULL,
@@ -484,13 +503,13 @@ if (count($colsGrupoCorreiosDesp) === 0) {
     $pdo_controle->exec("ALTER TABLE ciDespachoLotes ADD COLUMN grupo_correios VARCHAR(40) DEFAULT NULL AFTER etiquetacorreios");
 }
 
-$pdo_servico = new PDO("mysql:host=10.15.61.169;dbname=servico;charset=utf8mb4", "controle_mat", "375256");
-$pdo_servico->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo_servico = criarPdoLegado("10.15.61.169", "servico", "controle_mat", "375256");
 
-$pdo_contrsos = new PDO("mysql:host=10.15.61.169;dbname=contrsos;charset=utf8mb4", "controle_mat", "375256");
-$pdo_contrsos->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo_contrsos = criarPdoLegado("10.15.61.169", "contrsos", "controle_mat", "375256");
 
 if (!isset($_SESSION)) session_start();
+if (!defined('JSON_UNESCAPED_UNICODE')) define('JSON_UNESCAPED_UNICODE', 0);
+if (!defined('JSON_UNESCAPED_SLASHES')) define('JSON_UNESCAPED_SLASHES', 0);
 if (!isset($_SESSION['etiquetas'])) $_SESSION['etiquetas'] = array();
 if (!isset($_SESSION['linhas_removidas'])) $_SESSION['linhas_removidas'] = array();
 if (!isset($_SESSION['lacres_personalizados'])) $_SESSION['lacres_personalizados'] = array();
@@ -5217,7 +5236,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 0.9.25.24</div>
+<div class="version-info">v1.0.0</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -9130,7 +9149,7 @@ try {
             }
         }
     }
-} catch (\Throwable $e) {
+} catch (Exception $e) {
 }
 ?>
 <script>
