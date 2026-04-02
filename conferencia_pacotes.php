@@ -385,7 +385,7 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS conferencia_pacotes_controle_estado (
         canal VARCHAR(40) NOT NULL,
         usuario VARCHAR(120) DEFAULT NULL,
-        posto VARCHAR(10) DEFAULT NULL,
+        posto VARCHAR(120) DEFAULT NULL,
         regional VARCHAR(120) DEFAULT NULL,
         resumo VARCHAR(255) DEFAULT NULL,
         lacre_iipr VARCHAR(20) DEFAULT NULL,
@@ -394,6 +394,14 @@ try {
         atualizado_em DATETIME NOT NULL,
         PRIMARY KEY (canal)
     ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
+
+    try {
+        $colunaPostoControle = $pdo->query("SHOW COLUMNS FROM conferencia_pacotes_controle_estado LIKE 'posto'")->fetch(PDO::FETCH_ASSOC);
+        if ($colunaPostoControle && isset($colunaPostoControle['Type']) && stripos((string)$colunaPostoControle['Type'], 'varchar(120)') === false) {
+            $pdo->exec("ALTER TABLE conferencia_pacotes_controle_estado MODIFY posto VARCHAR(120) DEFAULT NULL");
+        }
+    } catch (Exception $e) {
+    }
 
     if (isset($_POST['enviar_comando_remoto_ajax'])) {
         $canal = isset($_POST['canal']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$_POST['canal']) : 'principal';
@@ -444,7 +452,7 @@ try {
             $canal = 'principal';
         }
         $usuario = isset($_POST['usuario']) ? substr(trim((string)$_POST['usuario']), 0, 120) : '';
-        $posto = isset($_POST['posto']) ? substr(trim((string)$_POST['posto']), 0, 10) : '';
+        $posto = isset($_POST['posto']) ? substr(trim((string)$_POST['posto']), 0, 120) : '';
         $regional = isset($_POST['regional']) ? substr(trim((string)$_POST['regional']), 0, 120) : '';
         $resumo = isset($_POST['resumo']) ? substr(trim((string)$_POST['resumo']), 0, 255) : '';
         $lacreIipr = isset($_POST['lacre_iipr']) ? substr(trim((string)$_POST['lacre_iipr']), 0, 20) : '';
@@ -5258,14 +5266,41 @@ function iniciarConferenciaPacotes() {
         return confirmados + ' confirmados • ' + comIipr + ' com IIPR • ' + comCorreios + ' com Correios';
     }
 
+    function obterRotuloRemotoContextoAtual() {
+        var postoCodigo = formatarCodigoComZeros(contextoSelecionadoMalote || '', 3);
+        var chips = obterChipsPorContextoMalote();
+        var dados = chips.length ? obterDadosChipOperacao(chips[0]) : null;
+        var regionalCodigo = dados ? formatarCodigoComZeros(dados.regional_codigo || dados.regional, 3) : '';
+
+        if (tipoContextoSelecionadoMalote === 'regional') {
+            return rotuloContextoSelecionadoMalote || (contextoSelecionadoMalote ? ('Regional ' + formatarCodigoComZeros(contextoSelecionadoMalote, 3)) : '-');
+        }
+
+        if (!postoCodigo) {
+            return rotuloContextoSelecionadoMalote || '-';
+        }
+
+        if (dados && dados.isPT) {
+            return 'Posto ' + postoCodigo + ' Poupa Tempo';
+        }
+        if (regionalCodigo === '000') {
+            return 'Posto ' + postoCodigo + ' Capital';
+        }
+        if (regionalCodigo === '999') {
+            return 'Posto ' + postoCodigo + ' Central';
+        }
+        return rotuloContextoSelecionadoMalote || ('Posto ' + postoCodigo);
+    }
+
     function publicarEstadoRemoto() {
         if (!controleCanal) return;
+        var rotuloContextoRemoto = obterRotuloRemotoContextoAtual();
         var formData = new FormData();
         formData.append('atualizar_estado_remoto_ajax', '1');
         formData.append('canal', controleCanal);
         formData.append('usuario', usuarioAtual || '');
-        formData.append('posto', rotuloContextoSelecionadoMalote || '-');
-        formData.append('regional', tipoContextoSelecionadoMalote === 'regional' ? (rotuloContextoSelecionadoMalote || '-') : '-');
+        formData.append('posto', tipoContextoSelecionadoMalote === 'posto' ? rotuloContextoRemoto : '');
+        formData.append('regional', tipoContextoSelecionadoMalote === 'regional' ? rotuloContextoRemoto : '');
         formData.append('resumo', obterResumoContextoAtual());
         formData.append('lacre_iipr', ultimoLacreIiprAplicado || '');
         formData.append('lacre_correios', ultimoLacreCorreiosAplicado || '');

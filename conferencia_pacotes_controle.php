@@ -317,6 +317,47 @@ if ($controle_canal === '') {
             return estadoResumo ? String(estadoResumo.textContent || '') : '';
         }
 
+        function normalizarCodigoTresDigitos(valor) {
+            var digitos = String(valor || '').replace(/\D+/g, '');
+            if (!digitos) return '';
+            if (digitos.length > 3) {
+                digitos = digitos.substr(0, 3);
+            }
+            return digitos.padStart(3, '0');
+        }
+
+        function formatarRotuloContexto(estado) {
+            var textoRegional = estado && estado.regional ? String(estado.regional).trim() : '';
+            var textoPosto = estado && estado.posto ? String(estado.posto).trim() : '';
+            var origem = textoRegional && textoRegional !== '-' ? textoRegional : textoPosto;
+            var matchPosto;
+            var matchRegional;
+            var codigo;
+            var sufixo;
+
+            if (!origem || origem === '-') {
+                return '-';
+            }
+
+            matchRegional = origem.match(/^regional\s+(\d{1,3})$/i);
+            if (matchRegional && matchRegional[1]) {
+                codigo = normalizarCodigoTresDigitos(matchRegional[1]);
+                if (codigo === '002') {
+                    codigo = '200';
+                }
+                return codigo ? ('Regional ' + codigo) : origem;
+            }
+
+            matchPosto = origem.match(/^posto\s+(\d{1,3})(.*)$/i);
+            if (matchPosto && matchPosto[1]) {
+                codigo = normalizarCodigoTresDigitos(matchPosto[1]);
+                sufixo = String(matchPosto[2] || '').replace(/^[\s\-]+/, '').trim();
+                return 'Posto ' + codigo + (sufixo ? (' ' + sufixo) : '');
+            }
+
+            return origem;
+        }
+
         function atualizarValoresAtuais() {
             if (valorAtualIipr) {
                 valorAtualIipr.textContent = 'Próximo: ' + (normalizarNumero(inputLacreIiprRemoto ? inputLacreIiprRemoto.value : '', 12) || '-');
@@ -560,7 +601,7 @@ if ($controle_canal === '') {
                         estadoResumo.textContent = 'Aguardando posto ou regional ativos na conferência.';
                         return;
                     }
-                    contexto = estado.posto || estado.regional || '-';
+                    contexto = formatarRotuloContexto(estado);
                     estadoRegional.textContent = contexto;
                     estadoAtualizado.textContent = estado.atualizado_em || '-';
                     estadoResumo.textContent = estado.resumo || 'A prévia vai espelhar os lacres do contexto atual.';

@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — Versão 9.25.23
+/* lacres_novo.php — Versão 9.25.24
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v9.25.24 (02/04/2026):
+ * - [NOVO] Split da Central IIPR agora suporta 3 ou mais malotes com lacre Correios independente por grupo
+ * - [CORRIGIDO] Replicação de lacre/display no split passa a respeitar todos os blocos visuais, não apenas 2 grupos
+ * - [VERSAO] Interface atualizada para Versão 0.9.25.24
  *
  * CHANGELOG v9.25.23 (01/04/2026):
  * - [NOVO] Botões independentes de Aplicar Lacres para CAPITAL, CENTRAL IIPR e REGIONAIS
@@ -5193,7 +5198,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">Versão 0.9.25.23</div>
+<div class="version-info">Versão 0.9.25.24</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -7195,13 +7200,23 @@ function sincronizarValoresSplit() {
         tabela = document.getElementById('tblCentralIIPR');
     }
     if (!tabela) return;
-    
-    var splitIndex = parseInt((document.getElementById('central_split_index') || {value: -1}).value, 10);
-    if (isNaN(splitIndex) || splitIndex < 0) return;
-    
+
     var rows = tabela.querySelectorAll('tbody tr');
     if (!rows.length) rows = tabela.querySelectorAll('tr:not(:first-child)');
     if (!rows.length) return;
+
+    var hidden = document.getElementById('central_split_indices');
+    var partes = hidden && hidden.value ? String(hidden.value).split(',') : [];
+    var indices = [];
+    var vistos = {};
+    for (var p = 0; p < partes.length; p++) {
+        var idxSplit = parseInt(partes[p], 10);
+        if (isNaN(idxSplit) || idxSplit < 0 || idxSplit >= (rows.length - 1) || vistos[idxSplit]) continue;
+        vistos[idxSplit] = true;
+        indices.push(idxSplit);
+    }
+    indices.sort(function(a, b) { return a - b; });
+    if (!indices.length) return;
     
     // Encontrar indices das colunas
     var ths = tabela.querySelectorAll('thead th, tr:first-child th');
@@ -7211,68 +7226,47 @@ function sincronizarValoresSplit() {
         if (texto.indexOf('lacre correios') >= 0) idxLacre = i;
         if (texto.indexOf('etiqueta correios') >= 0) idxEtiqueta = i;
     }
-    
-    // Obter valores do primeiro grupo (antes do split)
-    var valorLacreGrupo1 = '', valorEtiquetaGrupo1 = '';
-    if (rows[0]) {
-        if (idxLacre >= 0 && rows[0].children[idxLacre]) {
-            var inp = rows[0].children[idxLacre].querySelector('input');
-            if (inp) valorLacreGrupo1 = inp.value || '';
-        }
-        if (idxEtiqueta >= 0 && rows[0].children[idxEtiqueta]) {
-            var inp = rows[0].children[idxEtiqueta].querySelector('input');
-            if (inp) valorEtiquetaGrupo1 = inp.value || '';
-        }
+
+    var faixas = [];
+    var inicio = 0;
+    for (var j = 0; j < indices.length; j++) {
+        faixas.push({ start: inicio, end: indices[j] });
+        inicio = indices[j] + 1;
     }
-    
-    // Obter valores do segundo grupo (depois do split)
-    var valorLacreGrupo2 = '', valorEtiquetaGrupo2 = '';
-    if (splitIndex + 1 < rows.length) {
-        var primeiraLinhaGrupo2 = rows[splitIndex + 1];
-        if (idxLacre >= 0 && primeiraLinhaGrupo2.children[idxLacre]) {
-            var inp = primeiraLinhaGrupo2.children[idxLacre].querySelector('input');
-            if (inp) valorLacreGrupo2 = inp.value || '';
+    faixas.push({ start: inicio, end: rows.length - 1 });
+
+    for (var f = 0; f < faixas.length; f++) {
+        var faixa = faixas[f];
+        var linhaLider = rows[faixa.start];
+        var valorLacre = '';
+        var valorEtiqueta = '';
+
+        if (!linhaLider) continue;
+
+        if (idxLacre >= 0 && linhaLider.children[idxLacre]) {
+            var inpL = linhaLider.children[idxLacre].querySelector('input');
+            if (inpL) valorLacre = inpL.value || '';
         }
-        if (idxEtiqueta >= 0 && primeiraLinhaGrupo2.children[idxEtiqueta]) {
-            var inp = primeiraLinhaGrupo2.children[idxEtiqueta].querySelector('input');
-            if (inp) valorEtiquetaGrupo2 = inp.value || '';
+        if (idxEtiqueta >= 0 && linhaLider.children[idxEtiqueta]) {
+            var inpE = linhaLider.children[idxEtiqueta].querySelector('input');
+            if (inpE) valorEtiqueta = inpE.value || '';
         }
-    }
-    
-    // Aplicar valores para todas as linhas de cada grupo
-    for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        
-        if (i <= splitIndex) {
-            // Grupo 1: antes do split
+
+        for (var r = faixa.start; r <= faixa.end; r++) {
+            var row = rows[r];
+            if (!row) continue;
             if (idxLacre >= 0 && row.children[idxLacre]) {
                 var inp = row.children[idxLacre].querySelector('input');
                 if (inp) {
-                    inp.value = valorLacreGrupo1;
-                    inp.setAttribute('value', valorLacreGrupo1);
+                    inp.value = valorLacre;
+                    inp.setAttribute('value', valorLacre);
                 }
             }
             if (idxEtiqueta >= 0 && row.children[idxEtiqueta]) {
-                var inp = row.children[idxEtiqueta].querySelector('input');
-                if (inp) {
-                    inp.value = valorEtiquetaGrupo1;
-                    inp.setAttribute('value', valorEtiquetaGrupo1);
-                }
-            }
-        } else {
-            // Grupo 2: depois do split
-            if (idxLacre >= 0 && row.children[idxLacre]) {
-                var inp = row.children[idxLacre].querySelector('input');
-                if (inp) {
-                    inp.value = valorLacreGrupo2;
-                    inp.setAttribute('value', valorLacreGrupo2);
-                }
-            }
-            if (idxEtiqueta >= 0 && row.children[idxEtiqueta]) {
-                var inp = row.children[idxEtiqueta].querySelector('input');
-                if (inp) {
-                    inp.value = valorEtiquetaGrupo2;
-                    inp.setAttribute('value', valorEtiquetaGrupo2);
+                var inp2 = row.children[idxEtiqueta].querySelector('input');
+                if (inp2) {
+                    inp2.value = valorEtiqueta;
+                    inp2.setAttribute('value', valorEtiqueta);
                 }
             }
         }
@@ -7354,6 +7348,129 @@ document.addEventListener("DOMContentLoaded", function() {
     // v8.11.1: indices visuais para destacar multiplos splits
     window.splitVisualIndices = window.splitVisualIndices || [];
 
+    function obterIndicesSplitCentralOrdenados(totalLinhas) {
+        var indices = window.splitVisualIndices || [];
+        var lista = [];
+        var vistos = {};
+        for (var i = 0; i < indices.length; i++) {
+            var idx = parseInt(indices[i], 10);
+            if (isNaN(idx) || idx < 0) continue;
+            if (typeof totalLinhas === 'number' && totalLinhas > 0 && idx >= (totalLinhas - 1)) continue;
+            if (vistos[idx]) continue;
+            vistos[idx] = true;
+            lista.push(idx);
+        }
+        lista.sort(function(a, b) { return a - b; });
+        return lista;
+    }
+
+    function obterFaixasSplitCentral(totalLinhas) {
+        var faixas = [];
+        var indices = obterIndicesSplitCentralOrdenados(totalLinhas);
+        var inicio = 0;
+        if (!totalLinhas || totalLinhas < 1) return faixas;
+        for (var i = 0; i < indices.length; i++) {
+            faixas.push({ start: inicio, end: indices[i] });
+            inicio = indices[i] + 1;
+        }
+        faixas.push({ start: inicio, end: totalLinhas - 1 });
+        return faixas;
+    }
+
+    function obterFaixaDaLinhaCentral(rowIndex, totalLinhas) {
+        var faixas = obterFaixasSplitCentral(totalLinhas);
+        for (var i = 0; i < faixas.length; i++) {
+            if (rowIndex >= faixas[i].start && rowIndex <= faixas[i].end) {
+                return faixas[i];
+            }
+        }
+        return null;
+    }
+
+    function atualizarEstadoSplitCentral() {
+        var linhasCentral = document.querySelectorAll('tr.linha-central');
+        var total = linhasCentral ? linhasCentral.length : 0;
+        var indices = obterIndicesSplitCentralOrdenados(total);
+        var hidden = document.getElementById('central_split_indices');
+        var hiddenUnico = document.getElementById('central_split_index');
+        var selectorLacre = 'input.central-correios';
+        var selectorEtiqueta = 'input.central-etiqueta';
+
+        if (!hidden) {
+            hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'central_split_indices';
+            hidden.id = 'central_split_indices';
+            document.body.appendChild(hidden);
+        }
+
+        hidden.value = indices.join(',');
+        if (hiddenUnico) {
+            hiddenUnico.value = indices.length ? String(indices[0]) : '';
+        }
+
+        if (!total) return;
+
+        if (!indices.length) {
+            var semSplitLacre = document.querySelectorAll(selectorLacre);
+            var semSplitEtiqueta = document.querySelectorAll(selectorEtiqueta);
+            for (var a = 0; a < semSplitLacre.length; a++) {
+                semSplitLacre[a].readOnly = false;
+                semSplitLacre[a].removeAttribute('readonly');
+            }
+            for (var b = 0; b < semSplitEtiqueta.length; b++) {
+                semSplitEtiqueta[b].readOnly = false;
+                semSplitEtiqueta[b].removeAttribute('readonly');
+            }
+            return;
+        }
+
+        var faixas = obterFaixasSplitCentral(total);
+        for (var f = 0; f < faixas.length; f++) {
+            var inicio = faixas[f].start;
+            var fim = faixas[f].end;
+            var linhaLider = linhasCentral[inicio];
+            var campoLiderLacre;
+            var campoLiderEtiqueta;
+            var valorLacre = '';
+            var valorEtiqueta = '';
+            if (!linhaLider) continue;
+
+            campoLiderLacre = linhaLider.querySelector(selectorLacre);
+            campoLiderEtiqueta = linhaLider.querySelector(selectorEtiqueta);
+            valorLacre = campoLiderLacre ? String(campoLiderLacre.value || '') : '';
+            valorEtiqueta = campoLiderEtiqueta ? String(campoLiderEtiqueta.value || '') : '';
+
+            if (campoLiderLacre) {
+                campoLiderLacre.readOnly = false;
+                campoLiderLacre.removeAttribute('readonly');
+            }
+            if (campoLiderEtiqueta) {
+                campoLiderEtiqueta.readOnly = false;
+                campoLiderEtiqueta.removeAttribute('readonly');
+            }
+
+            for (var r = inicio + 1; r <= fim; r++) {
+                var linha = linhasCentral[r];
+                var campoLacre;
+                var campoEtiqueta;
+                if (!linha) continue;
+                campoLacre = linha.querySelector(selectorLacre);
+                campoEtiqueta = linha.querySelector(selectorEtiqueta);
+                if (campoLacre) {
+                    campoLacre.value = valorLacre;
+                    campoLacre.readOnly = true;
+                    campoLacre.setAttribute('readonly', 'readonly');
+                }
+                if (campoEtiqueta) {
+                    campoEtiqueta.value = valorEtiqueta;
+                    campoEtiqueta.readOnly = true;
+                    campoEtiqueta.setAttribute('readonly', 'readonly');
+                }
+            }
+        }
+    }
+
     // Aplica destaque visual nas linhas da CENTRAL de acordo com splitVisualIndices
     function aplicarDestaqueSplits() {
         var linhasCentral = document.querySelectorAll('tr.linha-central');
@@ -7428,6 +7545,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         // Aplicar destaques visuais
         aplicarDestaqueSplits();
+        atualizarEstadoSplitCentral();
     };
     
     // Function to replicate value within appropriate group (called by input listeners)
@@ -7446,24 +7564,17 @@ document.addEventListener("DOMContentLoaded", function() {
         var valor = campo.value;
         var selector = (tipo === 'correios') ? 'input.central-correios' : 'input.central-etiqueta';
         
-        if (splitIndexCentral === null) {
+        if (!obterIndicesSplitCentralOrdenados(linhasCentral.length).length) {
             // No split: replicate to all CENTRAL fields of this type
             var campos = document.querySelectorAll(selector);
             for (var j = 0; j < campos.length; j++) {
                 campos[j].value = valor;
             }
         } else {
-            // Split active: replicate only within the group
-            var groupStart, groupEnd;
-            if (rowIndex <= splitIndexCentral) {
-                // Editing in group 1 (before/at split): replicate to group 1 only
-                groupStart = 0;
-                groupEnd = splitIndexCentral;
-            } else {
-                // Editing in group 2 (after split): replicate to group 2 only
-                groupStart = splitIndexCentral + 1;
-                groupEnd = linhasCentral.length - 1;
-            }
+            // Split ativo: replicate only within the current visual block
+            var faixa = obterFaixaDaLinhaCentral(rowIndex, linhasCentral.length);
+            var groupStart = faixa ? faixa.start : 0;
+            var groupEnd = faixa ? faixa.end : (linhasCentral.length - 1);
             
             // Apply to fields in the appropriate group
             var campos = document.querySelectorAll(selector);
@@ -7484,6 +7595,8 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
     };
+
+    atualizarEstadoSplitCentral();
     
     // Add event listeners to central-correios inputs
     var centralCorreioInputs = document.querySelectorAll('input.central-correios');
