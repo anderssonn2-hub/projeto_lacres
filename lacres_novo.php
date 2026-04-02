@@ -6565,18 +6565,51 @@ function limparColuna(grupo, tipoColuna) {
 }
 
 function inteiroPositivoOuZero(valor) {
-    var numero = parseInt(String(valor || '').replace(/\D+/g, ''), 10);
+    var texto = String(valor || '').trim();
+    var base = texto;
+    var grupos;
+    var numero;
+
+    if (texto.indexOf('-') >= 0) {
+        var partes = texto.split('-');
+        for (var i = partes.length - 1; i >= 0; i--) {
+            if (String(partes[i] || '').replace(/\D+/g, '') !== '') {
+                base = partes[i];
+                break;
+            }
+        }
+    }
+
+    grupos = String(base || '').match(/\d+/g);
+    if (!grupos || !grupos.length) {
+        return 0;
+    }
+
+    numero = parseInt(grupos[grupos.length - 1], 10);
     if (isNaN(numero) || numero < 0) {
         return 0;
     }
     return numero;
 }
 
-function obterLinhasGrupoLacres(grupo) {
+function podeAplicarSequenciaDuranteDigitacao(valor) {
+    var texto = String(valor || '').trim();
+    if (texto === '') {
+        return true;
+    }
+    return /^\d+$/.test(texto);
+}
+
+function obterTabelaGrupoLacres(grupo) {
     var tabela = document.getElementById('tabela-' + String(grupo || '').toLowerCase().replace(/ /g, '-'));
     if (!tabela && grupo === 'CENTRAL IIPR') {
         tabela = document.getElementById('tblCentralIIPR') || document.getElementById('tabela-central-iipr');
     }
+    return tabela;
+}
+
+function obterLinhasGrupoLacres(grupo) {
+    var tabela = obterTabelaGrupoLacres(grupo);
     if (!tabela) return [];
     return tabela.querySelectorAll('tbody tr[data-posto-codigo], tr[data-posto-codigo]');
 }
@@ -6590,6 +6623,23 @@ function obterInputLacreLinha(linha, tipo) {
         return linha.querySelector('input[data-tipo="correios"], input[name^="lacre_correios["]');
     }
     return null;
+}
+
+function obterLinhaPaiCampo(campo) {
+    var linha = campo;
+    while (linha && linha.tagName !== 'TR') {
+        linha = linha.parentNode;
+    }
+    return linha && linha.tagName === 'TR' ? linha : null;
+}
+
+function obterIndiceLinhaLista(linhas, linha) {
+    for (var i = 0; i < linhas.length; i++) {
+        if (linhas[i] === linha) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 function atualizarInputsTopoPorPlanilha() {
@@ -6704,13 +6754,16 @@ function configurarAtribuicaoPlanilhaLacres() {
     var linhasCapital = obterLinhasGrupoLacres('CAPITAL');
     var linhasRegionais = obterLinhasGrupoLacres('REGIONAIS');
     var linhasCentral = obterLinhasGrupoLacres('CENTRAL IIPR');
+    var tabelaCentral = obterTabelaGrupoLacres('CENTRAL IIPR');
 
     if (linhasCapital.length) {
         var inputCapital = obterInputLacreLinha(linhasCapital[0], 'iipr');
         if (inputCapital && inputCapital.getAttribute('data-planilha-vinculada') !== 'capital') {
             inputCapital.setAttribute('data-planilha-vinculada', 'capital');
             inputCapital.addEventListener('input', function() {
-                aplicarSequenciaParPorGrupo('CAPITAL', this.value);
+                if (podeAplicarSequenciaDuranteDigitacao(this.value)) {
+                    aplicarSequenciaParPorGrupo('CAPITAL', this.value);
+                }
             });
             inputCapital.addEventListener('change', function() {
                 aplicarSequenciaParPorGrupo('CAPITAL', this.value);
@@ -6723,7 +6776,9 @@ function configurarAtribuicaoPlanilhaLacres() {
         if (inputRegionais && inputRegionais.getAttribute('data-planilha-vinculada') !== 'regionais') {
             inputRegionais.setAttribute('data-planilha-vinculada', 'regionais');
             inputRegionais.addEventListener('input', function() {
-                aplicarSequenciaParPorGrupo('REGIONAIS', this.value);
+                if (podeAplicarSequenciaDuranteDigitacao(this.value)) {
+                    aplicarSequenciaParPorGrupo('REGIONAIS', this.value);
+                }
             });
             inputRegionais.addEventListener('change', function() {
                 aplicarSequenciaParPorGrupo('REGIONAIS', this.value);
@@ -6731,25 +6786,42 @@ function configurarAtribuicaoPlanilhaLacres() {
         }
     }
 
-    for (var i = 0; i < linhasCentral.length; i++) {
-        (function(indice) {
-            var inputCentral = obterInputLacreLinha(linhasCentral[indice], 'iipr');
-            if (!inputCentral) return;
-            if (inputCentral.getAttribute('data-planilha-central') === String(indice)) return;
-            inputCentral.setAttribute('data-planilha-central', String(indice));
-            inputCentral.addEventListener('input', function() {
-                var faixa = obterFaixaDaLinhaCentral(indice, linhasCentral.length);
-                if (faixa && faixa.start === indice) {
-                    aplicarSequenciaCentralNoBloco(indice, this.value);
-                }
-            });
-            inputCentral.addEventListener('change', function() {
-                var faixa = obterFaixaDaLinhaCentral(indice, linhasCentral.length);
-                if (faixa && faixa.start === indice) {
-                    aplicarSequenciaCentralNoBloco(indice, this.value);
-                }
-            });
-        })(i);
+    if (tabelaCentral && tabelaCentral.getAttribute('data-planilha-central-vinculada') !== '1') {
+        var tratarEventoCentral = function(campo, permitirDuranteDigitacao) {
+            var linhasAtuais;
+            var linhaAtual;
+            var indiceAtual;
+            var faixaAtual;
+
+            if (!campo || String(campo.getAttribute('data-tipo') || '') !== 'iipr') {
+                return;
+            }
+            if (permitirDuranteDigitacao && !podeAplicarSequenciaDuranteDigitacao(campo.value)) {
+                return;
+            }
+
+            linhasAtuais = obterLinhasGrupoLacres('CENTRAL IIPR');
+            linhaAtual = obterLinhaPaiCampo(campo);
+            indiceAtual = obterIndiceLinhaLista(linhasAtuais, linhaAtual);
+            if (indiceAtual < 0) {
+                return;
+            }
+
+            faixaAtual = obterFaixaDaLinhaCentral(indiceAtual, linhasAtuais.length);
+            if (!faixaAtual || faixaAtual.start !== indiceAtual) {
+                return;
+            }
+
+            aplicarSequenciaCentralNoBloco(indiceAtual, campo.value);
+        };
+
+        tabelaCentral.setAttribute('data-planilha-central-vinculada', '1');
+        tabelaCentral.addEventListener('input', function(event) {
+            tratarEventoCentral(event.target || event.srcElement, true);
+        });
+        tabelaCentral.addEventListener('change', function(event) {
+            tratarEventoCentral(event.target || event.srcElement, false);
+        });
     }
 
     atualizarInputsTopoPorPlanilha();
