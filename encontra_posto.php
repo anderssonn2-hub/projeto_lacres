@@ -1307,6 +1307,8 @@ var ultimaFalaTexto = '';
 var ultimaFalaEm = 0;
 var ultimaFalaCodbar = '';
 var ultimaFalaLeituraId = 0;
+var leiturasJaVocalizadas = {};
+var ordemLeiturasVocalizadas = [];
 var ultimaLeituraCodbar = '';
 var ultimaLeituraEm = 0;
 var ultimaLeituraId = 0;
@@ -1631,7 +1633,7 @@ function falar(texto, codbar, leituraId) {
     texto = String(texto || '').trim();
     if (texto === '') return;
 
-    if (leituraId && ultimaFalaLeituraId === leituraId) {
+    if (leituraId && leiturasJaVocalizadas[leituraId]) {
         return;
     }
 
@@ -1641,6 +1643,12 @@ function falar(texto, codbar, leituraId) {
     ultimaFalaEm = Date.now();
     if (leituraId) {
         ultimaFalaLeituraId = leituraId;
+        leiturasJaVocalizadas[leituraId] = true;
+        ordemLeiturasVocalizadas.push(leituraId);
+        while (ordemLeiturasVocalizadas.length > 200) {
+            var leituraAntiga = ordemLeiturasVocalizadas.shift();
+            delete leiturasJaVocalizadas[leituraAntiga];
+        }
     }
     if (codbarAtual) {
         ultimaFalaCodbar = codbarAtual;
