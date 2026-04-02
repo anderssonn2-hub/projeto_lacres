@@ -2756,9 +2756,11 @@ while ($row = $stmt_datas->fetch(PDO::FETCH_ASSOC)) {
 // MUDANÇA: Não carrega datas automaticamente - usuário deve escolher
 $datas_filtro = array();
 
+$datas_alternadas_get = isset($_GET['datas_alternadas']) ? trim((string)$_GET['datas_alternadas']) : '';
+
 // Prioridade 1: Datas alternadas (específicas digitadas manualmente)
-if (isset($_GET['datas_alternadas']) && !empty(trim($_GET['datas_alternadas']))) {
-    $datas_alternadas_str = trim($_GET['datas_alternadas']);
+if ($datas_alternadas_get !== '') {
+    $datas_alternadas_str = $datas_alternadas_get;
     // Separar por vírgula
     $datas_array = explode(',', $datas_alternadas_str);
     
