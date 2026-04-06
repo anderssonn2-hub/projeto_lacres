@@ -1,5 +1,9 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
+    v1.0.2: Modos visuais PT + compatibilidade PHP legado
+    - [NOVO] Modo visual "com etiqueta Correios" com três campos no cabeçalho do posto
+    - [CORRIGIDO] Botões de gravação ficam ocultos no modo visual novo para não misturar persistência legada
+
     v1.0.1: Compatibilidade PHP legado + sanitização UTF-8
     - [CORRIGIDO] htmlspecialchars agora normaliza texto inválido antes de renderizar
     - [CORRIGIDO] Título do documento usa helper seguro para evitar warning em bytes inválidos
@@ -945,6 +949,16 @@ if (isset($_GET['debug_pt'])) {
 $paginas = array();  // Cada elemento = array('codigo','nome','qtd','endereco')
 $mapaConferidos = array();
 $modo_branco = (isset($_POST['pt_blank']) && $_POST['pt_blank'] === '1') || (isset($_GET['pt_blank']) && $_GET['pt_blank'] === '1');
+$modo_visual_pt = '';
+if (isset($_POST['pt_modo_visual'])) {
+    $modo_visual_pt = strtolower(trim((string)$_POST['pt_modo_visual']));
+} elseif (isset($_GET['pt_modo_visual'])) {
+    $modo_visual_pt = strtolower(trim((string)$_GET['pt_modo_visual']));
+}
+if ($modo_visual_pt === '') {
+    $modo_visual_pt = $modo_branco ? 'branco' : 'padrao';
+}
+$modo_visual_correios = ($modo_visual_pt === 'correios');
 
 if (!$modo_branco && !empty($paginasDinamicas)) {
     $paginas = $paginasDinamicas;
@@ -1250,10 +1264,12 @@ if (!empty($dados_salvos) && $tipo_mensagem === 'sucesso') {
 <meta charset="UTF-8">
 <?php
 // v8.15.3: Título do PDF sem # no início (formato: ID_poupatempo_dd-mm-yyyy)
-$titulo_pdf = 'Comprovante de Entrega - Poupatempo';
+$titulo_pdf = $modo_visual_correios
+    ? 'Comprovante de Entrega - Poupatempo com Etiqueta Correios'
+    : 'Comprovante de Entrega - Poupatempo';
 if (isset($id_despacho_post) && $id_despacho_post > 0) {
     $data_titulo = date('d-m-Y');
-    $titulo_pdf = $id_despacho_post . '_poupatempo_' . $data_titulo;
+    $titulo_pdf = $id_despacho_post . ($modo_visual_correios ? '_poupatempo_correios_' : '_poupatempo_') . $data_titulo;
 }
 ?>
 <title><?php echo e($titulo_pdf); ?></title>
@@ -2047,13 +2063,20 @@ function atualizarSelecaoFolhas() {
     }
 }
 
-function sincronizarImpressaoPorLacre(inputLacre) {
-    if (!inputLacre) return;
-    var folha = inputLacre.closest('.folha-a4-oficio');
+function sincronizarImpressaoPorCamposCabecalho(inputCampo) {
+    if (!inputCampo) return;
+    var folha = inputCampo.closest('.folha-a4-oficio');
     if (!folha) return;
     var cb = folha.querySelector('.selecionar-folha');
     if (!cb) return;
-    var temValor = inputLacre.value.trim() !== '';
+    var campos = folha.querySelectorAll('.campo-cabecalho-pt');
+    var temValor = false;
+    for (var i = 0; i < campos.length; i++) {
+        if ((campos[i].value || '').trim() !== '') {
+            temValor = true;
+            break;
+        }
+    }
     cb.checked = temValor;
     atualizarSelecaoFolhas();
     atualizarFolhasSelecionadasInput();
@@ -2064,13 +2087,13 @@ document.addEventListener('DOMContentLoaded', function(){
     for (var i = 0; i < checks.length; i++) {
         checks[i].addEventListener('change', atualizarSelecaoFolhas);
     }
-    var lacres = document.querySelectorAll('input[name^="lacre_iipr["]');
+    var lacres = document.querySelectorAll('.campo-cabecalho-pt');
     for (var j = 0; j < lacres.length; j++) {
         lacres[j].addEventListener('input', function() {
-            sincronizarImpressaoPorLacre(this);
+            sincronizarImpressaoPorCamposCabecalho(this);
         });
         lacres[j].addEventListener('change', function() {
-            sincronizarImpressaoPorLacre(this);
+            sincronizarImpressaoPorCamposCabecalho(this);
         });
     }
     atualizarSelecaoFolhas();
@@ -2162,13 +2185,14 @@ if (document.readyState === 'loading') {
   <input type="hidden" name="imprimir_apos_salvar" id="imprimir_apos_salvar" value="0">
   <!-- v8.14.3: Modo do ofício (sobrescrever/novo) -->
   <input type="hidden" name="modo_oficio" id="modo_oficio_pt" value="">
+    <input type="hidden" name="pt_modo_visual" value="<?php echo e($modo_visual_pt); ?>">
     <!-- v9.22.2: Folhas selecionadas para gravar/imprimir -->
     <input type="hidden" name="folhas_selecionadas" id="folhas_selecionadas" value="">
         <input type="hidden" name="pt_dinamico_payload" value="<?php echo e(isset($_POST['pt_dinamico_payload']) ? $_POST['pt_dinamico_payload'] : (isset($_GET['pt_dinamico_payload']) ? $_GET['pt_dinamico_payload'] : '')); ?>">
 
   <div class="controles-pagina nao-imprimir">
         <a href="inicio.php" class="btn-voltar-inicio">← Inicio</a>
-    <h2>Modelo de Oficio - Poupatempo</h2>
+        <h2><?php echo $modo_visual_correios ? 'Modelo de Oficio - PT com Etiqueta Correios' : 'Modelo de Oficio - Poupatempo'; ?></h2>
     
     <?php if (!empty($mensagem_status)): ?>
     <div class="mensagem-status <?php echo ($tipo_mensagem === 'sucesso') ? 'mensagem-sucesso' : 'mensagem-erro'; ?>">
@@ -2176,8 +2200,8 @@ if (document.readyState === 'loading') {
     </div>
     <?php endif; ?>
     
-    <p>
-      Uma pagina por posto Poupatempo.
+        <p>
+            <?php echo $modo_visual_correios ? 'Uma pagina por posto Poupatempo com grade visual de lacres e etiqueta Correios.' : 'Uma pagina por posto Poupatempo.'; ?>
       <?php if ($id_despacho > 0): ?>
         Expedicao n. <b><?php echo (int)$id_despacho; ?></b>.
       <?php else: ?>
@@ -2187,6 +2211,13 @@ if (document.readyState === 'loading') {
       <?php endif; ?>
     </p>
 
+        <?php if ($modo_visual_correios): ?>
+        <div class="mensagem-status" style="background:#fff3cd;color:#856404;border-color:#ffeeba;">
+                Este modo PT com etiqueta Correios esta disponivel para preenchimento e impressao. A gravacao continua no fluxo PT legado em branco.
+        </div>
+        <?php endif; ?>
+
+        <?php if (!$modo_visual_correios): ?>
     <!-- Botão Gravar e Imprimir -->
     <button type="button" onclick="gravarEImprimir();" class="btn-sucesso btn-imprimir">
         💾🖨️ Gravar e Imprimir
@@ -2211,6 +2242,17 @@ if (document.readyState === 'loading') {
     <button type="button" onclick="removerConferenciaVisivelPT();" class="btn-excluir">
         ↺ Retirar Conferência da Tela
     </button>
+    <?php endif; ?>
+
+    <?php if ($modo_visual_correios): ?>
+    <button type="button" onclick="apenasImprimir();" class="btn-imprimir">
+        🖨️ Apenas Imprimir
+    </button>
+
+    <button type="button" onclick="imprimirSelecionados();" class="btn-imprimir">
+        ✅ Imprimir Selecionados
+    </button>
+    <?php endif; ?>
   </div>
 
 <?php if ($temDados): ?>
@@ -2243,6 +2285,8 @@ if (document.readyState === 'loading') {
         
         // Prioridade: dados salvos (do POST atual) > dados do banco > dados do SELECT original
         $valorLacre = isset($lacresPorPosto[$codigo3]) ? $lacresPorPosto[$codigo3] : '';
+        $valorLacreCorreiosPt = '';
+        $valorEtiquetaCorreiosPt = '';
         // v9.21.1: Adiciona número do posto ao nome (ex: "POUPA TEMPO 06 - PINHEIRINHO")
         $nomeComNumero = $modo_branco ? '' : ('POUPA TEMPO ' . $codigo3 . ' - ' . $nome);
         $valorNome = $modo_branco ? '' : (isset($nomesPorPosto[$codigo3]) ? $nomesPorPosto[$codigo3] : $nomeComNumero);
@@ -2294,14 +2338,18 @@ if (document.readyState === 'loading') {
       <!-- v9.21.1: Adiciona margem lateral para não encostar na borda -->
       <div class="cols100 processo border-1px" style="padding-left:10px; padding-right:10px;">
                 <div class="oficio-observacao">
-                    <table style="table-layout:fixed; width:100%; max-width:100%; margin:0;">
-            <tr>
-              <th style="width:55%; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Poupatempo</th>
-              <th style="width:22%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Quantidade de CIN's</th>
-              <th style="width:23%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Numero do Lacre</th>
-            </tr>
-            <tr>
-                            <td style="width:55%; text-align:left; padding:8px; border:1px solid #000;">
+                                        <table style="table-layout:fixed; width:100%; max-width:100%; margin:0;">
+                        <tr>
+                            <th style="width:<?php echo $modo_visual_correios ? '36%' : '55%'; ?>; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Poupatempo</th>
+                            <th style="width:<?php echo $modo_visual_correios ? '16%' : '22%'; ?>; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Quantidade de CIN's</th>
+                            <th style="width:<?php echo $modo_visual_correios ? '16%' : '23%'; ?>; text-align:right; padding:8px; border:1px solid #000; font-size:14px;"><?php echo $modo_visual_correios ? 'Lacre Poupa Tempo' : 'Numero do Lacre'; ?></th>
+                            <?php if ($modo_visual_correios): ?>
+                            <th style="width:16%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Lacre Correios Poupa Tempo</th>
+                            <th style="width:16%; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Etiqueta Correios</th>
+                            <?php endif; ?>
+                        </tr>
+                        <tr>
+                                                        <td style="width:<?php echo $modo_visual_correios ? '36%' : '55%'; ?>; text-align:left; padding:8px; border:1px solid #000;">
                                 <!-- v9.21.6: Nome pode quebrar em até 2 linhas -->
                                 <textarea name="nome_posto[<?php echo e($codigo3); ?>]"
                                                     class="input-editavel"
@@ -2327,10 +2375,28 @@ if (document.readyState === 'loading') {
                 <input type="text"
                     name="lacre_iipr[<?php echo e($codigo3); ?>]"
                     value="<?php echo e($valorLacre); ?>"
-                    class="input-editavel"
+                                        class="input-editavel campo-cabecalho-pt"
                     style="text-align:right; font-size:14px; border:none; background:transparent; width:100%;"
                 >
               </td>
+                            <?php if ($modo_visual_correios): ?>
+                            <td style="text-align:right; padding:8px; border:1px solid #000;">
+                                <input type="text"
+                                        name="lacre_correios_pt[<?php echo e($codigo3); ?>]"
+                                        value="<?php echo e($valorLacreCorreiosPt); ?>"
+                                        class="input-editavel campo-cabecalho-pt"
+                                        style="text-align:right; font-size:14px; border:none; background:transparent; width:100%;"
+                                >
+                            </td>
+                            <td style="text-align:left; padding:8px; border:1px solid #000;">
+                                <input type="text"
+                                        name="etiqueta_correios_pt[<?php echo e($codigo3); ?>]"
+                                        value="<?php echo e($valorEtiquetaCorreiosPt); ?>"
+                                        class="input-editavel campo-cabecalho-pt"
+                                        style="text-align:left; font-size:14px; border:none; background:transparent; width:100%;"
+                                >
+                            </td>
+                            <?php endif; ?>
             </tr>
           </table>
 
@@ -2340,7 +2406,7 @@ if (document.readyState === 'loading') {
                             <?php
                                 $folha_selecionada = !empty($folhas_selecionadas_render)
                                     ? in_array($folha_id, $folhas_selecionadas_render, true)
-                                    : (!empty($valorLacre));
+                                    : (!empty($valorLacre) || !empty($valorLacreCorreiosPt) || !empty($valorEtiquetaCorreiosPt));
                             ?>
                             <input type="checkbox" class="selecionar-folha" data-folha="<?php echo e($folha_id); ?>" <?php echo ($folha_selecionada ? 'checked' : ''); ?>>
                             Imprimir esta folha

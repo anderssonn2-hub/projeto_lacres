@@ -1,6 +1,12 @@
 <?php
-/* lacres_novo.php — v1.0.1
+/* lacres_novo.php — v1.0.2
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.2 (06/04/2026):
+ * - [CORRIGIDO] Remove uso de array_column para compatibilidade com PHP 5.3
+ * - [CORRIGIDO] json_encode agora sanitiza UTF-8 inválido antes de gerar payloads PT
+ * - [NOVO] Fluxo PT separado em dois botões: em branco e com etiqueta Correios
+ * - [NOVO] Versão consolidada para v1.0.2
  *
  * CHANGELOG v1.0.1 (06/04/2026):
  * - [CORRIGIDO] Linha inserida na grade dos Correios agora propaga a sequência de lacres dali para baixo sem alterar as linhas acima
@@ -515,6 +521,50 @@ $pdo_contrsos = criarPdoLegado("10.15.61.169", "contrsos", "controle_mat", "3752
 if (!isset($_SESSION)) session_start();
 if (!defined('JSON_UNESCAPED_UNICODE')) define('JSON_UNESCAPED_UNICODE', 0);
 if (!defined('JSON_UNESCAPED_SLASHES')) define('JSON_UNESCAPED_SLASHES', 0);
+
+function normalizarTextoUtf8JsonSeguro($valor) {
+    $valor = (string)$valor;
+    if ($valor === '' || preg_match('//u', $valor)) {
+        return $valor;
+    }
+    if (function_exists('iconv')) {
+        $tmp = @iconv('UTF-8', 'UTF-8//IGNORE', $valor);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('ISO-8859-1', 'UTF-8//IGNORE', $valor);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('Windows-1252', 'UTF-8//IGNORE', $valor);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+    }
+    if (function_exists('utf8_encode')) {
+        return @utf8_encode($valor);
+    }
+    return $valor;
+}
+
+function normalizarDadosUtf8JsonSeguro($valor) {
+    if (is_array($valor)) {
+        $normalizado = array();
+        foreach ($valor as $chave => $item) {
+            $chaveNormalizada = is_string($chave) ? normalizarTextoUtf8JsonSeguro($chave) : $chave;
+            $normalizado[$chaveNormalizada] = normalizarDadosUtf8JsonSeguro($item);
+        }
+        return $normalizado;
+    }
+    if (is_string($valor)) {
+        return normalizarTextoUtf8JsonSeguro($valor);
+    }
+    return $valor;
+}
+
+function json_encode_legado_seguro($valor, $opcoes) {
+    $normalizado = normalizarDadosUtf8JsonSeguro($valor);
+    $json = json_encode($normalizado, $opcoes);
+    if ($json === false) {
+        $json = json_encode(array(), $opcoes);
+    }
+    return $json;
+}
+
 if (!isset($_SESSION['etiquetas'])) $_SESSION['etiquetas'] = array();
 if (!isset($_SESSION['linhas_removidas'])) $_SESSION['linhas_removidas'] = array();
 if (!isset($_SESSION['lacres_personalizados'])) $_SESSION['lacres_personalizados'] = array();
@@ -1679,7 +1729,18 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         // 7) v8.3: Calcula total de postos distintos e total de lotes
         $totalPostosDistintos = 0;
         if (isset($lotes_processados_dados) && is_array($lotes_processados_dados)) {
-            $postosUnicos = array_unique(array_column($lotes_processados_dados, 'posto'));
+            $postosUnicos = array();
+            foreach ($lotes_processados_dados as $loteProcessadoInfo) {
+                if (!is_array($loteProcessadoInfo) || !isset($loteProcessadoInfo['posto'])) {
+                    continue;
+                }
+                $postoProcessado = trim((string)$loteProcessadoInfo['posto']);
+                if ($postoProcessado === '') {
+                    continue;
+                }
+                $postosUnicos[$postoProcessado] = true;
+            }
+            $postosUnicos = array_keys($postosUnicos);
             $totalPostosDistintos = count($postosUnicos);
         }
         $totalLotesGravados = $totalLotes;
@@ -5249,7 +5310,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.1</div>
+<div class="version-info">v1.0.2</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5628,10 +5689,10 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 <?php if (!empty($poupaTempoPayload)): ?>
         <?php
             // Garante JSON bem formado (com acentos)
-            $poupaTempoPayloadJson = json_encode($poupaTempoPayload, JSON_UNESCAPED_UNICODE);
+            $poupaTempoPayloadJson = json_encode_legado_seguro($poupaTempoPayload, JSON_UNESCAPED_UNICODE);
         ?>
-        <!-- Botão Ofício Poupatempo (form gerado fora do form principal para evitar forms aninhados) -->
-        <button type="button" class="btn btn-warning" onclick="abrirOficioPoupaTempo();">Ofício Poupatempo</button>
+        <!-- Botão PT com etiqueta Correios (form gerado fora do form principal para evitar forms aninhados) -->
+        <button type="button" class="btn btn-warning" id="btnGerarOficioPT" onclick="abrirOficioPoupaTempo();">Ofício PT com Etiqueta Correios</button>
         <div style="display:flex; gap:14px; align-items:center; margin-top:8px; flex-wrap:wrap;">
             <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
                 <input type="checkbox" id="ptFiltroNaoConferidos">
@@ -5644,7 +5705,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         </div>
         <script type="text/javascript">
         function abrirOficioPoupaTempo() {
-                var payload = <?php echo json_encode($poupaTempoPayload, JSON_UNESCAPED_UNICODE); ?>;
+            var payload = <?php echo $poupaTempoPayloadJson; ?>;
                 var form = document.createElement('form');
                 form.method = 'post';
                 form.action = 'modelo_oficio_poupa_tempo.php';
@@ -5657,13 +5718,18 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 var inputDatas = document.createElement('input');
                 inputDatas.type = 'hidden';
                 inputDatas.name = 'pt_datas';
-                inputDatas.value = <?php echo json_encode(implode(',', $datas_filtro), JSON_UNESCAPED_UNICODE); ?>;
+                inputDatas.value = <?php echo json_encode_legado_seguro(implode(',', $datas_filtro), JSON_UNESCAPED_UNICODE); ?>;
                 form.appendChild(inputDatas);
                 var inputPostos = document.createElement('input');
                 inputPostos.type = 'hidden';
                 inputPostos.name = 'pt_postos_sel';
                 inputPostos.value = coletarPostosSelecionadosPT();
                 form.appendChild(inputPostos);
+                var inputModoVisual = document.createElement('input');
+                inputModoVisual.type = 'hidden';
+                inputModoVisual.name = 'pt_modo_visual';
+                inputModoVisual.value = 'correios';
+                form.appendChild(inputModoVisual);
                 var inputNaoConf = document.createElement('input');
                 inputNaoConf.type = 'hidden';
                 inputNaoConf.name = 'pt_filtrar_nao_conferidos';
@@ -8686,7 +8752,7 @@ if (!$poupaTempoPayload && isset($dados) && is_array($dados)) {
 }
 
 // JSON que vai para o modelo_oficio_poupa_tempo.php
-$poupaTempoPayloadJson = json_encode($poupaTempoPayload ?: array());
+$poupaTempoPayloadJson = json_encode_legado_seguro($poupaTempoPayload ?: array(), 0);
 
 // Datas em string (as mesmas usadas na tela)
 $__pt_datas_join = htmlspecialchars(
@@ -8697,7 +8763,7 @@ $__pt_datas_join = htmlspecialchars(
 ?>
 
 <!-- ==================================================================
-     FORMULÁRIO OCULTO – Gera o ofício Poupatempo em nova aba
+         FORMULÁRIO OCULTO – Gera o ofício PT com etiqueta Correios em nova aba
      ================================================================== -->
 <form id="oficioPTForm" method="post" action="modelo_oficio_poupa_tempo.php" target="_blank" style="display:none;">
   <input type="hidden" name="acao" value="oficio_poupatempo" />
@@ -8705,6 +8771,7 @@ $__pt_datas_join = htmlspecialchars(
     <input type="hidden" name="pt_postos_sel" id="ptPostosSel" value="" />
     <input type="hidden" name="pt_filtrar_nao_conferidos" id="ptFiltroNaoConferidosInput" value="0" />
     <input type="hidden" name="pt_filtrar_sem_oficio" id="ptFiltroSemOficioInput" value="0" />
+        <input type="hidden" name="pt_modo_visual" id="ptModoVisualInput" value="correios" />
   <input type="hidden" name="<?php echo htmlspecialchars(session_name(),ENT_QUOTES,'UTF-8'); ?>"
          value="<?php echo htmlspecialchars(session_id(),ENT_QUOTES,'UTF-8'); ?>" />
   <textarea name="poupatempo_payload" style="display:none;"><?php
@@ -8738,34 +8805,39 @@ $__pt_datas_join = htmlspecialchars(
 })();
 
 (function(){
-  function norm(t){ return (t||'').toLowerCase().replace(/\s+/g,' ').trim(); }
-  function allBtns(){ return document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'); }
-  function findByText(list){
-    var n=allBtns();
-    for(var i=0;i<n.length;i++){
-      var t=norm(n[i].innerText||n[i].value);
-      for(var k=0;k<list.length;k++){ if(t.indexOf(list[k])>=0) return n[i]; }
+    function norm(t){ return (t||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+    function allBtns(){ return document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'); }
+    function findByText(list){
+        var n=allBtns();
+        for(var i=0;i<n.length;i++){
+            var t=norm(n[i].innerText||n[i].value);
+            for(var k=0;k<list.length;k++){ if(t.indexOf(list[k])>=0) return n[i]; }
+        }
+        return null;
     }
-    return null;
-  }
-  function addBtn(){
-    if (document.getElementById('btnOficioPT')) return;
-    var salvar=findByText(['salvar etiquetas','salvar etiqueta']);
-    var imprimir=findByText(['imprimir']);
-    var ref=salvar||imprimir;
-    var cont=(ref&&ref.parentElement)?ref.parentElement:document.body;
-    var btn=document.createElement('button');
-    btn.type='button'; btn.id='btnOficioPT';
-    btn.className=(ref?(ref.className+' btn-oficio-pt'):'btn-oficio-pt');
-    btn.innerHTML='<i class="icon-doc"></i> Gerar Ofício Poupa Tempo';
-    cont.appendChild(btn);
-        btn.addEventListener('click', function(){ var f=document.getElementById('oficioPTForm'); if(f){ if(window.prepararFiltrosOficioPT) window.prepararFiltrosOficioPT(); f.submit(); } });
-  }
-  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', addBtn); else addBtn();
-  new MutationObserver(function(){ if(!document.getElementById('btnOficioPT')) addBtn(); }).observe(document.documentElement,{childList:true,subtree:true});
+    function addBtn(){
+        if (document.getElementById('btnOficioPT') || document.getElementById('btnGerarOficioPT')) return;
+        var salvar=findByText(['salvar etiquetas','salvar etiqueta']);
+        var imprimir=findByText(['imprimir']);
+        var ref=salvar||imprimir;
+        var cont=(ref&&ref.parentElement)?ref.parentElement:document.body;
+        var btn=document.createElement('button');
+        btn.type='button'; btn.id='btnGerarOficioPT';
+        btn.className=(ref?(ref.className+' btn-oficio-pt'):'btn-oficio-pt');
+        btn.innerHTML='<i class="icon-doc"></i> Ofício PT com Etiqueta Correios';
+        cont.appendChild(btn);
+        btn.addEventListener('click', function(){
+            var f=document.getElementById('oficioPTForm');
+            if(f){
+                if(window.prepararFiltrosOficioPT) window.prepararFiltrosOficioPT();
+                f.submit();
+            }
+        });
+    }
+    if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', addBtn); else addBtn();
+    new MutationObserver(function(){ if(!document.getElementById('btnGerarOficioPT')) addBtn(); }).observe(document.documentElement,{childList:true,subtree:true});
 })();
 </script>
-
 <!-- SPLIT CENTRAL IIPR - helper rename -->
 <script>(function(){var t=document.getElementById('tabela-central-iipr');if(t){t.id='tblCentralIIPR';}})();</script>
 
@@ -8802,14 +8874,11 @@ $__pt_datas_join = htmlspecialchars(
 (function(){
   function ensureCentralId(){
     var t = document.getElementById('tblCentralIIPR');
-    if (t) return t;
-    
-    // Tentar encontrar pelo id da tabela gerada
     var tblCentral = document.getElementById('tabela-central-iipr');
     if (tblCentral) {
       tblCentral.id = 'tblCentralIIPR';
       return tblCentral;
-    }
+        }
     
     // Fallback: buscar por cabecalho
     var headers = document.querySelectorAll('h1,h2,h3,h4,legend,div,section,span');
@@ -9289,7 +9358,7 @@ try {
 (function(){
   try {
     if (!window.ENDERECOS_PTP) {
-      window.ENDERECOS_PTP = <?php echo json_encode($__COSEP_enderecosPoupa, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
+            window.ENDERECOS_PTP = <?php echo json_encode_legado_seguro($__COSEP_enderecosPoupa, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); ?>;
     }
   } catch (e) {}
 
@@ -9333,18 +9402,18 @@ try {
 
   function norm(t){return (t||'').toLowerCase().replace(/\s+/g,' ').trim();}
 
-  // 1) Tenta achar o botão "âncora" (o Gerar Ofício Poupa Tempo)
+    // 1) Tenta achar o botão "âncora" do modo PT com etiqueta Correios
   function acharReferencia(){
     // tente por id (se você colocou id no botão manualmente)
     var byId = document.getElementById('btnGerarOficioPT');
     if (byId) return byId;
 
     // fallback por texto visível
-    var labels = ['Gerar Ofício Poupa Tempo','Gerar Oficio Poupa Tempo'];
+        var labels = ['Ofício PT com Etiqueta Correios','Oficio PT com Etiqueta Correios'];
     var nodes = document.querySelectorAll('a,button');
     for (var i=0;i<nodes.length;i++){
       if (labels.indexOf(nodes[i].textContent.trim()) >= 0) return nodes[i];
-      if (norm(nodes[i].textContent) === norm('Gerar Ofício Poupa Tempo')) return nodes[i];
+            if (norm(nodes[i].textContent) === norm('Ofício PT com Etiqueta Correios')) return nodes[i];
     }
     return null;
   }
@@ -9356,11 +9425,11 @@ try {
     return;
   }
 
-  // 2) Cria o novo botão com o MESMO estilo do "Gerar Ofício Poupa Tempo"
+    // 2) Cria o botão do modo PT em branco com o mesmo estilo do botão de referência
   var btn = document.createElement('button');
   btn.type = 'button';
-  btn.id = 'btnSalvarOficioPT';
-  btn.textContent = 'Salvar Ofício (PT)';
+    btn.id = 'btnOficioPTBranco';
+    btn.textContent = 'Ofício Poupa Tempo em Branco';
   btn.className = ref.className || '';        // copia estilo
   btn.style.marginLeft = '8px';               // pequeno espaçamento
   btn.style.textDecoration = 'none';          // tira sublinhado, se herdar <a>
@@ -9430,7 +9499,7 @@ try {
     return v;
   }
 
-    // 5) Ao clicar, abre modelo em branco (sem nome/qtd/lacre)
+    // 5) Ao clicar, abre o modelo PT em branco (legado)
     btn.onclick = function(){
         var datas = coletarDatas();
         var f = document.createElement('form');
@@ -9440,6 +9509,7 @@ try {
 
         var a = document.createElement('input'); a.type='hidden'; a.name='pt_blank'; a.value='1'; f.appendChild(a);
         var b = document.createElement('input'); b.type='hidden'; b.name='pt_datas'; b.value=datas.join(','); f.appendChild(b);
+        var c = document.createElement('input'); c.type='hidden'; c.name='pt_modo_visual'; c.value='branco'; f.appendChild(c);
         document.body.appendChild(f);
         f.submit();
         document.body.removeChild(f);
