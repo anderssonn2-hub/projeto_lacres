@@ -8,7 +8,7 @@ if ($controle_canal === '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Lacres/Displays remotos v1.0.0</title>
+    <title>Lacres/Displays remotos v1.0.1</title>
     <style>
         :root {
             --bg: #f4f7fb;

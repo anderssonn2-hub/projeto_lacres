@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — v1.0.0
+/* lacres_novo.php — v1.0.1
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.1 (06/04/2026):
+ * - [CORRIGIDO] Linha inserida na grade dos Correios agora propaga a sequência de lacres dali para baixo sem alterar as linhas acima
+ * - [CORRIGIDO] Fluxo Correios exibe erro textual no salvamento quando ocorrer exceção, evitando tela branca silenciosa
+ * - [NOVO] Versão consolidada para v1.0.1
  *
  * CHANGELOG v1.0.0 (02/04/2026):
  * - [VERSAO] Marco de publicação consolidado em v1.0.0
@@ -1778,6 +1783,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         if ($pdo_controle->inTransaction()) {
             $pdo_controle->rollBack();
         }
+        echo "<pre>Erro ao salvar oficio Correios: " . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . "</pre>";
         echo "<script>alert('Erro ao salvar oficio Correios: " . addslashes($e->getMessage()) . "');</script>";
     }
 }
@@ -2558,7 +2564,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'tipo' => $grupo,
                 'quantidade' => 1,
                 'referencia' => $referencia_posto,
-                'posicao' => $posicao
+                'posicao' => $posicao,
+                'manual_inserido' => 1
             );
             
             // Registrar lacres personalizados
@@ -3138,7 +3145,8 @@ if (!empty($_SESSION['postos_manuais'])) {
                 'tipo' => $posto['tipo'],
                 'quantidade' => isset($posto['quantidade']) ? $posto['quantidade'] : 1,
                 'referencia' => $posto['referencia'],
-                'posicao' => $posto['posicao']
+                'posicao' => $posto['posicao'],
+                'manual_inserido' => !empty($posto['manual_inserido']) ? 1 : 0
             );
             continue;
         }
@@ -3304,7 +3312,10 @@ if (!empty($postos_manuais_inserir)) {
                 'posto_codigo' => $novoPosto['posto_codigo'],
                 'posto_nome' => $novoPosto['posto_nome'],
                 'tipo' => $novoPosto['tipo'],
-                'quantidade' => $novoPosto['quantidade']
+                'quantidade' => $novoPosto['quantidade'],
+                'manual_inserido' => !empty($novoPosto['manual_inserido']) ? 1 : 0,
+                'referencia' => $referencia,
+                'posicao' => $posicao
             );
 
             array_splice($dados[$grupoRef], $insertPos, 0, array($entry));
@@ -5238,7 +5249,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.0</div>
+<div class="version-info">v1.0.1</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5744,7 +5755,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         </thead>
         <tbody>
             <?php foreach ($itens as $key => $dado): ?>
-            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
+            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-linha-inserida="<?php echo !empty($dado['manual_inserido']) ? '1' : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
                     <label style="margin-right:6px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
@@ -7289,6 +7300,122 @@ function preencherLacresParaPostoManual(event) {
     }
 }
 
+function obterPassoSequenciaGrupo(grupo) {
+    return grupo === 'CENTRAL IIPR' ? 1 : 2;
+}
+
+function propagarSequenciaLinhaInserida(linhaOrigem, tipoOrigem) {
+    if (!linhaOrigem || linhaOrigem.getAttribute('data-linha-inserida') !== '1') {
+        return;
+    }
+
+    var corpo = linhaOrigem.parentNode;
+    if (!corpo) {
+        return;
+    }
+
+    var grupo = String(linhaOrigem.getAttribute('data-grupo') || '');
+    var linhas = corpo.querySelectorAll('tr[data-posto-codigo]');
+    if (!linhas || !linhas.length) {
+        return;
+    }
+
+    var indiceOrigem = -1;
+    for (var i = 0; i < linhas.length; i++) {
+        if (linhas[i] === linhaOrigem) {
+            indiceOrigem = i;
+            break;
+        }
+    }
+    if (indiceOrigem < 0) {
+        return;
+    }
+
+    var inputIiprOrigem = linhaOrigem.querySelector('input[data-tipo="iipr"]');
+    var inputCorreiosOrigem = linhaOrigem.querySelector('input[data-tipo="correios"]');
+    if (!inputIiprOrigem && !inputCorreiosOrigem) {
+        return;
+    }
+
+    var valorIipr = inputIiprOrigem ? parseInt(String(inputIiprOrigem.value || '').replace(/\D+/g, ''), 10) : NaN;
+    var valorCorreios = inputCorreiosOrigem ? parseInt(String(inputCorreiosOrigem.value || '').replace(/\D+/g, ''), 10) : NaN;
+
+    if (tipoOrigem === 'correios' && isNaN(valorIipr) && !isNaN(valorCorreios)) {
+        valorIipr = valorCorreios - 1;
+        if (inputIiprOrigem && !isNaN(valorIipr) && valorIipr >= 0) {
+            inputIiprOrigem.value = String(valorIipr);
+        }
+    }
+
+    if (isNaN(valorIipr)) {
+        return;
+    }
+
+    if (inputCorreiosOrigem) {
+        valorCorreios = valorIipr + 1;
+        inputCorreiosOrigem.value = String(valorCorreios);
+    }
+
+    var passo = obterPassoSequenciaGrupo(grupo);
+    var proximoIipr = valorIipr + passo;
+    var proximoCorreios = valorIipr + 1 + passo;
+
+    for (var j = indiceOrigem + 1; j < linhas.length; j++) {
+        var linha = linhas[j];
+        if (!linha || (linha.style && linha.style.display === 'none')) {
+            continue;
+        }
+
+        var inputIipr = linha.querySelector('input[data-tipo="iipr"]');
+        var inputCorreios = linha.querySelector('input[data-tipo="correios"]');
+        if (inputIipr) {
+            inputIipr.value = String(proximoIipr);
+        }
+        if (inputCorreios) {
+            inputCorreios.value = String(proximoCorreios);
+        }
+
+        proximoIipr += passo;
+        proximoCorreios += passo;
+    }
+
+    try {
+        salvarEstadoEtiquetasCorreios();
+    } catch (e) {
+    }
+    marcarComoNaoSalvo();
+}
+
+function vincularSequenciaLinhaInserida() {
+    var linhasInseridas = document.querySelectorAll('tr[data-linha-inserida="1"]');
+    for (var i = 0; i < linhasInseridas.length; i++) {
+        (function(linha) {
+            var inputIipr = linha.querySelector('input[data-tipo="iipr"]');
+            var inputCorreios = linha.querySelector('input[data-tipo="correios"]');
+
+            if (inputIipr && !inputIipr.getAttribute('data-sequencia-vinculada')) {
+                inputIipr.setAttribute('data-sequencia-vinculada', '1');
+                inputIipr.addEventListener('input', function() {
+                    propagarSequenciaLinhaInserida(linha, 'iipr');
+                });
+                inputIipr.addEventListener('change', function() {
+                    propagarSequenciaLinhaInserida(linha, 'iipr');
+                });
+            }
+
+            if (inputCorreios && !inputCorreios.getAttribute('data-sequencia-vinculada')) {
+                inputCorreios.setAttribute('data-sequencia-vinculada', '1');
+                inputCorreios.addEventListener('input', function() {
+                    propagarSequenciaLinhaInserida(linha, 'correios');
+                });
+                inputCorreios.addEventListener('change', function() {
+                    propagarSequenciaLinhaInserida(linha, 'correios');
+                });
+            }
+        })(linhasInseridas[i]);
+    }
+}
+
 // Inicializar monitoramento de alteracoes nos inputs
 function inicializarMonitoramentoAlteracoes() {
     // v8.11.1: Injetar estilos de destaque para splits (se ainda nao existe)
@@ -7480,6 +7607,10 @@ function inicializarMonitoramentoAlteracoes() {
     try {
         configurarAtribuicaoPlanilhaLacres();
     } catch (ePlanilha) { /* ignore */ }
+
+    try {
+        vincularSequenciaLinhaInserida();
+    } catch (eSequencia) { /* ignore */ }
     
     // VERSAO 3: Iniciar SEM pulsacao (so pulsa quando ha mudanca)
     // Pagina recarrega apos salvar, entao comeca sempre sem pulsacao

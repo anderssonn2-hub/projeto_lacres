@@ -1,5 +1,9 @@
 <?php
-/* conferencia_pacotes.php — v1.0.0
+/* conferencia_pacotes.php — v1.0.1
+ * CHANGELOG v1.0.1:
+ * - [NOVO] Pacote de outra regional agora oferece confirmação para migrar a conferência ao novo contexto
+ * - [AJUSTE] Tela e snapshot exibem a versao v1.0.1
+ *
  * CHANGELOG v1.0.0:
  * - [AJUSTE] Versao consolidada para v1.0.0
  * - [AJUSTE] Tela e snapshot exibem a versao v1.0.0
@@ -1514,7 +1518,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v1.0.0</title>
+    <title>Conferência de Pacotes v1.0.1</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2773,10 +2777,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v1.0.0</div>
+    <div class="versao">v1.0.1</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v1.0.0</h2>
+<h2>📋 Conferência de Pacotes v1.0.1</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -3861,6 +3865,36 @@ function iniciarConferenciaPacotes() {
         btnConfirmacaoOk.addEventListener('click', function() {
             if (overlayConfirmacao) overlayConfirmacao.style.display = 'none';
         });
+    }
+
+    function descreverContextoCorreios(regionalNorm, postoCodigo) {
+        var partes = [];
+        if (regionalNorm) {
+            partes.push('regional ' + regionalNorm);
+        }
+        if (contextoCorreiosExigeMesmoPosto(regionalNorm) && postoCodigo) {
+            partes.push('posto ' + postoCodigo);
+        }
+        return partes.length ? partes.join(' / ') : 'novo contexto';
+    }
+
+    function confirmarMigracaoConferenciaCorreios(linha, regionalNorm, postoCodigo, valorLido) {
+        var descricao = descreverContextoCorreios(regionalNorm, postoCodigo);
+        var mensagem = 'Pacote de outra regional identificado (' + descricao + ').\n\nDeseja mudar a conferência para este contexto?';
+        if (!window.confirm(mensagem)) {
+            return false;
+        }
+
+        tipoAtual = 'correios';
+        regionalAtual = regionalNorm || obterRegionalLinha(linha);
+        postoAtual = contextoCorreiosExigeMesmoPosto(regionalAtual) ? postoCodigo : null;
+        primeiroConferido = true;
+
+        if (mensagemLeitura) {
+            mensagemLeitura.innerHTML = '<strong>Contexto alterado:</strong> conferência movida para ' + descricao + '.';
+        }
+        registrarHistoricoLeitura('Contexto alterado', 'Conferência movida manualmente para ' + descricao + '.', valorLido || '');
+        return true;
     }
 
     if (btnFecharModalChip) {
@@ -7033,6 +7067,15 @@ function iniciarConferenciaPacotes() {
             if (somAlerta) {
                 enfileirarSom(somAlerta);
             }
+            if (somAlerta === pacoteOutraRegional && tipoPacote === 'correios') {
+                if (confirmarMigracaoConferenciaCorreios(linha, regionalDoPacoteNorm || regionalDoPacote, postoDoPacote, valor)) {
+                    podeConferir = true;
+                    somAlerta = null;
+                }
+            }
+        }
+
+        if (!podeConferir) {
             registrarHistoricoLeitura('Leitura bloqueada', 'O pacote pertence a outro contexto de conferência.', valor);
             finalizarProcessamento(true);
             return;

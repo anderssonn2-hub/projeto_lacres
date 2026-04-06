@@ -7,8 +7,27 @@ define('DB_NAME', 'controle');
 define('DB_USER', 'controle_mat');
 define('DB_PASS', '375256');
 
+function normalizarTextoUtf8Seguro($s) {
+    $s = (string)$s;
+    if ($s === '' || preg_match('//u', $s)) {
+        return $s;
+    }
+    if (function_exists('iconv')) {
+        $tmp = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('ISO-8859-1', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('Windows-1252', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+    }
+    if (function_exists('utf8_encode')) {
+        return @utf8_encode($s);
+    }
+    return $s;
+}
+
 function e($s) {
-    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars(normalizarTextoUtf8Seguro($s), ENT_QUOTES, 'UTF-8');
 }
 
 function formatarDataBr($data) {
@@ -117,7 +136,7 @@ if ($dbOk) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devolucao de Etiquetas v0.9.25.0 - Projeto Lacres</title>
+    <title>Devolucao de Etiquetas v1.0.1 - Projeto Lacres</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -290,7 +309,7 @@ if ($dbOk) {
 <body>
     <div class="card">
         <a class="home-link" href="inicio.php" title="Voltar ao inicio">⌂</a>
-        <h1>Devolucao de etiquetas (Correios) v0.9.25.0</h1>
+        <h1>Devolucao de etiquetas (Correios) v1.0.1</h1>
         <div class="sub">Leia a etiqueta de envio ou recebimento. O posto sera identificado automaticamente pelo cadastro do malote.</div>
 
         <div class="painel">

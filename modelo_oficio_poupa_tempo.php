@@ -1,5 +1,9 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
+    v1.0.1: Compatibilidade PHP legado + sanitização UTF-8
+    - [CORRIGIDO] htmlspecialchars agora normaliza texto inválido antes de renderizar
+    - [CORRIGIDO] Título do documento usa helper seguro para evitar warning em bytes inválidos
+
     v9.25.8: Persistência da conferência PT em conferencia_pacotes
     - [NOVO] Lote conferido na tela salva conf='s' em conferencia_pacotes
     - [NOVO] Reabertura com filtro mantém lotes já conferidos em verde
@@ -200,8 +204,27 @@ if (!isset($_SESSION)) {
     session_start();
 }
 
+function normalizarTextoUtf8Seguro($s){
+    $s = (string)$s;
+    if ($s === '' || preg_match('//u', $s)) {
+        return $s;
+    }
+    if (function_exists('iconv')) {
+        $tmp = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('ISO-8859-1', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('Windows-1252', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+    }
+    if (function_exists('utf8_encode')) {
+        return @utf8_encode($s);
+    }
+    return $s;
+}
+
 function e($s){
-    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars(normalizarTextoUtf8Seguro($s), ENT_QUOTES, 'UTF-8');
 }
 
 function normalizarDataPtSql($valor) {
@@ -1233,7 +1256,7 @@ if (isset($id_despacho_post) && $id_despacho_post > 0) {
     $titulo_pdf = $id_despacho_post . '_poupatempo_' . $data_titulo;
 }
 ?>
-<title><?php echo htmlspecialchars($titulo_pdf, ENT_QUOTES, 'UTF-8'); ?></title>
+<title><?php echo e($titulo_pdf); ?></title>
 <style>
 /* ====== v8.15.3: Layout melhorado - baseado em modelo antigo ====== */
 /* v9.24.x: Layout mais enxuto para evitar sobreposicao entre paginas */

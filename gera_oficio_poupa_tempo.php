@@ -1,17 +1,38 @@
 <?php
-/* gera_oficio_poupa_tempo.php — v1.0
+/* gera_oficio_poupa_tempo.php — v1.0.1
  * Fluxo direto: escolher datas, selecionar postos e abrir o modelo de oficio.
  */
 
 error_reporting(E_ALL & ~E_NOTICE);
 header('Content-Type: text/html; charset=utf-8');
 
+if (!defined('JSON_UNESCAPED_UNICODE')) define('JSON_UNESCAPED_UNICODE', 0);
+
 if (!isset($_SESSION)) {
     session_start();
 }
 
+function normalizarTextoUtf8Seguro($s) {
+    $s = (string)$s;
+    if ($s === '' || preg_match('//u', $s)) {
+        return $s;
+    }
+    if (function_exists('iconv')) {
+        $tmp = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('ISO-8859-1', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+        $tmp = @iconv('Windows-1252', 'UTF-8//IGNORE', $s);
+        if ($tmp !== false && $tmp !== '') return $tmp;
+    }
+    if (function_exists('utf8_encode')) {
+        return @utf8_encode($s);
+    }
+    return $s;
+}
+
 function e($s) {
-    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars(normalizarTextoUtf8Seguro($s), ENT_QUOTES, 'UTF-8');
 }
 
 $pdo_controle = null;
