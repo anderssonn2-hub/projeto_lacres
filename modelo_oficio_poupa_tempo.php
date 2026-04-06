@@ -1189,9 +1189,29 @@ $temDados = count($paginas) > 0;
 $grupo_oficio   = 'POUPA TEMPO';
 $id_despacho    = isset($_POST['id_despacho']) ? (int)$_POST['id_despacho'] : 0;
 $lacresPorPosto = array();
+$lacresCorreiosPtPorPosto = array();
+$etiquetasCorreiosPtPorPosto = array();
 $nomesPorPosto = array();
 $enderecosPorPosto = array();
 $quantidadesPorPosto = array();
+
+if (isset($_POST['lacre_correios_pt']) && is_array($_POST['lacre_correios_pt'])) {
+    foreach ($_POST['lacre_correios_pt'] as $postoLcPt => $valorLcPt) {
+        $postoLcPt = str_pad(preg_replace('/\D+/', '', (string)$postoLcPt), 3, '0', STR_PAD_LEFT);
+        if ($postoLcPt !== '000') {
+            $lacresCorreiosPtPorPosto[$postoLcPt] = trim((string)$valorLcPt);
+        }
+    }
+}
+
+if (isset($_POST['etiqueta_correios_pt']) && is_array($_POST['etiqueta_correios_pt'])) {
+    foreach ($_POST['etiqueta_correios_pt'] as $postoEtPt => $valorEtPt) {
+        $postoEtPt = str_pad(preg_replace('/\D+/', '', (string)$postoEtPt), 3, '0', STR_PAD_LEFT);
+        if ($postoEtPt !== '000') {
+            $etiquetasCorreiosPtPorPosto[$postoEtPt] = trim((string)$valorEtPt);
+        }
+    }
+}
 
 if ($pdo_controle && !empty($datasStr)) {
     // Mesmo hash usado no salvar_oficio_pt em lacres_novo.php
@@ -1459,6 +1479,15 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .lotes-detalhe-1col th,
 .lotes-detalhe-1col td{padding:4px 6px; font-size:10px; line-height:1.1}
 .lotes-detalhe-1col tbody tr{height:18px}
+
+.folha-mestre-pt-correios .titulo-mestre{margin:10px 0 4px 0; font-size:20px; font-weight:bold; text-align:center}
+.folha-mestre-pt-correios .subtitulo-mestre{margin:0 0 14px 0; font-size:12px; text-align:center}
+.folha-mestre-pt-correios .resumo-datas{margin:0 0 12px 0; font-size:12px; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt th,
+.folha-mestre-pt-correios .tabela-mestre-pt td{font-size:12px; padding:8px 6px !important; vertical-align:middle}
+.folha-mestre-pt-correios .tabela-mestre-pt input,
+.folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:2px 4px}
+.folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:42px; line-height:1.2}
 
 @media print{
     body{background:#fff;margin:0;padding:0}
@@ -2201,7 +2230,7 @@ if (document.readyState === 'loading') {
     <?php endif; ?>
     
         <p>
-            <?php echo $modo_visual_correios ? 'Uma pagina por posto Poupatempo com grade visual de lacres e etiqueta Correios.' : 'Uma pagina por posto Poupatempo.'; ?>
+            <?php echo $modo_visual_correios ? 'Gera uma folha mestre externa com lacres e etiqueta Correios, seguida das folhas internas por posto.' : 'Uma pagina por posto Poupatempo.'; ?>
       <?php if ($id_despacho > 0): ?>
         Expedicao n. <b><?php echo (int)$id_despacho; ?></b>.
       <?php else: ?>
@@ -2213,7 +2242,7 @@ if (document.readyState === 'loading') {
 
         <?php if ($modo_visual_correios): ?>
         <div class="mensagem-status" style="background:#fff3cd;color:#856404;border-color:#ffeeba;">
-                Este modo PT com etiqueta Correios esta disponivel para preenchimento e impressao. A gravacao continua no fluxo PT legado em branco.
+            Este modo gera a folha mestre externa para expedicao via Correios e mantem as folhas internas por posto sem coluna de lacre.
         </div>
         <?php endif; ?>
 
@@ -2256,6 +2285,100 @@ if (document.readyState === 'loading') {
   </div>
 
 <?php if ($temDados): ?>
+    <?php if ($modo_visual_correios && !$modo_branco): ?>
+        <div class="folha-a4-oficio folha-mestre-pt-correios folha-selecionada" data-folha-id="resumo_pt_correios">
+            <div class="oficio">
+                <div class="cols100 border-1px">
+                    <div class="cols25 fleft margin2px">
+                        <img alt="Logotipo" style="margin-left:10px;margin-top:10px;padding-right:15px;float:left" src="logo_celepar.png" width="250" height="55">
+                    </div>
+                    <div class="cols65 fright center margin2px">
+                        <h3><i>COSEP <br> Coordenacao De Servicos De Producao</i></h3>
+                        <h3><b><br> Comprovante Externo de Entrega </b></h3>
+                    </div>
+                </div>
+
+                <div class="cols100 center border-1px p5 moldura cabecalho-pt">
+                    <div class="titulo-mestre">POUPATEMPO PARANA COM ETIQUETA CORREIOS</div>
+                    <div class="subtitulo-mestre">Folha mestre externa para expedicao dos postos selecionados</div>
+                    <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNorm)); ?></div>
+                </div>
+
+                <div class="cols100 processo border-1px" style="padding-left:10px; padding-right:10px;">
+                    <div class="oficio-observacao">
+                        <div class="nao-imprimir" style="margin:8px 0;">
+                            <label style="font-size:12px; font-weight:bold;">
+                                <input type="checkbox" class="selecionar-folha" data-folha="resumo_pt_correios" checked>
+                                Imprimir esta folha
+                            </label>
+                        </div>
+
+                        <table class="tabela-mestre-pt" style="table-layout:fixed; width:100%; max-width:100%; margin:0 0 12px 0;">
+                            <thead>
+                                <tr>
+                                    <th style="width:34%; text-align:left;">Nome do posto</th>
+                                    <th style="width:14%; text-align:center;">Lacre Poupa Tempo</th>
+                                    <th style="width:18%; text-align:center;">Lacre Correios Poupa Tempo</th>
+                                    <th style="width:34%; text-align:left;">Etiqueta Correios (35 posicoes)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach ($paginas as $resumoP): ?>
+                                <?php
+                                        $codigoResumo = str_pad((string)$resumoP['codigo'], 3, '0', STR_PAD_LEFT);
+                                        $nomeResumoBase = !empty($nomesPorPosto[$codigoResumo]) ? $nomesPorPosto[$codigoResumo] : ('POUPA TEMPO ' . $codigoResumo . ' - ' . (isset($resumoP['nome']) ? $resumoP['nome'] : ''));
+                                        $valorLacreResumo = isset($lacresPorPosto[$codigoResumo]) ? $lacresPorPosto[$codigoResumo] : '';
+                                        $valorLacreCorreiosResumo = isset($lacresCorreiosPtPorPosto[$codigoResumo]) ? $lacresCorreiosPtPorPosto[$codigoResumo] : '';
+                                        $valorEtiquetaCorreiosResumo = isset($etiquetasCorreiosPtPorPosto[$codigoResumo]) ? $etiquetasCorreiosPtPorPosto[$codigoResumo] : '';
+                                ?>
+                                <tr>
+                                    <td style="text-align:left;">
+                                        <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel" rows="2"><?php echo e($nomeResumoBase); ?></textarea>
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <input type="text" name="lacre_iipr[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreResumo); ?>" class="input-editavel" style="text-align:center;">
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
+                                    </td>
+                                    <td style="text-align:left;">
+                                        <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;">
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+
+                        <div class="espacador-rodape"></div>
+                    </div>
+                </div>
+
+                <div class="cols100 border-1px rodape-oficio" style="padding:8px 15px;">
+                    <div style="display:flex; justify-content:space-between; gap:15px;">
+                        <div style="flex:1; border-right:1px solid #000; padding-right:12px;">
+                            <div style="text-align:center; margin-bottom:40px;">
+                                <strong>Produzido por:</strong>
+                            </div>
+                            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+                                <div style="margin-bottom:3px;">______________________________</div>
+                                <div style="font-size:12px;"><strong>CELEPAR - Data:</strong> <?php echo date('d-m-Y'); ?></div>
+                            </div>
+                        </div>
+                        <div style="flex:1; padding-left:12px;">
+                            <div style="text-align:center; margin-bottom:40px;">
+                                <strong>Recebido por:</strong>
+                            </div>
+                            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
+                                <div style="margin-bottom:3px;">______________________________</div>
+                                <div style="font-size:12px;"><strong>Correios - Data:</strong> <?php echo date('d-m-Y'); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
+
   <?php foreach ($paginas as $idx => $p): 
         $codigo   = $p['codigo'];                     
         $nome     = $p['nome'] ? $p['nome'] : "POUPA TEMPO";
@@ -2285,8 +2408,8 @@ if (document.readyState === 'loading') {
         
         // Prioridade: dados salvos (do POST atual) > dados do banco > dados do SELECT original
         $valorLacre = isset($lacresPorPosto[$codigo3]) ? $lacresPorPosto[$codigo3] : '';
-        $valorLacreCorreiosPt = '';
-        $valorEtiquetaCorreiosPt = '';
+        $valorLacreCorreiosPt = isset($lacresCorreiosPtPorPosto[$codigo3]) ? $lacresCorreiosPtPorPosto[$codigo3] : '';
+        $valorEtiquetaCorreiosPt = isset($etiquetasCorreiosPtPorPosto[$codigo3]) ? $etiquetasCorreiosPtPorPosto[$codigo3] : '';
         // v9.21.1: Adiciona número do posto ao nome (ex: "POUPA TEMPO 06 - PINHEIRINHO")
         $nomeComNumero = $modo_branco ? '' : ('POUPA TEMPO ' . $codigo3 . ' - ' . $nome);
         $valorNome = $modo_branco ? '' : (isset($nomesPorPosto[$codigo3]) ? $nomesPorPosto[$codigo3] : $nomeComNumero);
@@ -2340,16 +2463,14 @@ if (document.readyState === 'loading') {
                 <div class="oficio-observacao">
                                         <table style="table-layout:fixed; width:100%; max-width:100%; margin:0;">
                         <tr>
-                            <th style="width:<?php echo $modo_visual_correios ? '36%' : '55%'; ?>; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Poupatempo</th>
-                            <th style="width:<?php echo $modo_visual_correios ? '16%' : '22%'; ?>; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Quantidade de CIN's</th>
-                            <th style="width:<?php echo $modo_visual_correios ? '16%' : '23%'; ?>; text-align:right; padding:8px; border:1px solid #000; font-size:14px;"><?php echo $modo_visual_correios ? 'Lacre Poupa Tempo' : 'Numero do Lacre'; ?></th>
-                            <?php if ($modo_visual_correios): ?>
-                            <th style="width:16%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Lacre Correios Poupa Tempo</th>
-                            <th style="width:16%; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Etiqueta Correios</th>
+                            <th style="width:<?php echo $modo_visual_correios ? '78%' : '55%'; ?>; text-align:left; padding:8px; border:1px solid #000; font-size:14px;">Poupatempo</th>
+                            <th style="width:<?php echo $modo_visual_correios ? '22%' : '22%'; ?>; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Quantidade de CIN's</th>
+                            <?php if (!$modo_visual_correios): ?>
+                            <th style="width:23%; text-align:right; padding:8px; border:1px solid #000; font-size:14px;">Numero do Lacre</th>
                             <?php endif; ?>
                         </tr>
                         <tr>
-                                                        <td style="width:<?php echo $modo_visual_correios ? '36%' : '55%'; ?>; text-align:left; padding:8px; border:1px solid #000;">
+                                                        <td style="width:<?php echo $modo_visual_correios ? '78%' : '55%'; ?>; text-align:left; padding:8px; border:1px solid #000;">
                                 <!-- v9.21.6: Nome pode quebrar em até 2 linhas -->
                                 <textarea name="nome_posto[<?php echo e($codigo3); ?>]"
                                                     class="input-editavel"
@@ -2370,8 +2491,9 @@ if (document.readyState === 'loading') {
                                     </span>
                                 <?php endif; ?>
                             </td>
-              <!-- Número do lacre -->
-              <td style="text-align:right; padding:8px; border:1px solid #000;">
+                            <?php if (!$modo_visual_correios): ?>
+                            <!-- Número do lacre -->
+                            <td style="text-align:right; padding:8px; border:1px solid #000;">
                 <input type="text"
                     name="lacre_iipr[<?php echo e($codigo3); ?>]"
                     value="<?php echo e($valorLacre); ?>"
@@ -2379,23 +2501,6 @@ if (document.readyState === 'loading') {
                     style="text-align:right; font-size:14px; border:none; background:transparent; width:100%;"
                 >
               </td>
-                            <?php if ($modo_visual_correios): ?>
-                            <td style="text-align:right; padding:8px; border:1px solid #000;">
-                                <input type="text"
-                                        name="lacre_correios_pt[<?php echo e($codigo3); ?>]"
-                                        value="<?php echo e($valorLacreCorreiosPt); ?>"
-                                        class="input-editavel campo-cabecalho-pt"
-                                        style="text-align:right; font-size:14px; border:none; background:transparent; width:100%;"
-                                >
-                            </td>
-                            <td style="text-align:left; padding:8px; border:1px solid #000;">
-                                <input type="text"
-                                        name="etiqueta_correios_pt[<?php echo e($codigo3); ?>]"
-                                        value="<?php echo e($valorEtiquetaCorreiosPt); ?>"
-                                        class="input-editavel campo-cabecalho-pt"
-                                        style="text-align:left; font-size:14px; border:none; background:transparent; width:100%;"
-                                >
-                            </td>
                             <?php endif; ?>
             </tr>
           </table>
@@ -2406,7 +2511,7 @@ if (document.readyState === 'loading') {
                             <?php
                                 $folha_selecionada = !empty($folhas_selecionadas_render)
                                     ? in_array($folha_id, $folhas_selecionadas_render, true)
-                                    : (!empty($valorLacre) || !empty($valorLacreCorreiosPt) || !empty($valorEtiquetaCorreiosPt));
+                                    : ($modo_visual_correios ? true : (!empty($valorLacre) || !empty($valorLacreCorreiosPt) || !empty($valorEtiquetaCorreiosPt)));
                             ?>
                             <input type="checkbox" class="selecionar-folha" data-folha="<?php echo e($folha_id); ?>" <?php echo ($folha_selecionada ? 'checked' : ''); ?>>
                             Imprimir esta folha
@@ -2444,7 +2549,7 @@ if (document.readyState === 'loading') {
                                     <th class="col-mover nao-imprimir" style="width:44px; padding:3px; border:1px solid #000; font-size:10px;"></th>
                                     <th style="width:50%; text-align:left; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Lote</th>
                                     <th style="width:22%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Qtd</th>
-                                    <th style="width:28%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Data Produção</th>
+                                    <th style="width:28%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;"><?php echo $modo_visual_correios ? 'Data Expedicao' : 'Data Produção'; ?></th>
                                 </tr>
                             </thead>
                             <tbody>
