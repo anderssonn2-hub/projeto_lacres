@@ -1600,10 +1600,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .info-cliente-mestre p:last-child{margin-bottom:0}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:34%; text-align:left}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:15%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:15%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:36%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:54%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:13%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:13%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:20%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:24px}
+.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:12px; line-height:1.15; font-weight:normal}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -2437,22 +2439,6 @@ if (document.readyState === 'loading') {
   </div>
 
 <?php if ($temDados): ?>
-    <?php
-    $ptCapitalCodigos = array('001','002','014','015','030','031','032','033','034','035','036','037','039','040','044');
-    $gruposMestrePt = array(
-        'CAPITAL' => array(),
-        'REGIONAIS' => array()
-    );
-
-    foreach ($paginas as $paginaResumo) {
-        $codigoGrupoPt = str_pad((string)$paginaResumo['codigo'], 3, '0', STR_PAD_LEFT);
-        if (in_array($codigoGrupoPt, $ptCapitalCodigos, true)) {
-            $gruposMestrePt['CAPITAL'][] = $paginaResumo;
-        } else {
-            $gruposMestrePt['REGIONAIS'][] = $paginaResumo;
-        }
-    }
-    ?>
     <?php if ($modo_visual_correios && !$modo_branco): ?>
         <div class="folha-a4-oficio folha-mestre-pt-correios folha-selecionada" data-folha-id="resumo_pt_correios">
             <div class="oficio">
@@ -2484,53 +2470,52 @@ if (document.readyState === 'loading') {
                         <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNorm)); ?></div>
                         <?php endif; ?>
 
-                        <?php foreach ($gruposMestrePt as $tituloGrupoPt => $itensGrupoPt): ?>
-                            <?php if (empty($itensGrupoPt)) continue; ?>
-                            <div class="grupo-mestre-tabela">
-                                <table class="tabela-mestre-pt" style="table-layout:fixed; width:100%; max-width:100%; margin:0;">
-                                    <thead>
-                                        <tr>
-                                            <th class="col-posto"><?php echo e($tituloGrupoPt); ?></th>
-                                            <th class="col-lacre-pt">Lacre Poupa Tempo</th>
-                                            <th class="col-lacre-correios-pt">Lacre Correios Poupa Tempo</th>
-                                            <th class="col-etiqueta">Etiqueta Correios</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php foreach ($itensGrupoPt as $resumoP): ?>
-                                        <?php
-                                        $codigoResumo = str_pad((string)$resumoP['codigo'], 3, '0', STR_PAD_LEFT);
-                                        $nomeOriginalResumo = !empty($nomesPorPosto[$codigoResumo]) ? trim((string)$nomesPorPosto[$codigoResumo]) : trim((string)(isset($resumoP['nome']) ? $resumoP['nome'] : ''));
-                                        if ($nomeOriginalResumo === '') {
-                                            $nomeResumoBase = $codigoResumo . ' - POSTO ' . $codigoResumo;
-                                        } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeOriginalResumo)) {
-                                            $nomeResumoBase = $nomeOriginalResumo;
-                                        } else {
-                                            $nomeResumoBase = $codigoResumo . ' - ' . $nomeOriginalResumo;
-                                        }
-                                        $valorLacreResumo = isset($lacresPorPosto[$codigoResumo]) ? $lacresPorPosto[$codigoResumo] : '';
-                                        $valorLacreCorreiosResumo = isset($lacresCorreiosPtPorPosto[$codigoResumo]) ? $lacresCorreiosPtPorPosto[$codigoResumo] : '';
-                                        $valorEtiquetaCorreiosResumo = isset($etiquetasCorreiosPtPorPosto[$codigoResumo]) ? $etiquetasCorreiosPtPorPosto[$codigoResumo] : '';
-                                        ?>
-                                        <tr>
-                                            <td class="col-posto">
-                                                <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel" rows="2"><?php echo e($nomeResumoBase); ?></textarea>
-                                            </td>
-                                            <td class="col-lacre-pt">
-                                                <input type="text" name="lacre_iipr[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreResumo); ?>" class="input-editavel" style="text-align:center;">
-                                            </td>
-                                            <td class="col-lacre-correios-pt">
-                                                <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
-                                            </td>
-                                            <td class="col-etiqueta">
-                                                <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;" maxlength="35">
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php endforeach; ?>
+                        <div class="grupo-mestre-tabela">
+                            <table class="tabela-mestre-pt" style="table-layout:fixed; width:100%; max-width:100%; margin:0;">
+                                <thead>
+                                    <tr>
+                                        <th class="col-posto">POUPA TEMPO</th>
+                                        <th class="col-lacre-pt">Lacre Poupa Tempo</th>
+                                        <th class="col-lacre-correios-pt">Lacre Correios Poupa Tempo</th>
+                                        <th class="col-etiqueta">Etiqueta Correios</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($paginas as $resumoP): ?>
+                                    <?php
+                                    $codigoResumo = str_pad((string)$resumoP['codigo'], 3, '0', STR_PAD_LEFT);
+                                    $nomeOriginalResumo = !empty($nomesPorPosto[$codigoResumo]) ? trim((string)$nomesPorPosto[$codigoResumo]) : trim((string)(isset($resumoP['nome']) ? $resumoP['nome'] : ''));
+                                    if ($nomeOriginalResumo === '') {
+                                        $nomeResumoBase = 'Posto ' . $codigoResumo;
+                                    } elseif (preg_match('/^posto\s+' . preg_quote($codigoResumo, '/') . '\b/i', $nomeOriginalResumo)) {
+                                        $nomeResumoBase = $nomeOriginalResumo;
+                                    } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeOriginalResumo)) {
+                                        $nomeResumoBase = 'Posto ' . $nomeOriginalResumo;
+                                    } else {
+                                        $nomeResumoBase = 'Posto ' . $codigoResumo . ' - ' . $nomeOriginalResumo;
+                                    }
+                                    $valorLacreResumo = isset($lacresPorPosto[$codigoResumo]) ? $lacresPorPosto[$codigoResumo] : '';
+                                    $valorLacreCorreiosResumo = isset($lacresCorreiosPtPorPosto[$codigoResumo]) ? $lacresCorreiosPtPorPosto[$codigoResumo] : '';
+                                    $valorEtiquetaCorreiosResumo = isset($etiquetasCorreiosPtPorPosto[$codigoResumo]) ? $etiquetasCorreiosPtPorPosto[$codigoResumo] : '';
+                                    ?>
+                                    <tr>
+                                        <td class="col-posto">
+                                            <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel texto-posto-mestre" rows="1"><?php echo e($nomeResumoBase); ?></textarea>
+                                        </td>
+                                        <td class="col-lacre-pt">
+                                            <input type="text" name="lacre_iipr[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreResumo); ?>" class="input-editavel" style="text-align:center;">
+                                        </td>
+                                        <td class="col-lacre-correios-pt">
+                                            <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
+                                        </td>
+                                        <td class="col-etiqueta">
+                                            <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;" maxlength="35">
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
 
                         <div class="espacador-rodape"></div>
                     </div>
