@@ -1600,13 +1600,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .info-cliente-mestre p:last-child{margin-bottom:0}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:48%; text-align:left}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:11%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:13%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:28%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:42%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:10%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:12%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:36%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:24px}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:12px; line-height:1.15; font-weight:normal}
-.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:"Courier New", Courier, monospace; font-size:10px; letter-spacing:0; padding-left:2px; padding-right:2px}
+.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:"Courier New", Courier, monospace; font-size:10px; letter-spacing:0; padding:2px; min-height:32px; line-height:1.05; white-space:normal; overflow-wrap:anywhere; word-break:break-all}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -2489,14 +2489,28 @@ if (document.readyState === 'loading') {
                                     if ($nomeOriginalResumo === '') {
                                         $nomeResumoBase = 'Posto ' . $codigoResumo;
                                     } else {
-                                        $nomeResumoLimpo = preg_replace('/\bPOUPA\s+TEMPO\b\s*-?\s*/i', '', $nomeOriginalResumo);
-                                        $nomeResumoLimpo = preg_replace('/\s+-\s+-\s+/', ' - ', (string)$nomeResumoLimpo);
+                                        $nomeResumoTrabalho = preg_replace('/\bPOUPA\s+TEMPO\b/i', '', $nomeOriginalResumo);
+                                        $partesNomeResumo = preg_split('/\s*-\s*/', (string)$nomeResumoTrabalho);
+                                        $partesNomeResumoLimpas = array();
+                                        foreach ($partesNomeResumo as $parteNomeResumo) {
+                                            $parteNomeResumo = trim((string)$parteNomeResumo);
+                                            if ($parteNomeResumo === '') {
+                                                continue;
+                                            }
+                                            if (strcasecmp($parteNomeResumo, 'POUPA TEMPO') === 0) {
+                                                continue;
+                                            }
+                                            $partesNomeResumoLimpas[] = $parteNomeResumo;
+                                        }
+                                        $nomeResumoLimpo = implode(' - ', $partesNomeResumoLimpas);
                                         $nomeResumoLimpo = preg_replace('/\s{2,}/', ' ', (string)$nomeResumoLimpo);
                                         $nomeResumoLimpo = trim((string)$nomeResumoLimpo, " -\t\n\r\0\x0B");
                                         if ($nomeResumoLimpo === '') {
                                             $nomeResumoBase = 'Posto ' . $codigoResumo;
                                         } elseif (preg_match('/^posto\s+' . preg_quote($codigoResumo, '/') . '\b/i', $nomeResumoLimpo)) {
                                             $nomeResumoBase = $nomeResumoLimpo;
+                                        } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*$/', $nomeResumoLimpo)) {
+                                            $nomeResumoBase = 'Posto ' . $nomeResumoLimpo;
                                         } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeResumoLimpo)) {
                                             $nomeResumoBase = 'Posto ' . $nomeResumoLimpo;
                                         } else {
@@ -2518,7 +2532,7 @@ if (document.readyState === 'loading') {
                                             <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
                                         </td>
                                         <td class="col-etiqueta">
-                                            <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel campo-etiqueta-mestre" style="text-align:left;" maxlength="35">
+                                            <textarea name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-etiqueta-mestre" rows="2" maxlength="35" style="text-align:left;"><?php echo e($valorEtiquetaCorreiosResumo); ?></textarea>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
