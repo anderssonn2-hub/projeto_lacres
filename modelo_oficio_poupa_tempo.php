@@ -1580,24 +1580,30 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .titulo-mestre{margin:10px 0 4px 0; font-size:20px; font-weight:bold; text-align:center}
 .folha-mestre-pt-correios .subtitulo-mestre{margin:0 0 14px 0; font-size:12px; text-align:center}
 .folha-mestre-pt-correios .resumo-datas{margin:0 0 12px 0; font-size:12px; text-align:center}
+.folha-mestre-pt-correios .processo{border:none !important; padding:0 !important}
+.folha-mestre-pt-correios .oficio-observacao{padding:0 !important}
+.folha-mestre-pt-correios .tabela-mestre-pt{border-collapse:collapse; border:1px solid #000; margin:0; width:100%}
 .folha-mestre-pt-correios .tabela-mestre-pt th,
-.folha-mestre-pt-correios .tabela-mestre-pt td{font-size:12px; padding:8px 6px !important; vertical-align:middle}
+.folha-mestre-pt-correios .tabela-mestre-pt td{font-size:12px; padding:6px 5px !important; vertical-align:middle; line-height:1.15}
+.folha-mestre-pt-correios .tabela-mestre-pt th{font-weight:bold; background:#fff}
 .folha-mestre-pt-correios .tabela-mestre-pt input,
-.folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:2px 4px}
-.folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:42px; line-height:1.2}
-.folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:18px}
+.folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:1px 3px; box-shadow:none}
+.folha-mestre-pt-correios .tabela-mestre-pt input{height:20px}
+.folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:32px; line-height:1.15}
+.folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:12px; margin-bottom:15px; line-height:1.0}
 .folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
 .folha-mestre-pt-correios .logo-mestre img{display:block; max-width:100%; height:auto}
-.folha-mestre-pt-correios .texto-logo-mestre{width:56%; border-left:1px solid #000; padding-left:14px; font-size:14px; line-height:1.15}
+.folha-mestre-pt-correios .texto-logo-mestre{width:56%; border-left:1px solid #000; padding-left:14px; font-size:14px; line-height:1.0}
 .folha-mestre-pt-correios .texto-logo-mestre strong{display:block; font-size:15px}
-.folha-mestre-pt-correios .info-cliente-mestre{border:1px solid #000; padding:14px 12px; margin-bottom:14px; font-size:13px; line-height:1.55}
-.folha-mestre-pt-correios .info-cliente-mestre p{margin:0}
+.folha-mestre-pt-correios .info-cliente-mestre{border:1px solid #000; padding:10px; margin-bottom:12px; font-size:13px; line-height:1.0; position:relative}
+.folha-mestre-pt-correios .info-cliente-mestre p{margin:0 0 12px 0}
+.folha-mestre-pt-correios .info-cliente-mestre p:last-child{margin-bottom:0}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:34%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:15%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:18%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:33%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:15%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:36%; text-align:left}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -2465,7 +2471,7 @@ if (document.readyState === 'loading') {
                     <p><strong>SISTEMA:</strong> SIV --<strong>SETOR:</strong> EXPEDIÇÃO</p>
                 </div>
 
-                <div class="cols100 processo border-1px" style="padding-left:10px; padding-right:10px;">
+                <div class="cols100 processo">
                     <div class="oficio-observacao">
                         <div class="nao-imprimir" style="margin:8px 0;">
                             <label style="font-size:12px; font-weight:bold;">
