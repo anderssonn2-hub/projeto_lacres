@@ -1585,6 +1585,10 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .tabela-mestre-pt input,
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:2px 4px}
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:42px; line-height:1.2}
+.folha-a4-oficio.folha-mestre-pt-correios{min-height:auto; max-height:none; overflow:visible}
+.folha-a4-oficio.folha-mestre-pt-correios .oficio,
+.folha-a4-oficio.folha-mestre-pt-correios .processo,
+.folha-a4-oficio.folha-mestre-pt-correios .oficio-observacao{display:block; min-height:auto; height:auto; overflow:visible}
 
 @media print{
     body{background:#fff;margin:0;padding:0}
@@ -1606,6 +1610,23 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
         min-height:277mm;
         max-height:277mm;
         overflow:hidden;
+    }
+
+    .folha-a4-oficio.folha-mestre-pt-correios{
+        min-height:auto !important;
+        max-height:none !important;
+        overflow:visible !important;
+        page-break-inside:auto !important;
+    }
+
+    .folha-a4-oficio.folha-mestre-pt-correios .oficio,
+    .folha-a4-oficio.folha-mestre-pt-correios .processo,
+    .folha-a4-oficio.folha-mestre-pt-correios .oficio-observacao{
+        display:block !important;
+        min-height:auto !important;
+        height:auto !important;
+        max-height:none !important;
+        overflow:visible !important;
     }
     
     /* v9.12.0: Page break para páginas divididas */

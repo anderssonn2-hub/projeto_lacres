@@ -286,6 +286,31 @@ function resolverNomePostoCiPostos($pdo, $posto) {
     return $postoPad . ' - POSTO';
 }
 
+function resolverRegionalRealPorPosto($pdo, $posto, $fallback) {
+    static $cache = array();
+    $posto = preg_replace('/\D+/', '', (string)$posto);
+    if ($posto === '') {
+        return trim((string)$fallback);
+    }
+    $postoPad = str_pad($posto, 3, '0', STR_PAD_LEFT);
+    if (isset($cache[$postoPad])) {
+        return $cache[$postoPad];
+    }
+    $regionalFallback = trim((string)$fallback);
+    try {
+        $stmt = $pdo->prepare("SELECT LPAD(CAST(regional AS UNSIGNED),3,'0') AS regional FROM ciRegionais WHERE LPAD(posto,3,'0') = ? LIMIT 1");
+        $stmt->execute(array($postoPad));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row && isset($row['regional']) && trim((string)$row['regional']) !== '') {
+            $cache[$postoPad] = trim((string)$row['regional']);
+            return $cache[$postoPad];
+        }
+    } catch (Exception $e) {
+    }
+    $cache[$postoPad] = $regionalFallback;
+    return $cache[$postoPad];
+}
+
 // Conexão
 $host = '10.15.61.169';
 $dbname = 'controle';
@@ -666,14 +691,16 @@ try {
         foreach ($pacotes as $p) {
             try {
                 $lote = isset($p['lote']) ? trim($p['lote']) : '';
-                $posto = isset($p['posto']) ? trim($p['posto']) : '';
-                $regional = isset($p['regional']) ? trim($p['regional']) : '';
+                $posto = isset($p['posto']) ? str_pad(preg_replace('/\D+/', '', (string)$p['posto']), 3, '0', STR_PAD_LEFT) : '';
+                $regional = isset($p['regional']) ? trim((string)$p['regional']) : '';
                 $quantidade = isset($p['quantidade']) ? (int)$p['quantidade'] : 0;
                 $dataexp = isset($p['dataexp']) ? trim($p['dataexp']) : '';
                 $usuario_pacote = isset($p['responsavel']) ? trim($p['responsavel']) : '';
                 if ($usuario_pacote === '') {
                     $usuario_pacote = $usuario_conf;
                 }
+
+                $regional = resolverRegionalRealPorPosto($pdo, $posto, $regional);
 
                 if ($lote === '' || $posto === '' || $regional === '' || $quantidade <= 0 || $dataexp === '') {
                     throw new Exception('Campos obrigatorios ausentes');
@@ -773,7 +800,7 @@ try {
         $stmtCsv = null;
         $pdo = null;
         die(json_encode(array(
-            'success' => $ok > 0,
+            'success' => ($ok > 0 || $ok_postos > 0),
             'inseridos' => $ok,
             'inseridos_postos' => $ok_postos,
             'consolidado' => $consolidar_salvamento,
@@ -797,6 +824,7 @@ try {
         $lote = substr($codbar, 0, 8);
         $regional = substr($codbar, 8, 3);
         $posto = substr($codbar, 11, 3);
+        $regionalReal = resolverRegionalRealPorPosto($pdo, $posto, $regional);
 
         $status = 'nao_encontrado';
         $dataEncontrada = '';
@@ -806,7 +834,7 @@ try {
                 $ph = implode(',', array_fill(0, count($datasFiltro), '?'));
                 $sqlCheck = "SELECT COUNT(*) FROM ciPostosCsv WHERE lote = ? AND regional = ? AND posto = ? AND DATE(dataCarga) IN ($ph)";
                 $stmtCheck = $pdo->prepare($sqlCheck);
-                $params = array_merge(array($lote, $regional, $posto), $datasFiltro);
+                $params = array_merge(array($lote, $regionalReal, $posto), $datasFiltro);
                 $stmtCheck->execute($params);
                 $existeNaData = (int)$stmtCheck->fetchColumn();
                 if ($existeNaData > 0) {
@@ -816,14 +844,14 @@ try {
 
             if (empty($datasFiltro)) {
                 $stmtAny = $pdo->prepare("SELECT DATE(dataCarga) as data FROM ciPostosCsv WHERE lote = ? AND regional = ? AND posto = ? ORDER BY dataCarga DESC LIMIT 1");
-                $stmtAny->execute(array($lote, $regional, $posto));
+                $stmtAny->execute(array($lote, $regionalReal, $posto));
                 $rowAny = $stmtAny->fetch(PDO::FETCH_ASSOC);
                 if ($rowAny && !empty($rowAny['data'])) {
                     $status = 'na_data';
                 }
             } elseif ($status !== 'na_data') {
                 $stmtAny = $pdo->prepare("SELECT DATE(dataCarga) as data FROM ciPostosCsv WHERE lote = ? AND regional = ? AND posto = ? ORDER BY dataCarga DESC LIMIT 1");
-                $stmtAny->execute(array($lote, $regional, $posto));
+                $stmtAny->execute(array($lote, $regionalReal, $posto));
                 $rowAny = $stmtAny->fetch(PDO::FETCH_ASSOC);
                 if ($rowAny && !empty($rowAny['data'])) {
                     $status = 'outra_data';
@@ -3177,6 +3205,7 @@ try {
                             dataexp: dataPadrao,
                             responsavel: ''
                         };
+                        obj = window.normalizarPacotePendenteComRegionalReal ? window.normalizarPacotePendenteComRegionalReal(obj) : obj;
                         window.adicionarPacotePendente(obj);
                         var painel = document.getElementById('painelPacotesNovos');
                         if (painel) {
@@ -3753,6 +3782,7 @@ function iniciarConferenciaPacotes() {
     var criadoSalvamentoPacotes = document.getElementById('criado_salvamento_pacotes');
     var consolidarSalvamentoPacotes = document.getElementById('consolidar_salvamento_pacotes');
     var pacotesPendentes = [];
+    var postosInfoMap = <?php echo json_encode($postosInfo); ?>;
     var mensagemLeitura = document.getElementById('mensagemLeitura');
     var postoBloqueioNumero = document.getElementById('postoBloqueioNumero');
     var postoBloqueioNome = document.getElementById('postoBloqueioNome');
@@ -6357,6 +6387,7 @@ function iniciarConferenciaPacotes() {
     }
 
     function adicionarPacotePendente(obj) {
+        obj = normalizarPacotePendenteComRegionalReal(obj || {});
         if (!obj || !obj.lote || !obj.regional || !obj.posto || !obj.quantidade || !obj.dataexp) {
             return false;
         }
@@ -6416,6 +6447,7 @@ function iniciarConferenciaPacotes() {
                 dataexp: pacoteDataexp ? pacoteDataexp.value.trim() : '',
                 responsavel: pacoteResponsavel ? pacoteResponsavel.value.trim() : ''
             };
+            obj = normalizarPacotePendenteComRegionalReal(obj);
             if (!obj.lote || !obj.regional || !obj.posto || !obj.quantidade || !obj.dataexp) {
                 alert('Preencha todos os campos do pacote.');
                 return;
@@ -6506,18 +6538,22 @@ function iniciarConferenciaPacotes() {
             if (consolidarSalvar) {
                 formData.append('consolidar_salvamento', '1');
             }
-            formData.append('pacotes', JSON.stringify(pacotesPendentes));
+            var pacotesParaSalvar = [];
+            for (var i = 0; i < pacotesPendentes.length; i++) {
+                pacotesParaSalvar.push(normalizarPacotePendenteComRegionalReal(pacotesPendentes[i]));
+            }
+            formData.append('pacotes', JSON.stringify(pacotesParaSalvar));
             fetch(window.location.href, { method: 'POST', body: formData })
                 .then(function(resp){ return resp.json(); })
                 .then(function(data){
                     if (data && data.success) {
-                        alert('Dados salvos com sucesso!');
-                        mostrarConfirmacao('Dados salvos com sucesso! ' + data.inseridos + ' lote(s) enviados para ciPostosCsv e ' + (data.inseridos_postos || 0) + ' lançamento(s) em ciPostos.', true);
+                        mostrarConfirmacao('Pacotes não listados salvos com sucesso. ' + data.inseridos + ' lote(s) enviados para ciPostosCsv e ' + (data.inseridos_postos || 0) + ' lançamento(s) em ciPostos.', true);
                         pacotesPendentes = [];
                         renderizarPacotesPendentes();
                         setTimeout(function() { window.location.reload(); }, 1400);
                     } else {
-                        alert((data && data.erro) ? data.erro : 'Erro ao inserir pacotes.');
+                        var errosSalvar = data && data.erros && data.erros.length ? ('\n' + data.erros.join('\n')) : '';
+                        alert((data && data.erro) ? data.erro : ('Erro ao inserir pacotes.' + errosSalvar));
                     }
                 })
                 .catch(function(){ alert('Erro ao inserir pacotes.'); });
@@ -6698,14 +6734,36 @@ function iniciarConferenciaPacotes() {
         if (codigoNormalizado.length !== 19) {
             return null;
         }
+        var postoCodigo = codigoNormalizado.substr(11, 3);
+        var regionalCodigo = codigoNormalizado.substr(8, 3);
+        var infoPosto = postosInfoMap && postosInfoMap[postoCodigo] ? postosInfoMap[postoCodigo] : null;
+        var regionalReal = infoPosto && infoPosto.regional !== undefined && infoPosto.regional !== null
+            ? formatarCodigoComZeros(infoPosto.regional, 3)
+            : regionalCodigo;
         return {
             codigo: codigoNormalizado,
             lote: codigoNormalizado.substr(0, 8),
-            regional: codigoNormalizado.substr(8, 3),
-            posto: codigoNormalizado.substr(11, 3),
+            regional: regionalCodigo,
+            regional_real: regionalReal,
+            posto: postoCodigo,
             quantidade: parseInt(codigoNormalizado.substr(14, 5), 10) || 1
         };
     }
+
+    function normalizarPacotePendenteComRegionalReal(obj) {
+        if (!obj) return obj;
+        var postoCodigo = formatarCodigoComZeros(obj.posto || '', 3);
+        var infoPosto = postosInfoMap && postosInfoMap[postoCodigo] ? postosInfoMap[postoCodigo] : null;
+        obj.posto = postoCodigo;
+        if (infoPosto && infoPosto.regional !== undefined && infoPosto.regional !== null && infoPosto.regional !== '') {
+            obj.regional = formatarCodigoComZeros(infoPosto.regional, 3);
+        } else if (obj.regional) {
+            obj.regional = formatarCodigoComZeros(obj.regional, 3);
+        }
+        return obj;
+    }
+
+    window.normalizarPacotePendenteComRegionalReal = normalizarPacotePendenteComRegionalReal;
 
     function obterRegionalLinha(linha) {
         if (!linha) return '';
@@ -6742,7 +6800,7 @@ function iniciarConferenciaPacotes() {
         }
         return {
             lote: partes.lote,
-            regional: normalizarRegionalValor(partes.regional),
+            regional: normalizarRegionalValor(partes.regional_real || partes.regional),
             posto: partes.posto
         };
     }
@@ -6942,7 +7000,7 @@ function iniciarConferenciaPacotes() {
                 var obj = {
                     codbar: partesCodigo.codigo,
                     lote: partesCodigo.lote,
-                    regional: partesCodigo.regional,
+                    regional: partesCodigo.regional_real || partesCodigo.regional,
                     posto: partesCodigo.posto,
                     quantidade: partesCodigo.quantidade,
                     dataexp: dataPadrao,
