@@ -1600,13 +1600,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .info-cliente-mestre p:last-child{margin-bottom:0}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:40%; text-align:left}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:10%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:12%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:38%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:36%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:9%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:10%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:45%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:22px}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.1; font-weight:normal}
-.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:"Courier New", Courier, monospace; font-size:12px; letter-spacing:0; padding:1px 2px; min-height:26px; line-height:1.05; white-space:normal; overflow-wrap:anywhere; word-break:break-all}
+.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:"Courier New", Courier, monospace; font-size:8px; letter-spacing:-0.2px; padding:0 1px; height:18px; line-height:18px; white-space:nowrap; overflow:hidden}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -2466,7 +2466,6 @@ if (document.readyState === 'loading') {
 
                 <div class="info-cliente-mestre">
                     <p><strong>CLIENTE:</strong> POUPA TEMPO PARANÁ</p>
-                    <p><strong>SISTEMA:</strong> SIV --<strong>SETOR:</strong> EXPEDIÇÃO</p>
                 </div>
 
                 <div class="cols100 processo">
@@ -2543,7 +2542,7 @@ if (document.readyState === 'loading') {
                                             <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
                                         </td>
                                         <td class="col-etiqueta">
-                                            <textarea name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-etiqueta-mestre" rows="2" maxlength="35" style="text-align:left;"><?php echo e($valorEtiquetaCorreiosResumo); ?></textarea>
+                                            <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel campo-etiqueta-mestre" style="text-align:left;" maxlength="35">
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
