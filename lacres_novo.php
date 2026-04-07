@@ -5802,19 +5802,21 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             <tr>
                 <th><?php echo $grupo ?></th>
                 <th>
-                    Lacre IIPR
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
+                    Lacre IIPR
                     <button type="button" class="btn-limpar-coluna" onclick="limparColuna('<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', 'lacre_iipr')" title="Apagar todos os lacres IIPR deste grupo">X</button>
                     <?php endif; ?>
                 </th>
                 <th>
-                    Lacre Correios
                     <?php if ($grupo !== 'POUPA TEMPO'): ?>
+                    Lacre Correios
                     <button type="button" class="btn-limpar-coluna" onclick="limparColuna('<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', 'lacre_correios')" title="Apagar todos os lacres Correios deste grupo">X</button>
                     <?php endif; ?>
                 </th>
                 <th>
+                    <?php if ($grupo !== 'POUPA TEMPO'): ?>
                     Etiqueta Correios
+                    <?php endif; ?>
                     <?php if ($grupo !== 'POUPA TEMPO' && $grupo !== 'CENTRAL IIPR'): ?>
                     <button type="button" class="btn-limpar-coluna" onclick="limparColuna('<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', 'etiqueta_correios')" title="Apagar todas as etiquetas deste grupo">X</button>
                     <?php endif; ?>
@@ -5822,7 +5824,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                     <button type="button" class="btn-limpar-coluna" onclick="limparEtiquetasCentral()" title="Apagar todas as etiquetas da Central IIPR">X</button>
                     <?php endif; ?>
                 </th>
-                <th>Acoes</th>
+                <th><?php echo ($grupo === 'POUPA TEMPO') ? '' : 'Acoes'; ?></th>
             </tr>
         </thead>
         <tbody>

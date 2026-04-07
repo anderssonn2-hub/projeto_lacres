@@ -1589,7 +1589,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .tabela-mestre-pt input,
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:1px 3px; box-shadow:none}
 .folha-mestre-pt-correios .tabela-mestre-pt input{height:20px}
-.folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:32px; line-height:1.15}
+.folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:22px; line-height:1.15}
 .folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:12px; margin-bottom:15px; line-height:1.0}
 .folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
 .folha-mestre-pt-correios .logo-mestre img{display:block; max-width:100%; height:auto}
@@ -1600,12 +1600,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .info-cliente-mestre p:last-child{margin-bottom:0}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:54%; text-align:left}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:13%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:48%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:11%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:13%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:20%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:28%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:24px}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:12px; line-height:1.15; font-weight:normal}
+.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:"Courier New", Courier, monospace; font-size:10px; letter-spacing:0; padding-left:2px; padding-right:2px}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -2487,12 +2488,20 @@ if (document.readyState === 'loading') {
                                     $nomeOriginalResumo = !empty($nomesPorPosto[$codigoResumo]) ? trim((string)$nomesPorPosto[$codigoResumo]) : trim((string)(isset($resumoP['nome']) ? $resumoP['nome'] : ''));
                                     if ($nomeOriginalResumo === '') {
                                         $nomeResumoBase = 'Posto ' . $codigoResumo;
-                                    } elseif (preg_match('/^posto\s+' . preg_quote($codigoResumo, '/') . '\b/i', $nomeOriginalResumo)) {
-                                        $nomeResumoBase = $nomeOriginalResumo;
-                                    } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeOriginalResumo)) {
-                                        $nomeResumoBase = 'Posto ' . $nomeOriginalResumo;
                                     } else {
-                                        $nomeResumoBase = 'Posto ' . $codigoResumo . ' - ' . $nomeOriginalResumo;
+                                        $nomeResumoLimpo = preg_replace('/\bPOUPA\s+TEMPO\b\s*-?\s*/i', '', $nomeOriginalResumo);
+                                        $nomeResumoLimpo = preg_replace('/\s+-\s+-\s+/', ' - ', (string)$nomeResumoLimpo);
+                                        $nomeResumoLimpo = preg_replace('/\s{2,}/', ' ', (string)$nomeResumoLimpo);
+                                        $nomeResumoLimpo = trim((string)$nomeResumoLimpo, " -\t\n\r\0\x0B");
+                                        if ($nomeResumoLimpo === '') {
+                                            $nomeResumoBase = 'Posto ' . $codigoResumo;
+                                        } elseif (preg_match('/^posto\s+' . preg_quote($codigoResumo, '/') . '\b/i', $nomeResumoLimpo)) {
+                                            $nomeResumoBase = $nomeResumoLimpo;
+                                        } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeResumoLimpo)) {
+                                            $nomeResumoBase = 'Posto ' . $nomeResumoLimpo;
+                                        } else {
+                                            $nomeResumoBase = 'Posto ' . $codigoResumo . ' - ' . $nomeResumoLimpo;
+                                        }
                                     }
                                     $valorLacreResumo = isset($lacresPorPosto[$codigoResumo]) ? $lacresPorPosto[$codigoResumo] : '';
                                     $valorLacreCorreiosResumo = isset($lacresCorreiosPtPorPosto[$codigoResumo]) ? $lacresCorreiosPtPorPosto[$codigoResumo] : '';
@@ -2509,7 +2518,7 @@ if (document.readyState === 'loading') {
                                             <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
                                         </td>
                                         <td class="col-etiqueta">
-                                            <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;" maxlength="35">
+                                            <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel campo-etiqueta-mestre" style="text-align:left;" maxlength="35">
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
