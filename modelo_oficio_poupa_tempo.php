@@ -1585,6 +1585,22 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .tabela-mestre-pt input,
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:2px 4px}
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:42px; line-height:1.2}
+.folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:18px}
+.folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
+.folha-mestre-pt-correios .logo-mestre img{display:block; max-width:100%; height:auto}
+.folha-mestre-pt-correios .texto-logo-mestre{width:56%; border-left:1px solid #000; padding-left:14px; font-size:14px; line-height:1.15}
+.folha-mestre-pt-correios .texto-logo-mestre strong{display:block; font-size:15px}
+.folha-mestre-pt-correios .info-cliente-mestre{border:1px solid #000; padding:14px 12px; margin-bottom:14px; font-size:13px; line-height:1.55}
+.folha-mestre-pt-correios .info-cliente-mestre p{margin:0}
+.folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
+.folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:34%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:15%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:18%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:33%; text-align:left}
+.folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
+.folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
+.folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
 .folha-a4-oficio.folha-mestre-pt-correios{min-height:auto; max-height:none; overflow:visible}
 .folha-a4-oficio.folha-mestre-pt-correios .oficio,
 .folha-a4-oficio.folha-mestre-pt-correios .processo,
@@ -2415,23 +2431,38 @@ if (document.readyState === 'loading') {
   </div>
 
 <?php if ($temDados): ?>
+    <?php
+    $ptCapitalCodigos = array('001','002','014','015','030','031','032','033','034','035','036','037','039','040','044');
+    $gruposMestrePt = array(
+        'CAPITAL' => array(),
+        'REGIONAIS' => array()
+    );
+
+    foreach ($paginas as $paginaResumo) {
+        $codigoGrupoPt = str_pad((string)$paginaResumo['codigo'], 3, '0', STR_PAD_LEFT);
+        if (in_array($codigoGrupoPt, $ptCapitalCodigos, true)) {
+            $gruposMestrePt['CAPITAL'][] = $paginaResumo;
+        } else {
+            $gruposMestrePt['REGIONAIS'][] = $paginaResumo;
+        }
+    }
+    ?>
     <?php if ($modo_visual_correios && !$modo_branco): ?>
         <div class="folha-a4-oficio folha-mestre-pt-correios folha-selecionada" data-folha-id="resumo_pt_correios">
             <div class="oficio">
-                <div class="cols100 border-1px">
-                    <div class="cols25 fleft margin2px">
-                        <img alt="Logotipo" style="margin-left:10px;margin-top:10px;padding-right:15px;float:left" src="logo_celepar.png" width="250" height="55">
+                <div class="quadro-logo-mestre">
+                    <div class="logo-mestre">
+                        <img alt="Logotipo" src="logo_celepar.png" width="250" height="55">
                     </div>
-                    <div class="cols65 fright center margin2px">
-                        <h3><i>COSEP <br> Coordenacao De Servicos De Producao</i></h3>
-                        <h3><b><br> Comprovante Externo de Entrega </b></h3>
+                    <div class="texto-logo-mestre">
+                        <strong>CELEPAR – TECNOLOGIA DA INFORMAÇÃO E COMUNICAÇÃO DO PARANÁ</strong>
+                        COMPROVANTE DE ENTREGA DE SERVIÇOS
                     </div>
                 </div>
 
-                <div class="cols100 center border-1px p5 moldura cabecalho-pt">
-                      <div class="titulo-mestre">POUPATEMPO PARANA COM ETIQUETA CORREIOS</div>
-                    <div class="subtitulo-mestre">Folha mestre externa para expedicao dos postos selecionados</div>
-                    <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNorm)); ?></div>
+                <div class="info-cliente-mestre">
+                    <p><strong>CLIENTE:</strong> POUPA TEMPO PARANÁ</p>
+                    <p><strong>SISTEMA:</strong> SIV --<strong>SETOR:</strong> EXPEDIÇÃO</p>
                 </div>
 
                 <div class="cols100 processo border-1px" style="padding-left:10px; padding-right:10px;">
@@ -2443,66 +2474,70 @@ if (document.readyState === 'loading') {
                             </label>
                         </div>
 
-                        <table class="tabela-mestre-pt" style="table-layout:fixed; width:100%; max-width:100%; margin:0 0 12px 0;">
-                            <thead>
-                                <tr>
-                                    <th style="width:34%; text-align:left;">Postos Poupa Tempo</th>
-                                    <th style="width:14%; text-align:center;">Lacre Poupa Tempo</th>
-                                    <th style="width:18%; text-align:center;">Lacre Poupa Tempo Correios</th>
-                                    <th style="width:34%; text-align:left;">Etiqueta Correios (35 posicoes)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            <?php foreach ($paginas as $resumoP): ?>
-                                <?php
+                        <?php if (!empty($datasNorm)): ?>
+                        <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNorm)); ?></div>
+                        <?php endif; ?>
+
+                        <?php foreach ($gruposMestrePt as $tituloGrupoPt => $itensGrupoPt): ?>
+                            <?php if (empty($itensGrupoPt)) continue; ?>
+                            <div class="grupo-mestre-tabela">
+                                <table class="tabela-mestre-pt" style="table-layout:fixed; width:100%; max-width:100%; margin:0;">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-posto"><?php echo e($tituloGrupoPt); ?></th>
+                                            <th class="col-lacre-pt">Lacre Poupa Tempo</th>
+                                            <th class="col-lacre-correios-pt">Lacre Correios Poupa Tempo</th>
+                                            <th class="col-etiqueta">Etiqueta Correios</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($itensGrupoPt as $resumoP): ?>
+                                        <?php
                                         $codigoResumo = str_pad((string)$resumoP['codigo'], 3, '0', STR_PAD_LEFT);
-                                        $nomeResumoBase = !empty($nomesPorPosto[$codigoResumo]) ? $nomesPorPosto[$codigoResumo] : ('POUPA TEMPO ' . $codigoResumo . ' - ' . (isset($resumoP['nome']) ? $resumoP['nome'] : ''));
+                                        $nomeOriginalResumo = !empty($nomesPorPosto[$codigoResumo]) ? trim((string)$nomesPorPosto[$codigoResumo]) : trim((string)(isset($resumoP['nome']) ? $resumoP['nome'] : ''));
+                                        if ($nomeOriginalResumo === '') {
+                                            $nomeResumoBase = $codigoResumo . ' - POSTO ' . $codigoResumo;
+                                        } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeOriginalResumo)) {
+                                            $nomeResumoBase = $nomeOriginalResumo;
+                                        } else {
+                                            $nomeResumoBase = $codigoResumo . ' - ' . $nomeOriginalResumo;
+                                        }
                                         $valorLacreResumo = isset($lacresPorPosto[$codigoResumo]) ? $lacresPorPosto[$codigoResumo] : '';
                                         $valorLacreCorreiosResumo = isset($lacresCorreiosPtPorPosto[$codigoResumo]) ? $lacresCorreiosPtPorPosto[$codigoResumo] : '';
                                         $valorEtiquetaCorreiosResumo = isset($etiquetasCorreiosPtPorPosto[$codigoResumo]) ? $etiquetasCorreiosPtPorPosto[$codigoResumo] : '';
-                                ?>
-                                <tr>
-                                    <td style="text-align:left;">
-                                        <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel" rows="2"><?php echo e($nomeResumoBase); ?></textarea>
-                                    </td>
-                                    <td style="text-align:center;">
-                                        <input type="text" name="lacre_iipr[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreResumo); ?>" class="input-editavel" style="text-align:center;">
-                                    </td>
-                                    <td style="text-align:center;">
-                                        <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
-                                    </td>
-                                    <td style="text-align:left;">
-                                        <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;" maxlength="35">
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                                        ?>
+                                        <tr>
+                                            <td class="col-posto">
+                                                <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel" rows="2"><?php echo e($nomeResumoBase); ?></textarea>
+                                            </td>
+                                            <td class="col-lacre-pt">
+                                                <input type="text" name="lacre_iipr[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreResumo); ?>" class="input-editavel" style="text-align:center;">
+                                            </td>
+                                            <td class="col-lacre-correios-pt">
+                                                <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
+                                            </td>
+                                            <td class="col-etiqueta">
+                                                <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;" maxlength="35">
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endforeach; ?>
 
                         <div class="espacador-rodape"></div>
                     </div>
                 </div>
 
-                <div class="cols100 border-1px rodape-oficio" style="padding:8px 15px;">
-                    <div style="display:flex; justify-content:space-between; gap:15px;">
-                        <div style="flex:1; border-right:1px solid #000; padding-right:12px;">
-                            <div style="text-align:center; margin-bottom:40px;">
-                                <strong>Produzido por:</strong>
-                            </div>
-                            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
-                                <div style="margin-bottom:3px;">______________________________</div>
-                                <div style="font-size:12px;"><strong>CELEPAR - Data:</strong> <?php echo date('d-m-Y'); ?></div>
-                            </div>
-                        </div>
-                        <div style="flex:1; padding-left:12px;">
-                            <div style="text-align:center; margin-bottom:40px;">
-                                <strong>Recebido por:</strong>
-                            </div>
-                            <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
-                                <div style="margin-bottom:3px;">______________________________</div>
-                                <div style="font-size:12px;"><strong>Correios - Data:</strong> <?php echo date('d-m-Y'); ?></div>
-                            </div>
-                        </div>
+                <div class="assinaturas-mestre rodape-oficio">
+                    <div class="assinatura-mestre">
+                        <hr>
+                        RESPONSÁVEL CELEPAR - Data: <?php echo date('d-m-Y'); ?>
+                    </div>
+                    <div class="assinatura-mestre">
+                        <hr>
+                        RESPONSÁVEL CORREIOS
                     </div>
                 </div>
             </div>
