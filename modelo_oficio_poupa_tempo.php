@@ -1,5 +1,11 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
+    v1.0.3: Folha mestre PT Correios + persistencia normal
+    - [CORRIGIDO] Modo PT com etiqueta Correios volta a gravar ofício normalmente com número em ciDespachos
+    - [NOVO] Folha mestre externa passa a usar dados persistidos em ciDespachoLotes por posto/lote
+    - [CORRIGIDO] Lotes e quantidades são agregados por posto ao salvar, inclusive com folhas divididas
+    - [CORRIGIDO] Folhas internas do modo Correios mantêm lotes, quantidades e data sem depender de lacre no cabeçalho
+
     v1.0.2: Modos visuais PT + compatibilidade PHP legado
     - [NOVO] Modo visual "com etiqueta Correios" com três campos no cabeçalho do posto
     - [CORRIGIDO] Botões de gravação ficam ocultos no modo visual novo para não misturar persistência legada
@@ -368,9 +374,13 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
 
         $id_despacho_post = isset($_POST['id_despacho']) ? (int)$_POST['id_despacho'] : 0;
         $datasStr_post = isset($_POST['pt_datas']) ? trim($_POST['pt_datas']) : '';
+        $modoVisualPost = isset($_POST['pt_modo_visual']) ? strtolower(trim((string)$_POST['pt_modo_visual'])) : '';
+        $modoVisualCorreiosPost = ($modoVisualPost === 'correios');
         
         // Arrays com os dados dos postos
         $lacres = isset($_POST['lacre_iipr']) && is_array($_POST['lacre_iipr']) ? $_POST['lacre_iipr'] : array();
+        $lacresCorreiosPt = isset($_POST['lacre_correios_pt']) && is_array($_POST['lacre_correios_pt']) ? $_POST['lacre_correios_pt'] : array();
+        $etiquetasCorreiosPt = isset($_POST['etiqueta_correios_pt']) && is_array($_POST['etiqueta_correios_pt']) ? $_POST['etiqueta_correios_pt'] : array();
         $nomes = isset($_POST['nome_posto']) && is_array($_POST['nome_posto']) ? $_POST['nome_posto'] : array();
         $enderecos = isset($_POST['endereco_posto']) && is_array($_POST['endereco_posto']) ? $_POST['endereco_posto'] : array();
         $quantidades = isset($_POST['quantidade_posto']) && is_array($_POST['quantidade_posto']) ? $_POST['quantidade_posto'] : array();
@@ -389,31 +399,50 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         // v9.22.2: Capturar lotes confirmados por folha
         $lotes_post = isset($_POST['lotes_confirmados']) && is_array($_POST['lotes_confirmados']) ? $_POST['lotes_confirmados'] : array();
 
-        // v9.22.2: Filtrar apenas folhas selecionadas e com lacre preenchido
-        $folha_por_posto = array();
+        // v1.0.3: agregar folhas selecionadas por posto; modo Correios nao depende de lacre no cabecalho
+        $folhas_por_posto = array();
         foreach ($folhas_selecionadas as $folha_id) {
             if (!isset($folhas_post[$folha_id])) continue;
             $posto = $folhas_post[$folha_id];
             $lacre = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
-            if ($lacre === '') continue;
-            if (!isset($folha_por_posto[$posto])) {
-                $folha_por_posto[$posto] = $folha_id;
+            $temLotesFolha = isset($lotes_post[$folha_id]) && trim((string)$lotes_post[$folha_id]) !== '';
+            if (!$modoVisualCorreiosPost && $lacre === '') continue;
+            if ($modoVisualCorreiosPost && $lacre === '' && !$temLotesFolha) continue;
+            if (!isset($folhas_por_posto[$posto])) {
+                $folhas_por_posto[$posto] = array();
             }
+            $folhas_por_posto[$posto][] = $folha_id;
         }
 
-        foreach ($folha_por_posto as $posto => $folha_id) {
+        foreach ($folhas_por_posto as $posto => $folhas_do_posto) {
             if (!isset($dados_salvos[$posto])) {
                 $dados_salvos[$posto] = array();
             }
+            $quantidadeTotalPosto = 0;
+            $lotesAgregados = array();
+            foreach ($folhas_do_posto as $folha_id) {
+                $quantidadeTotalPosto += isset($quantidades[$folha_id]) ? (int)$quantidades[$folha_id] : 0;
+                $listaLotesFolha = isset($lotes_post[$folha_id]) ? trim((string)$lotes_post[$folha_id]) : '';
+                if ($listaLotesFolha !== '') {
+                    foreach (explode(',', $listaLotesFolha) as $loteItem) {
+                        $loteItem = preg_replace('/\D+/', '', (string)$loteItem);
+                        if ($loteItem !== '') {
+                            $lotesAgregados[str_pad($loteItem, 8, '0', STR_PAD_LEFT)] = true;
+                        }
+                    }
+                }
+            }
             $dados_salvos[$posto]['lacre'] = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
+            $dados_salvos[$posto]['lacre_correios_pt'] = isset($lacresCorreiosPt[$posto]) ? preg_replace('/\D+/', '', (string)$lacresCorreiosPt[$posto]) : '';
+            $dados_salvos[$posto]['etiqueta_correios_pt'] = isset($etiquetasCorreiosPt[$posto]) ? substr(preg_replace('/\D+/', '', (string)$etiquetasCorreiosPt[$posto]), 0, 35) : '';
             $dados_salvos[$posto]['nome'] = isset($nomes[$posto]) ? trim($nomes[$posto]) : '';
             $dados_salvos[$posto]['endereco'] = isset($enderecos[$posto]) ? trim($enderecos[$posto]) : '';
-            $dados_salvos[$posto]['quantidade'] = isset($quantidades[$folha_id]) ? (int)$quantidades[$folha_id] : 0;
-            $dados_salvos[$posto]['lote'] = isset($lotes_post[$folha_id]) ? trim($lotes_post[$folha_id]) : '';
+            $dados_salvos[$posto]['quantidade'] = $quantidadeTotalPosto;
+            $dados_salvos[$posto]['lote'] = implode(',', array_keys($lotesAgregados));
         }
 
         if (empty($dados_salvos)) {
-            throw new Exception('Nenhuma folha selecionada com lacre preenchido.');
+            throw new Exception($modoVisualCorreiosPost ? 'Nenhuma folha selecionada com lotes para salvar.' : 'Nenhuma folha selecionada com lacre preenchido.');
         }
 
         // v8.14.3: Verificar modo do ofício (sobrescrever/novo)
@@ -556,7 +585,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
 
             $usuariosPorPosto[$posto] = $valorUsuario;
 
-            $confOficio = ($valorLacre !== '') ? 'S' : 'N';
+            $valorLacreCorreiosPt = isset($dados_salvos[$posto]['lacre_correios_pt']) ? $dados_salvos[$posto]['lacre_correios_pt'] : '';
+            $valorEtiquetaCorreiosPt = isset($dados_salvos[$posto]['etiqueta_correios_pt']) ? $dados_salvos[$posto]['etiqueta_correios_pt'] : '';
+            $confOficio = ($valorLacre !== '' || $valorLacreCorreiosPt !== '' || $valorEtiquetaCorreiosPt !== '') ? 'S' : 'N';
 
             // Verifica se já existe registro para este posto
             $stmSel->execute(array(
@@ -706,10 +737,35 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
 
         if (!empty($lotesPorPosto)) {
             $stDelLote = $pdo_controle->prepare("DELETE FROM ciDespachoLotes WHERE id_despacho = ? AND posto = ?");
-            $stInsLote = $pdo_controle->prepare("INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis) VALUES (?,?,?,?,?,?)");
+            $temEtiquetaIiprLote = false;
+            $temEtiquetaCorreiosLote = false;
+            $temEtiquetaCodigoLote = false;
+            try {
+                $colsLotes = $pdo_controle->query("SHOW COLUMNS FROM ciDespachoLotes")->fetchAll();
+                foreach ($colsLotes as $colLote) {
+                    if (!isset($colLote['Field'])) continue;
+                    if ($colLote['Field'] === 'etiquetaiipr') $temEtiquetaIiprLote = true;
+                    if ($colLote['Field'] === 'etiquetacorreios') $temEtiquetaCorreiosLote = true;
+                    if ($colLote['Field'] === 'etiqueta_correios') $temEtiquetaCodigoLote = true;
+                }
+            } catch (Exception $colsEx) {}
+
+            $sqlInsertLote = "INSERT INTO ciDespachoLotes (id_despacho, posto, lote, quantidade, data_carga, responsaveis";
+            if ($temEtiquetaIiprLote) $sqlInsertLote .= ", etiquetaiipr";
+            if ($temEtiquetaCorreiosLote) $sqlInsertLote .= ", etiquetacorreios";
+            if ($temEtiquetaCodigoLote) $sqlInsertLote .= ", etiqueta_correios";
+            $sqlInsertLote .= ") VALUES (?,?,?,?,?,?";
+            if ($temEtiquetaIiprLote) $sqlInsertLote .= ",?";
+            if ($temEtiquetaCorreiosLote) $sqlInsertLote .= ",?";
+            if ($temEtiquetaCodigoLote) $sqlInsertLote .= ",?";
+            $sqlInsertLote .= ")";
+            $stInsLote = $pdo_controle->prepare($sqlInsertLote);
 
             foreach ($lotesPorPosto as $posto => $listaLotes) {
                 $stDelLote->execute(array($id_despacho_post, $posto));
+                $lacrePtLote = isset($dados_salvos[$posto]['lacre']) ? trim((string)$dados_salvos[$posto]['lacre']) : '';
+                $lacreCorreiosPtLote = isset($dados_salvos[$posto]['lacre_correios_pt']) ? trim((string)$dados_salvos[$posto]['lacre_correios_pt']) : '';
+                $etiquetaCorreiosPtLote = isset($dados_salvos[$posto]['etiqueta_correios_pt']) ? trim((string)$dados_salvos[$posto]['etiqueta_correios_pt']) : '';
 
                 $placeLotes = implode(',', array_fill(0, count($listaLotes), '?'));
                 $paramsLotes = array();
@@ -748,26 +804,34 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                 foreach ($listaLotes as $lt) {
                     if (isset($mapaLotes[$lt])) {
                         $row = $mapaLotes[$lt];
-                        $stInsLote->execute(array(
+                        $paramsInsertLote = array(
                             $id_despacho_post,
                             $posto,
                             $lt,
                             (int)$row['quantidade'],
                             $row['data_carga'],
                             $row['responsaveis']
-                        ));
+                        );
+                        if ($temEtiquetaIiprLote) $paramsInsertLote[] = ($lacrePtLote === '' ? null : (int)$lacrePtLote);
+                        if ($temEtiquetaCorreiosLote) $paramsInsertLote[] = ($lacreCorreiosPtLote === '' ? null : (int)$lacreCorreiosPtLote);
+                        if ($temEtiquetaCodigoLote) $paramsInsertLote[] = ($etiquetaCorreiosPtLote === '' ? null : $etiquetaCorreiosPtLote);
+                        $stInsLote->execute($paramsInsertLote);
                     } else {
                         $payloadInfo = isset($mapaPayloadLotes[$posto]) && isset($mapaPayloadLotes[$posto][$lt])
                             ? $mapaPayloadLotes[$posto][$lt]
                             : null;
-                        $stInsLote->execute(array(
+                        $paramsInsertLote = array(
                             $id_despacho_post,
                             $posto,
                             $lt,
                             $payloadInfo ? (int)$payloadInfo['quantidade'] : 0,
                             $payloadInfo && !empty($payloadInfo['data_carga']) ? $payloadInfo['data_carga'] : null,
                             $payloadInfo && isset($payloadInfo['responsaveis']) && $payloadInfo['responsaveis'] !== '' ? $payloadInfo['responsaveis'] : $respFallback
-                        ));
+                        );
+                        if ($temEtiquetaIiprLote) $paramsInsertLote[] = ($lacrePtLote === '' ? null : (int)$lacrePtLote);
+                        if ($temEtiquetaCorreiosLote) $paramsInsertLote[] = ($lacreCorreiosPtLote === '' ? null : (int)$lacreCorreiosPtLote);
+                        if ($temEtiquetaCodigoLote) $paramsInsertLote[] = ($etiquetaCorreiosPtLote === '' ? null : $etiquetaCorreiosPtLote);
+                        $stInsLote->execute($paramsInsertLote);
                     }
                 }
             }
@@ -1250,6 +1314,33 @@ if ($pdo_controle && !empty($datasStr)) {
                     $quantidadesPorPosto[$posto3] = (int)$rowL['quantidade'];
                 }
             }
+
+            try {
+                $stResumo = $pdo_controle->prepare("
+                    SELECT posto,
+                           MAX(etiquetaiipr) AS etiquetaiipr,
+                           MAX(etiquetacorreios) AS etiquetacorreios,
+                           MAX(etiqueta_correios) AS etiqueta_correios
+                      FROM ciDespachoLotes
+                     WHERE id_despacho = ?
+                     GROUP BY posto
+                ");
+                $stResumo->execute(array($id_despacho));
+                while ($rowResumo = $stResumo->fetch(PDO::FETCH_ASSOC)) {
+                    $postoResumo = str_pad(preg_replace('/\D+/', '', (string)$rowResumo['posto']), 3, '0', STR_PAD_LEFT);
+                    if ($postoResumo === '000') continue;
+                    if (!empty($rowResumo['etiquetaiipr'])) {
+                        $lacresPorPosto[$postoResumo] = (string)$rowResumo['etiquetaiipr'];
+                    }
+                    if (!empty($rowResumo['etiquetacorreios'])) {
+                        $lacresCorreiosPtPorPosto[$postoResumo] = (string)$rowResumo['etiquetacorreios'];
+                    }
+                    if (!empty($rowResumo['etiqueta_correios'])) {
+                        $etiquetasCorreiosPtPorPosto[$postoResumo] = trim((string)$rowResumo['etiqueta_correios']);
+                    }
+                }
+            } catch (Exception $eResumo) {
+            }
         }
     } catch (Exception $e) {
         // Se der erro aqui, apenas segue sem lacres pré-carregados
@@ -1261,6 +1352,12 @@ if (!empty($dados_salvos) && $tipo_mensagem === 'sucesso') {
     foreach ($dados_salvos as $posto => $valores) {
         if (isset($valores['lacre'])) {
             $lacresPorPosto[$posto] = $valores['lacre'];
+        }
+        if (isset($valores['lacre_correios_pt'])) {
+            $lacresCorreiosPtPorPosto[$posto] = $valores['lacre_correios_pt'];
+        }
+        if (isset($valores['etiqueta_correios_pt'])) {
+            $etiquetasCorreiosPtPorPosto[$posto] = $valores['etiqueta_correios_pt'];
         }
         if (isset($valores['nome'])) {
             $nomesPorPosto[$posto] = $valores['nome'];
@@ -2274,12 +2371,24 @@ if (document.readyState === 'loading') {
     <?php endif; ?>
 
     <?php if ($modo_visual_correios): ?>
+    <button type="button" onclick="gravarEImprimir();" class="btn-sucesso btn-imprimir">
+        💾🖨️ Gravar e Imprimir
+    </button>
+
+    <button type="button" onclick="apenasGravar();" class="btn-salvar">
+        💾 Gravar Dados
+    </button>
+
     <button type="button" onclick="apenasImprimir();" class="btn-imprimir">
         🖨️ Apenas Imprimir
     </button>
 
     <button type="button" onclick="imprimirSelecionados();" class="btn-imprimir">
         ✅ Imprimir Selecionados
+    </button>
+
+    <button type="button" onclick="removerConferenciaVisivelPT();" class="btn-excluir">
+        ↺ Retirar Conferência da Tela
     </button>
     <?php endif; ?>
   </div>
@@ -2299,7 +2408,7 @@ if (document.readyState === 'loading') {
                 </div>
 
                 <div class="cols100 center border-1px p5 moldura cabecalho-pt">
-                    <div class="titulo-mestre">POUPATEMPO PARANA COM ETIQUETA CORREIOS</div>
+                      <div class="titulo-mestre">POUPATEMPO PARANA COM ETIQUETA CORREIOS</div>
                     <div class="subtitulo-mestre">Folha mestre externa para expedicao dos postos selecionados</div>
                     <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNorm)); ?></div>
                 </div>
@@ -2316,9 +2425,9 @@ if (document.readyState === 'loading') {
                         <table class="tabela-mestre-pt" style="table-layout:fixed; width:100%; max-width:100%; margin:0 0 12px 0;">
                             <thead>
                                 <tr>
-                                    <th style="width:34%; text-align:left;">Nome do posto</th>
+                                    <th style="width:34%; text-align:left;">Postos Poupa Tempo</th>
                                     <th style="width:14%; text-align:center;">Lacre Poupa Tempo</th>
-                                    <th style="width:18%; text-align:center;">Lacre Correios Poupa Tempo</th>
+                                    <th style="width:18%; text-align:center;">Lacre Poupa Tempo Correios</th>
                                     <th style="width:34%; text-align:left;">Etiqueta Correios (35 posicoes)</th>
                                 </tr>
                             </thead>
@@ -2342,7 +2451,7 @@ if (document.readyState === 'loading') {
                                         <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
                                     </td>
                                     <td style="text-align:left;">
-                                        <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;">
+                                        <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel" style="text-align:left;" maxlength="35">
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

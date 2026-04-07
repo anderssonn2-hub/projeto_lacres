@@ -1,6 +1,12 @@
 <?php
-/* lacres_novo.php — v1.0.2
+/* lacres_novo.php — v1.0.3
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.3 (07/04/2026):
+ * - [CORRIGIDO] Ofício PT com etiqueta Correios volta a gravar normalmente com número de ofício
+ * - [CORRIGIDO] Folhas internas PT salvam lotes e quantidades mesmo sem coluna de lacre
+ * - [NOVO] Folha mestre PT reutiliza o padrão visual e os dados persistidos em ciDespachoLotes
+ * - [NOVO] Versão consolidada para v1.0.3
  *
  * CHANGELOG v1.0.2 (06/04/2026):
  * - [CORRIGIDO] Remove uso de array_column para compatibilidade com PHP 5.3
@@ -5310,7 +5316,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.2</div>
+<div class="version-info">v1.0.3</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
