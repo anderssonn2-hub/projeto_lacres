@@ -5746,6 +5746,11 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 inputSemOficio.name = 'pt_filtrar_sem_oficio';
                 inputSemOficio.value = (document.getElementById('ptFiltroSemOficio') && document.getElementById('ptFiltroSemOficio').checked) ? '1' : '0';
                 form.appendChild(inputSemOficio);
+                var inputResponsavel = document.createElement('input');
+                inputResponsavel.type = 'hidden';
+                inputResponsavel.name = 'responsavel';
+                inputResponsavel.value = <?php echo json_encode_legado_seguro($responsavel, JSON_UNESCAPED_UNICODE); ?>;
+                form.appendChild(inputResponsavel);
                 document.body.appendChild(form);
                 form.submit();
                 document.body.removeChild(form);
@@ -8776,6 +8781,7 @@ $__pt_datas_join = htmlspecialchars(
 <form id="oficioPTForm" method="post" action="modelo_oficio_poupa_tempo.php" target="_blank" style="display:none;">
   <input type="hidden" name="acao" value="oficio_poupatempo" />
   <input type="hidden" name="pt_datas" value="<?php echo $__pt_datas_join; ?>" />
+        <input type="hidden" name="responsavel" value="<?php echo htmlspecialchars($responsavel, ENT_QUOTES, 'UTF-8'); ?>" />
     <input type="hidden" name="pt_postos_sel" id="ptPostosSel" value="" />
     <input type="hidden" name="pt_filtrar_nao_conferidos" id="ptFiltroNaoConferidosInput" value="0" />
     <input type="hidden" name="pt_filtrar_sem_oficio" id="ptFiltroSemOficioInput" value="0" />

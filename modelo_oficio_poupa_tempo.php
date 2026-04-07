@@ -448,11 +448,19 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         // v8.14.3: Verificar modo do ofício (sobrescrever/novo)
         // v8.15.6: CORRIGIDO - modo "novo" SEMPRE cria novo ofício com hash único
         $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : '';
+        $usuarioResponsavel = isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== ''
+            ? trim((string)$_POST['responsavel'])
+            : (isset($_SESSION['ultimo_responsavel']) && trim((string)$_SESSION['ultimo_responsavel']) !== ''
+                ? trim((string)$_SESSION['ultimo_responsavel'])
+                : (isset($_SESSION['usuario']) && trim((string)$_SESSION['usuario']) !== ''
+                    ? trim((string)$_SESSION['usuario'])
+                    : 'conferencia'));
+        $_SESSION['ultimo_responsavel'] = $usuarioResponsavel;
         
         // Se não tiver id_despacho, precisa criar o despacho primeiro
         if ($id_despacho_post <= 0 && !empty($datasStr_post)) {
             $grupo = 'POUPA TEMPO';
-            $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
+            $usuario = $usuarioResponsavel;
             
             // v8.15.6: Se modo for "novo", SEMPRE criar novo despacho com hash único
             if ($modoOficio === 'novo') {
@@ -485,6 +493,12 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
             }
         }
         
+        if ($id_despacho_post > 0) {
+            $stAtualizaCabecalho = $pdo_controle->prepare("UPDATE ciDespachos SET usuario = ? WHERE id = ?");
+            $stAtualizaCabecalho->execute(array($usuarioResponsavel, $id_despacho_post));
+            $_SESSION['id_despacho_poupa_tempo'] = (int)$id_despacho_post;
+        }
+
         // v8.14.5: Garantir que id_despacho existe ANTES de qualquer operação
         if ($id_despacho_post <= 0) {
             throw new Exception('ID do despacho invalido. Salve o oficio primeiro na tela anterior.');
@@ -1598,6 +1612,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .info-cliente-mestre{border:1px solid #000; padding:9px 10px; margin-bottom:8px; font-size:13px; line-height:1.0; position:relative}
 .folha-mestre-pt-correios .info-cliente-mestre p{margin:0 0 8px 0}
 .folha-mestre-pt-correios .info-cliente-mestre p:last-child{margin-bottom:0}
+.folha-mestre-pt-correios .numero-oficio-mestre{position:absolute; top:8px; right:8px; padding:6px 12px; border:2px solid #000; background:#fff; font-size:15px; font-weight:bold; min-width:72px; text-align:center}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:36%; text-align:left}
@@ -2363,6 +2378,7 @@ if (document.readyState === 'loading') {
   <input type="hidden" name="acao" id="acaoForm" value="salvar_oficio_completo">
   <!-- Número da expedição (id do despacho), se existir -->
   <input type="hidden" name="id_despacho" value="<?php echo (int)$id_despacho; ?>">
+    <input type="hidden" name="responsavel" value="<?php echo e(isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== '' ? trim((string)$_POST['responsavel']) : (isset($_SESSION['ultimo_responsavel']) ? trim((string)$_SESSION['ultimo_responsavel']) : '')); ?>">
   <!-- Datas usadas no ofício (string original, como em ciDespachos.datas_str) -->
   <input type="hidden" name="pt_datas" value="<?php echo e($datasStr); ?>">
   <!-- Flag para imprimir após salvar -->
@@ -2467,6 +2483,9 @@ if (document.readyState === 'loading') {
 
                 <div class="info-cliente-mestre">
                     <p><strong>CLIENTE:</strong> POUPA TEMPO PARANÁ</p>
+                    <?php if ($id_despacho > 0): ?>
+                    <div class="numero-oficio-mestre">Nº #<?php echo (int)$id_despacho; ?></div>
+                    <?php endif; ?>
                 </div>
 
                 <div class="cols100 processo">

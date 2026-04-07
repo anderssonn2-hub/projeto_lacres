@@ -1308,6 +1308,7 @@ try {
     );
     $estante_lotes_sem_upload = array();
     $estante_sem_upload_por_posto = array();
+    $estante_sem_upload_por_lote = array();
 
     $periodo_operacao_label = 'Periodo nao informado';
     if ($data_ini !== '' && $data_fim !== '') {
@@ -1459,7 +1460,10 @@ try {
                     $whereEstante
                     AND NOT EXISTS (
                         SELECT 1 FROM ciPostosCsv c
-                        WHERE c.lote = l.lote $joinCarga
+                        WHERE LPAD(CAST(c.lote AS UNSIGNED),8,'0') = LPAD(l.lote,8,'0')
+                          AND LPAD(CAST(c.posto AS UNSIGNED),3,'0') = LPAD(l.posto,3,'0')
+                          AND LPAD(CAST(COALESCE(c.regional,0) AS UNSIGNED),3,'0') = LPAD(l.regional,3,'0')
+                          $joinCarga
                     )
                     ORDER BY l.lote");
                 $stmtSem->execute(array_merge($params_estante, $params_upload));
@@ -1470,11 +1474,15 @@ try {
                         'regional' => isset($row['regional']) ? $row['regional'] : ''
                     );
                     $posto_sem_upload = isset($row['posto']) ? $row['posto'] : '';
+                    $lote_sem_upload = isset($row['lote']) ? $row['lote'] : '';
                     if ($posto_sem_upload !== '') {
                         if (!isset($estante_sem_upload_por_posto[$posto_sem_upload])) {
                             $estante_sem_upload_por_posto[$posto_sem_upload] = 0;
                         }
                         $estante_sem_upload_por_posto[$posto_sem_upload]++;
+                    }
+                    if ($posto_sem_upload !== '' && $lote_sem_upload !== '') {
+                        $estante_sem_upload_por_lote[$posto_sem_upload . '|' . $lote_sem_upload] = true;
                     }
                 }
             }
@@ -1482,6 +1490,7 @@ try {
     } catch (Exception $e) {
         $estante_lotes_sem_upload = array();
         $estante_sem_upload_por_posto = array();
+        $estante_sem_upload_por_lote = array();
     }
 
     // v9.24.0: Carregar postos bloqueados
@@ -3088,21 +3097,21 @@ try {
         <div class="operacao-grade" id="operacaoGrade">
             <?php
             if (!empty($grupo_pt)) {
-                renderizarLinhasOperacao('Poupa Tempo', $grupo_pt, $estante_sem_upload_por_posto);
+                renderizarLinhasOperacao('Poupa Tempo', $grupo_pt, $estante_sem_upload_por_posto, $estante_sem_upload_por_lote);
             }
             if (!empty($grupo_r01)) {
-                renderizarLinhasOperacao('Posto 001', $grupo_r01, $estante_sem_upload_por_posto);
+                renderizarLinhasOperacao('Posto 001', $grupo_r01, $estante_sem_upload_por_posto, $estante_sem_upload_por_lote);
             }
             if (!empty($grupo_capital)) {
-                renderizarLinhasOperacao('Capital', $grupo_capital, $estante_sem_upload_por_posto);
+                renderizarLinhasOperacao('Capital', $grupo_capital, $estante_sem_upload_por_posto, $estante_sem_upload_por_lote);
             }
             if (!empty($grupo_999)) {
-                renderizarLinhasOperacao('Central IIPR', $grupo_999, $estante_sem_upload_por_posto);
+                renderizarLinhasOperacao('Central IIPR', $grupo_999, $estante_sem_upload_por_posto, $estante_sem_upload_por_lote);
             }
             if (!empty($grupo_outros)) {
                 foreach ($grupo_outros as $regional => $postosGrupo) {
                     $regionalStrCard = str_pad($regional, 3, '0', STR_PAD_LEFT);
-                    renderizarLinhasOperacao('Regional ' . $regionalStrCard, $postosGrupo, $estante_sem_upload_por_posto);
+                    renderizarLinhasOperacao('Regional ' . $regionalStrCard, $postosGrupo, $estante_sem_upload_por_posto, $estante_sem_upload_por_lote);
                 }
             }
             if (empty($regionais_data)) {
@@ -3334,7 +3343,7 @@ function obterClasseGrupoOperacao($tituloGrupo) {
     return 'tipo-regional';
 }
 
-function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPosto) {
+function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPosto, $estanteSemUploadPorLote) {
     if (empty($dados)) {
         return;
     }
@@ -3426,7 +3435,9 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
             if (!empty($item['lacre_correios']) || !empty($item['etiqueta_correios'])) {
                 $chipClasses .= ' tem-correios';
             }
-            if ($semUploadCount > 0) {
+            $loteChip = isset($item['lote']) ? str_pad(preg_replace('/\D+/', '', (string)$item['lote']), 8, '0', STR_PAD_LEFT) : '';
+            $chipSemUpload = ($postoKey !== '' && $loteChip !== '' && isset($estanteSemUploadPorLote[$postoKey . '|' . $loteChip]));
+            if ($chipSemUpload) {
                 $chipClasses .= ' sem-upload';
             }
             echo '<button type="button" class="' . $chipClasses . '"';
