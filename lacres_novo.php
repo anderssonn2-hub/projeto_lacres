@@ -5833,7 +5833,45 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($itens as $key => $dado): ?>
+            <?php
+            $itensRenderizados = array();
+            if ($grupo === 'POUPA TEMPO') {
+                $ptCapital = array();
+                $ptInterior = array();
+                foreach ($itens as $itemPt) {
+                    $codigoPt = (int)preg_replace('/\D+/', '', (string)$itemPt['posto_codigo']);
+                    if ($codigoPt >= 5 && $codigoPt <= 80) {
+                        $ptCapital[] = $itemPt;
+                    } else {
+                        $ptInterior[] = $itemPt;
+                    }
+                }
+                if (!empty($ptCapital)) {
+                    $itensRenderizados[] = array('tipo_linha' => 'cabecalho', 'titulo' => 'POSTOS POUPA TEMPO CAPITAL');
+                    foreach ($ptCapital as $itemPtCapital) {
+                        $itensRenderizados[] = array('tipo_linha' => 'dado', 'item' => $itemPtCapital);
+                    }
+                }
+                if (!empty($ptInterior)) {
+                    $itensRenderizados[] = array('tipo_linha' => 'cabecalho', 'titulo' => 'POSTOS POUPA TEMPO INTERIOR');
+                    foreach ($ptInterior as $itemPtInterior) {
+                        $itensRenderizados[] = array('tipo_linha' => 'dado', 'item' => $itemPtInterior);
+                    }
+                }
+            } else {
+                foreach ($itens as $itemPadrao) {
+                    $itensRenderizados[] = array('tipo_linha' => 'dado', 'item' => $itemPadrao);
+                }
+            }
+            ?>
+            <?php foreach ($itensRenderizados as $key => $linhaRender): ?>
+            <?php if ($linhaRender['tipo_linha'] === 'cabecalho'): ?>
+            <tr class="subtitulo-pt-grid">
+                <td colspan="5" style="text-align:left; font-weight:bold; background:#f2f2f2; padding:8px 10px;">&nbsp;<?php echo htmlspecialchars($linhaRender['titulo'], ENT_QUOTES, 'UTF-8'); ?></td>
+            </tr>
+            <?php continue; ?>
+            <?php endif; ?>
+            <?php $dado = $linhaRender['item']; ?>
             <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-linha-inserida="<?php echo !empty($dado['manual_inserido']) ? '1' : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>

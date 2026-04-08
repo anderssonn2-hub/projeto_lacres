@@ -1615,13 +1615,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .numero-oficio-mestre{position:absolute; top:8px; right:8px; padding:6px 12px; border:2px solid #000; background:#fff; font-size:15px; font-weight:bold; min-width:72px; text-align:center}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:36%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:34%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:9%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:10%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:45%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:47%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:22px}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.1; font-weight:normal}
-.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:"Courier New", Courier, monospace; font-size:12px; letter-spacing:0; padding:0 2px; height:22px; line-height:22px; white-space:nowrap; overflow:hidden; text-overflow:clip}
+.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif; font-size:12px; letter-spacing:0; padding:0 2px; height:22px; line-height:22px; white-space:nowrap; overflow:hidden; text-overflow:clip}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -1679,7 +1679,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt thead{display:table-header-group}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tbody{display:table-row-group}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tr{page-break-inside:avoid !important; break-inside:avoid !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-size:8px !important; letter-spacing:-0.2px !important; padding:0 1px !important; height:18px !important; line-height:18px !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif !important; font-size:12px !important; letter-spacing:0 !important; padding:0 2px !important; height:22px !important; line-height:22px !important}
     
     /* v9.12.0: Page break para páginas divididas */
     .pagina-split-1{
@@ -2027,6 +2027,38 @@ function confirmarGravarPT(comImpressao) {
     modal.appendChild(titulo);
     modal.appendChild(texto);
     modal.appendChild(botoes);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+}
+
+function mostrarModalResultadoSalvamento(mensagem, aoConfirmar) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:white;padding:30px;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:460px;text-align:center;';
+
+    var titulo = document.createElement('h3');
+    titulo.textContent = 'Dados salvos com sucesso';
+    titulo.style.cssText = 'margin-top:0;color:#1e7e34;';
+
+    var texto = document.createElement('p');
+    texto.textContent = mensagem;
+    texto.style.cssText = 'margin:18px 0;line-height:1.6;color:#444;';
+
+    var botao = document.createElement('button');
+    botao.textContent = 'OK';
+    botao.style.cssText = 'background:#28a745;color:white;border:none;padding:12px 28px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;';
+    botao.onclick = function() {
+        document.body.removeChild(overlay);
+        if (typeof aoConfirmar === 'function') {
+            aoConfirmar();
+        }
+    };
+
+    modal.appendChild(titulo);
+    modal.appendChild(texto);
+    modal.appendChild(botao);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 }
@@ -2880,15 +2912,15 @@ if (document.readyState === 'loading') {
 
 </form>
 
-<?php
-// Se salvou com sucesso e flag de imprimir está ativa, adiciona script para imprimir
-if ($deve_imprimir && $tipo_mensagem === 'sucesso'):
-?>
+<?php if ($tipo_mensagem === 'sucesso'): ?>
 <script type="text/javascript">
-// Imprime após pequeno delay para garantir que a página renderizou
-setTimeout(function() {
-    imprimirSelecionados();
-}, 500);
+document.addEventListener('DOMContentLoaded', function() {
+    mostrarModalResultadoSalvamento(<?php echo json_encode_legado_seguro($mensagem_status, JSON_UNESCAPED_UNICODE); ?>, function() {
+        <?php if ($deve_imprimir): ?>
+        imprimirSelecionados();
+        <?php endif; ?>
+    });
+});
 </script>
 <?php endif; ?>
 
