@@ -1,10 +1,6 @@
 <?php
-/* lacres_novo.php — v1.0.5
+/* lacres_novo.php — v1.0.3
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
- *
- * CHANGELOG v1.0.5 (08/04/2026):
- * - [NOVO] Seleção em massa para Postos Poupa Tempo Capital e Interior
- * - [NOVO] Versão consolidada para v1.0.5
  *
  * CHANGELOG v1.0.3 (07/04/2026):
  * - [CORRIGIDO] Ofício PT com etiqueta Correios volta a gravar normalmente com número de ofício
@@ -4359,6 +4355,20 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         .acoes-cell {
             white-space: nowrap;
         }
+        .coluna-acoes {
+            width: 132px;
+            min-width: 132px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .acoes-botoes {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex-wrap: wrap;
+            min-height: 28px;
+        }
         .acoes-cell button {
             display: inline-block;
             vertical-align: middle;
@@ -5320,7 +5330,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.5</div>
+<div class="version-info">v1.0.3</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5833,7 +5843,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                     <button type="button" class="btn-limpar-coluna" onclick="limparEtiquetasCentral()" title="Apagar todas as etiquetas da Central IIPR">X</button>
                     <?php endif; ?>
                 </th>
-                <th><?php echo ($grupo === 'POUPA TEMPO') ? '' : 'Acoes'; ?></th>
+                <th class="coluna-acoes"><?php echo ($grupo === 'POUPA TEMPO') ? '' : 'Acoes'; ?></th>
             </tr>
         </thead>
         <tbody>
@@ -5870,18 +5880,13 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             ?>
             <?php foreach ($itensRenderizados as $key => $linhaRender): ?>
             <?php if ($linhaRender['tipo_linha'] === 'cabecalho'): ?>
-            <tr class="subtitulo-pt-grid" data-pt-subgrupo-cabecalho="<?php echo (stripos($linhaRender['titulo'], 'CAPITAL') !== false) ? 'capital' : 'interior'; ?>">
-                <td colspan="5" style="text-align:left; font-weight:bold; background:#f2f2f2; padding:8px 10px;">
-                    <label style="display:inline-flex; align-items:center; gap:6px; font-weight:bold; cursor:pointer;">
-                        <input type="checkbox" class="pt-toggle-grupo" data-pt-grupo="<?php echo (stripos($linhaRender['titulo'], 'CAPITAL') !== false) ? 'capital' : 'interior'; ?>" checked>
-                        <span><?php echo htmlspecialchars($linhaRender['titulo'], ENT_QUOTES, 'UTF-8'); ?></span>
-                    </label>
-                </td>
+            <tr class="subtitulo-pt-grid">
+                <td colspan="5" style="text-align:left; font-weight:bold; background:#f2f2f2; padding:8px 10px;">&nbsp;<?php echo htmlspecialchars($linhaRender['titulo'], ENT_QUOTES, 'UTF-8'); ?></td>
             </tr>
             <?php continue; ?>
             <?php endif; ?>
             <?php $dado = $linhaRender['item']; ?>
-            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-linha-inserida="<?php echo !empty($dado['manual_inserido']) ? '1' : '0' ?>" data-pt-subgrupo="<?php echo ($grupo === 'POUPA TEMPO' && (int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) >= 5 && (int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) <= 80) ? 'capital' : (($grupo === 'POUPA TEMPO') ? 'interior' : ''); ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
+            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-linha-inserida="<?php echo !empty($dado['manual_inserido']) ? '1' : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
                     <label style="margin-right:6px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
@@ -5914,39 +5919,45 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
     <?php endif; ?>
 </td>
-                <td class="acoes-cell">
+                <td class="acoes-cell coluna-acoes">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
-                    <button type="button" class="btn-add-below"
-                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
-                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
-                            data-posicao="abaixo"
-                            onclick="abrirModalInserir(this);">
-                        +Abaixo
-                    </button>
+                    <div class="acoes-botoes">
+                        <button type="button" class="btn-add-below"
+                                data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                                data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                                data-posicao="abaixo"
+                                onclick="abrirModalInserir(this);">
+                            +Abaixo
+                        </button>
+                    </div>
                     <?php elseif ($grupo === 'REGIONAIS'): ?>
-                    <button type="button" class="btn-excluir-regional"
-                            onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
-                        Excluir
-                    </button>
-                    <button type="button" class="btn-add-below"
-                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
-                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
-                            data-posicao="abaixo"
-                            onclick="abrirModalInserir(this);">
-                        +Abaixo
-                    </button>
+                    <div class="acoes-botoes">
+                        <button type="button" class="btn-excluir-regional"
+                                onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
+                            Excluir
+                        </button>
+                        <button type="button" class="btn-add-below"
+                                data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                                data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                                data-posicao="abaixo"
+                                onclick="abrirModalInserir(this);">
+                            +Abaixo
+                        </button>
+                    </div>
                     <?php else: ?>
-                    <button type="button" class="btn-excluir"
-                            onclick="excluirPosto('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
-                        Excluir
-                    </button>
-                    <button type="button" class="btn-add-below"
-                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
-                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
-                            data-posicao="abaixo"
-                            onclick="abrirModalInserir(this);">
-                        +Abaixo
-                    </button>
+                    <div class="acoes-botoes">
+                        <button type="button" class="btn-excluir"
+                                onclick="excluirPosto('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
+                            Excluir
+                        </button>
+                        <button type="button" class="btn-add-below"
+                                data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                                data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                                data-posicao="abaixo"
+                                onclick="abrirModalInserir(this);">
+                            +Abaixo
+                        </button>
+                    </div>
                     <?php endif; ?>
                 </td>
             </tr>
@@ -8863,56 +8874,6 @@ $__pt_datas_join = htmlspecialchars(
         if (inputNaoConf) inputNaoConf.value = (naoConf && naoConf.checked) ? '1' : '0';
         if (inputSemOficio) inputSemOficio.value = (semOficio && semOficio.checked) ? '1' : '0';
     };
-
-    function atualizarEstadoMarcadoresGrupoPT() {
-        var toggles = document.querySelectorAll('.pt-toggle-grupo');
-        for (var i = 0; i < toggles.length; i++) {
-            var grupo = toggles[i].getAttribute('data-pt-grupo') || '';
-            if (!grupo) continue;
-            var itens = document.querySelectorAll('.pt-selecionar[data-pt-grupo="' + grupo + '"]');
-            if (!itens.length) continue;
-            var totalMarcados = 0;
-            for (var j = 0; j < itens.length; j++) {
-                if (itens[j].checked) totalMarcados++;
-            }
-            toggles[i].checked = totalMarcados === itens.length;
-            toggles[i].indeterminate = totalMarcados > 0 && totalMarcados < itens.length;
-        }
-    }
-
-    function inicializarSelecaoGruposPT() {
-        var checksIndividuais = document.querySelectorAll('.pt-selecionar');
-        for (var i = 0; i < checksIndividuais.length; i++) {
-            var linha = checksIndividuais[i].closest('tr');
-            if (!linha) continue;
-            var subgrupo = linha.getAttribute('data-pt-subgrupo') || '';
-            if (subgrupo) {
-                checksIndividuais[i].setAttribute('data-pt-grupo', subgrupo);
-            }
-            checksIndividuais[i].addEventListener('change', atualizarEstadoMarcadoresGrupoPT);
-        }
-
-        var toggles = document.querySelectorAll('.pt-toggle-grupo');
-        for (var j = 0; j < toggles.length; j++) {
-            toggles[j].addEventListener('change', function() {
-                var grupo = this.getAttribute('data-pt-grupo') || '';
-                if (!grupo) return;
-                var itens = document.querySelectorAll('.pt-selecionar[data-pt-grupo="' + grupo + '"]');
-                for (var k = 0; k < itens.length; k++) {
-                    itens[k].checked = this.checked;
-                }
-                atualizarEstadoMarcadoresGrupoPT();
-            });
-        }
-
-        atualizarEstadoMarcadoresGrupoPT();
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', inicializarSelecaoGruposPT);
-    } else {
-        inicializarSelecaoGruposPT();
-    }
 })();
 
 (function(){

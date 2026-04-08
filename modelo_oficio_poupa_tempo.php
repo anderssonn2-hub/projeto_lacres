@@ -1,10 +1,5 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
-    v1.0.5: Ajustes finais da folha mestre PT Correios
-    - [NOVO] Linhas extras no ofício mestre para incluir malotes adicionais abaixo do posto
-    - [CORRIGIDO] Coluna do posto ampliada, cabeçalhos centralizados e etiqueta centralizada
-    - [CORRIGIDO] Rodapé da impressão alinhado com a visualização em tela
-
     v1.0.3: Folha mestre PT Correios + persistencia normal
     - [CORRIGIDO] Modo PT com etiqueta Correios volta a gravar ofício normalmente com número em ciDespachos
     - [NOVO] Folha mestre externa passa a usar dados persistidos em ciDespachoLotes por posto/lote
@@ -404,7 +399,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
         // v9.22.2: Capturar lotes confirmados por folha
         $lotes_post = isset($_POST['lotes_confirmados']) && is_array($_POST['lotes_confirmados']) ? $_POST['lotes_confirmados'] : array();
 
-        // v1.0.5: agregar folhas selecionadas por posto; modo Correios nao depende de lacre no cabecalho
+        // v1.0.3: agregar folhas selecionadas por posto; modo Correios nao depende de lacre no cabecalho
         $folhas_por_posto = array();
         foreach ($folhas_selecionadas as $folha_id) {
             if (!isset($folhas_post[$folha_id])) continue;
@@ -884,7 +879,6 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
    ============================================================ */
 $datasStr  = '';
 $datasNorm = array();
-$datasNormExibicao = array();
 $paginasDinamicas = array();
 $mapaPayloadLotes = array();
 // v9.25.x: filtros opcionais do oficio PT
@@ -926,13 +920,6 @@ if (!empty($datasStr)) {
 }
 if (!empty($datasNorm)) {
     $datasNorm = array_values(array_unique($datasNorm));
-    foreach ($datasNorm as $dataNormItem) {
-        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $dataNormItem, $mDataNorm)) {
-            $datasNormExibicao[] = $mDataNorm[3] . '-' . $mDataNorm[2] . '-' . $mDataNorm[1];
-        } else {
-            $datasNormExibicao[] = $dataNormItem;
-        }
-    }
 }
 
 if (isset($_POST['pt_dinamico_payload']) || isset($_GET['pt_dinamico_payload'])) {
@@ -1608,43 +1595,37 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .subtitulo-mestre{margin:0 0 14px 0; font-size:12px; text-align:center}
 .folha-mestre-pt-correios .resumo-datas{margin:0 0 8px 0; font-size:12px; text-align:center}
 .folha-mestre-pt-correios .processo{border:none !important; padding:0 !important}
-.folha-mestre-pt-correios .oficio-observacao{padding:0 !important; width:100%}
+.folha-mestre-pt-correios .oficio-observacao{padding:0 !important}
 .folha-mestre-pt-correios .tabela-mestre-pt{border-collapse:collapse; border:1px solid #000; margin:0; width:100%}
 .folha-mestre-pt-correios .tabela-mestre-pt th,
 .folha-mestre-pt-correios .tabela-mestre-pt td{font-size:12px; padding:5px 4px !important; vertical-align:middle; line-height:1.1}
-.folha-mestre-pt-correios .tabela-mestre-pt th{font-weight:bold; background:#fff; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt th{font-weight:bold; background:#fff}
 .folha-mestre-pt-correios .tabela-mestre-pt input,
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:1px 2px; box-shadow:none}
 .folha-mestre-pt-correios .tabela-mestre-pt input{height:20px}
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:20px; line-height:1.1}
-.folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:12px; line-height:1.0; width:100%; box-sizing:border-box}
+.folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:12px; line-height:1.0}
 .folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
 .folha-mestre-pt-correios .logo-mestre img{display:block; max-width:100%; height:auto}
 .folha-mestre-pt-correios .texto-logo-mestre{width:56%; border-left:1px solid #000; padding-left:14px; font-size:14px; line-height:1.0}
 .folha-mestre-pt-correios .texto-logo-mestre strong{display:block; font-size:15px}
-.folha-mestre-pt-correios .info-cliente-mestre{border:1px solid #000; padding:9px 10px; margin-bottom:8px; font-size:13px; line-height:1.0; position:relative; width:100%; box-sizing:border-box}
+.folha-mestre-pt-correios .info-cliente-mestre{border:1px solid #000; padding:9px 10px; margin-bottom:8px; font-size:13px; line-height:1.0; position:relative}
 .folha-mestre-pt-correios .info-cliente-mestre p{margin:0 0 8px 0}
 .folha-mestre-pt-correios .info-cliente-mestre p:last-child{margin-bottom:0}
 .folha-mestre-pt-correios .numero-oficio-mestre{position:absolute; top:8px; right:8px; padding:6px 12px; border:2px solid #000; background:#fff; font-size:15px; font-weight:bold; min-width:72px; text-align:center}
-.folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px; width:100%; box-sizing:border-box}
+.folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt{table-layout:fixed; width:100%; max-width:100%; box-sizing:border-box}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:43%; text-align:left}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:8%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:34%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:9%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:10%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:31%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-acoes-mestre{width:8%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:47%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:22px}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.1; font-weight:normal}
-.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif; font-size:12px; letter-spacing:0; padding:0 2px; height:22px; line-height:22px; white-space:nowrap; overflow:hidden; text-overflow:clip; text-align:center}
-.folha-mestre-pt-correios .linha-extra-mestre-pt td{background:#fafafa}
-.folha-mestre-pt-correios .acoes-mestre-pt{display:flex; justify-content:center; gap:4px; white-space:nowrap}
-.folha-mestre-pt-correios .btn-linha-mestre{border:1px solid #8d99a6; background:#fff; color:#2d3f50; border-radius:4px; font-size:10px; padding:2px 6px; cursor:pointer}
-.folha-mestre-pt-correios .btn-linha-mestre:hover{background:#eef3f7}
-.folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; align-items:flex-start; gap:72px; margin-top:34px; padding:0 28px; width:100%; box-sizing:border-box}
-.folha-mestre-pt-correios .assinatura-mestre{flex:1 1 0; text-align:center; font-size:12px}
+.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif; font-size:12px; letter-spacing:0; padding:0 2px; height:22px; line-height:22px; white-space:nowrap; overflow:hidden; text-overflow:clip}
+.folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
+.folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
-.folha-a4-oficio.folha-mestre-pt-correios{min-height:auto; max-height:none; overflow:visible; padding-left:2mm; padding-right:2mm}
+.folha-a4-oficio.folha-mestre-pt-correios{min-height:auto; max-height:none; overflow:visible}
 .folha-a4-oficio.folha-mestre-pt-correios .oficio,
 .folha-a4-oficio.folha-mestre-pt-correios .processo,
 .folha-a4-oficio.folha-mestre-pt-correios .oficio-observacao{display:block; min-height:auto; height:auto; overflow:visible}
@@ -1679,8 +1660,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
         break-inside:auto !important;
         padding-top:5mm !important;
         padding-bottom:5mm !important;
-        padding-left:2mm !important;
-        padding-right:2mm !important;
     }
 
     .folha-a4-oficio.folha-mestre-pt-correios .oficio,
@@ -1701,9 +1680,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tbody{display:table-row-group}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tr{page-break-inside:avoid !important; break-inside:avoid !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif !important; font-size:12px !important; letter-spacing:0 !important; padding:0 2px !important; height:22px !important; line-height:22px !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .assinaturas-mestre{display:flex !important; justify-content:space-between !important; align-items:flex-start !important; gap:72px !important; padding:0 28px !important; margin-top:30px !important; width:100% !important; box-sizing:border-box !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .assinatura-mestre{flex:1 1 0 !important; max-width:none !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .rodape-oficio{display:block !important; width:100% !important}
     
     /* v9.12.0: Page break para páginas divididas */
     .pagina-split-1{
@@ -2318,86 +2294,6 @@ function atualizarSelecaoFolhas() {
     }
 }
 
-var contadorLinhasExtrasPT = 0;
-
-function obterCamposMonitorados() {
-    return document.querySelectorAll('input[type="text"], textarea, input[type="hidden"][name^="lote_posto"], input[type="hidden"][name^="posto_base"], input[type="hidden"][name^="linha_extra_pt"]');
-}
-
-function registrarMonitoramentoElemento(elemento) {
-    if (!elemento) return;
-    elemento.addEventListener('input', atualizarEstadoBotoes);
-    elemento.addEventListener('change', atualizarEstadoBotoes);
-}
-
-function atualizarContadorLinhasExtrasPT() {
-    var linhas = document.querySelectorAll('.folha-mestre-pt-correios tr[data-linha-extra="1"]');
-    for (var i = 0; i < linhas.length; i++) {
-        var rowId = linhas[i].getAttribute('data-row-id') || '';
-        var match = rowId.match(/_extra_(\d+)$/);
-        if (match) {
-            var numero = parseInt(match[1], 10);
-            if (!isNaN(numero) && numero > contadorLinhasExtrasPT) {
-                contadorLinhasExtrasPT = numero;
-            }
-        }
-    }
-}
-
-function adicionarLinhaMestrePT(botao) {
-    var linha = botao ? botao.closest('tr') : null;
-    if (!linha || !linha.parentNode) return;
-    var postoBase = linha.getAttribute('data-posto-base') || '';
-    if (!postoBase) return;
-
-    contadorLinhasExtrasPT++;
-    var rowId = postoBase + '_extra_' + contadorLinhasExtrasPT;
-    var nomeAtual = '';
-    var campoNomeAtual = linha.querySelector('textarea');
-    if (campoNomeAtual) {
-        nomeAtual = campoNomeAtual.value || '';
-    }
-
-    var novaLinha = document.createElement('tr');
-    novaLinha.className = 'linha-extra-mestre-pt';
-    novaLinha.setAttribute('data-row-id', rowId);
-    novaLinha.setAttribute('data-posto-base', postoBase);
-    novaLinha.setAttribute('data-linha-extra', '1');
-    novaLinha.innerHTML = '' +
-        '<td class="col-posto">' +
-            '<textarea name="nome_posto[' + rowId + ']" class="input-editavel texto-posto-mestre" rows="1">' + nomeAtual.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
-            '<input type="hidden" name="posto_base[' + rowId + ']" value="' + postoBase + '">' +
-            '<input type="hidden" name="linha_extra_pt[' + rowId + ']" value="1">' +
-        '</td>' +
-        '<td class="col-lacre-pt"><input type="text" name="lacre_iipr[' + rowId + ']" value="" class="input-editavel" style="text-align:center;"></td>' +
-        '<td class="col-lacre-correios-pt"><input type="text" name="lacre_correios_pt[' + rowId + ']" value="" class="input-editavel" style="text-align:center;"></td>' +
-        '<td class="col-etiqueta"><input type="text" name="etiqueta_correios_pt[' + rowId + ']" value="" class="input-editavel campo-etiqueta-mestre" style="text-align:center;" maxlength="35"></td>' +
-        '<td class="col-acoes-mestre nao-imprimir"><div class="acoes-mestre-pt"><button type="button" class="btn-linha-mestre" onclick="adicionarLinhaMestrePT(this);">+Abaixo</button><button type="button" class="btn-linha-mestre" onclick="removerLinhaMestrePT(this);">Excluir</button></div></td>';
-
-    if (linha.nextSibling) {
-        linha.parentNode.insertBefore(novaLinha, linha.nextSibling);
-    } else {
-        linha.parentNode.appendChild(novaLinha);
-    }
-
-    var camposNovos = novaLinha.querySelectorAll('input, textarea');
-    for (var i = 0; i < camposNovos.length; i++) {
-        registrarMonitoramentoElemento(camposNovos[i]);
-    }
-    atualizarEstadoBotoes();
-
-    var primeiroCampo = novaLinha.querySelector('input[type="text"]');
-    if (primeiroCampo) primeiroCampo.focus();
-}
-
-function removerLinhaMestrePT(botao) {
-    var linha = botao ? botao.closest('tr') : null;
-    if (!linha) return;
-    if (linha.getAttribute('data-linha-extra') !== '1') return;
-    linha.parentNode.removeChild(linha);
-    atualizarEstadoBotoes();
-}
-
 function sincronizarImpressaoPorCamposCabecalho(inputCampo) {
     if (!inputCampo) return;
     var folha = inputCampo.closest('.folha-a4-oficio');
@@ -2441,7 +2337,7 @@ var valoresOriginais = {};
 var dadosForamSalvos = <?php echo ($tipo_mensagem === 'sucesso' ? 'true' : 'false'); ?>;
 
 function capturarValoresOriginais() {
-    var inputs = obterCamposMonitorados();
+    var inputs = document.querySelectorAll('input[type="text"], input[type="hidden"][name^="lote_posto"]');
     for (var i = 0; i < inputs.length; i++) {
         var inp = inputs[i];
         if (inp.name) {
@@ -2452,17 +2348,14 @@ function capturarValoresOriginais() {
 
 function verificarMudancas() {
     var mudou = false;
-    var inputs = obterCamposMonitorados();
+    var inputs = document.querySelectorAll('input[type="text"], input[type="hidden"][name^="lote_posto"]');
     for (var i = 0; i < inputs.length; i++) {
         var inp = inputs[i];
-        if (!inp.name) continue;
-        if (valoresOriginais[inp.name] === undefined) {
-            mudou = true;
-            break;
-        }
-        if (valoresOriginais[inp.name] !== inp.value) {
-            mudou = true;
-            break;
+        if (inp.name && valoresOriginais[inp.name] !== undefined) {
+            if (valoresOriginais[inp.name] !== inp.value) {
+                mudou = true;
+                break;
+            }
         }
     }
     return mudou;
@@ -2486,12 +2379,16 @@ function atualizarEstadoBotoes() {
 
 function inicializarMonitoramento() {
     capturarValoresOriginais();
-    atualizarContadorLinhasExtrasPT();
     
     // Monitorar mudanças em todos os inputs
-    var inputs = document.querySelectorAll('input[type="text"], textarea');
+    var inputs = document.querySelectorAll('input[type="text"]');
     for (var i = 0; i < inputs.length; i++) {
-        registrarMonitoramentoElemento(inputs[i]);
+        inputs[i].addEventListener('input', function() {
+            atualizarEstadoBotoes();
+        });
+        inputs[i].addEventListener('change', function() {
+            atualizarEstadoBotoes();
+        });
     }
     
     // Verificar inicialmente
@@ -2632,88 +2529,10 @@ if (document.readyState === 'loading') {
                             </label>
                         </div>
 
-                        <?php if (!empty($datasNormExibicao)): ?>
-                        <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNormExibicao)); ?></div>
+                        <?php if (!empty($datasNorm)): ?>
+                        <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNorm)); ?></div>
                         <?php endif; ?>
 
-                        <?php
-                        $nomesPostRender = isset($_POST['nome_posto']) && is_array($_POST['nome_posto']) ? $_POST['nome_posto'] : array();
-                        $lacresPostRender = isset($_POST['lacre_iipr']) && is_array($_POST['lacre_iipr']) ? $_POST['lacre_iipr'] : array();
-                        $lacresCorreiosPostRender = isset($_POST['lacre_correios_pt']) && is_array($_POST['lacre_correios_pt']) ? $_POST['lacre_correios_pt'] : array();
-                        $etiquetasPostRender = isset($_POST['etiqueta_correios_pt']) && is_array($_POST['etiqueta_correios_pt']) ? $_POST['etiqueta_correios_pt'] : array();
-                        $postoBasePostRender = isset($_POST['posto_base']) && is_array($_POST['posto_base']) ? $_POST['posto_base'] : array();
-                        $linhasExtrasPostRender = isset($_POST['linha_extra_pt']) && is_array($_POST['linha_extra_pt']) ? $_POST['linha_extra_pt'] : array();
-                        $linhasExtrasMestre = array();
-                        foreach ($postoBasePostRender as $rowIdPost => $postoBasePost) {
-                            $rowIdPost = trim((string)$rowIdPost);
-                            $postoBasePost = str_pad(preg_replace('/\D+/', '', (string)$postoBasePost), 3, '0', STR_PAD_LEFT);
-                            if ($rowIdPost === '' || $postoBasePost === '' || !isset($linhasExtrasPostRender[$rowIdPost]) || (string)$linhasExtrasPostRender[$rowIdPost] !== '1') {
-                                continue;
-                            }
-                            $linhasExtrasMestre[$postoBasePost][] = array(
-                                'row_id' => $rowIdPost,
-                                'posto_base' => $postoBasePost,
-                                'nome' => isset($nomesPostRender[$rowIdPost]) ? trim((string)$nomesPostRender[$rowIdPost]) : ('Posto ' . $postoBasePost),
-                                'lacre' => isset($lacresPostRender[$rowIdPost]) ? trim((string)$lacresPostRender[$rowIdPost]) : '',
-                                'lacre_correios' => isset($lacresCorreiosPostRender[$rowIdPost]) ? trim((string)$lacresCorreiosPostRender[$rowIdPost]) : '',
-                                'etiqueta' => isset($etiquetasPostRender[$rowIdPost]) ? trim((string)$etiquetasPostRender[$rowIdPost]) : '',
-                                'extra' => true
-                            );
-                        }
-
-                        $linhasMestrePt = array();
-                        foreach ($paginas as $resumoP) {
-                            $codigoResumo = str_pad((string)$resumoP['codigo'], 3, '0', STR_PAD_LEFT);
-                            $nomeOriginalResumo = !empty($nomesPorPosto[$codigoResumo]) ? trim((string)$nomesPorPosto[$codigoResumo]) : trim((string)(isset($resumoP['nome']) ? $resumoP['nome'] : ''));
-                            if ($nomeOriginalResumo === '') {
-                                $nomeResumoBase = 'Posto ' . $codigoResumo;
-                            } else {
-                                $nomeResumoTrabalho = preg_replace('/\bPOUPA\s+TEMPO\b/i', '', $nomeOriginalResumo);
-                                $partesNomeResumo = preg_split('/\s*-\s*/', (string)$nomeResumoTrabalho);
-                                $partesNomeResumoLimpas = array();
-                                foreach ($partesNomeResumo as $parteNomeResumo) {
-                                    $parteNomeResumo = trim((string)$parteNomeResumo);
-                                    if ($parteNomeResumo === '') {
-                                        continue;
-                                    }
-                                    if (strcasecmp($parteNomeResumo, 'POUPA TEMPO') === 0) {
-                                        continue;
-                                    }
-                                    $partesNomeResumoLimpas[] = $parteNomeResumo;
-                                }
-                                $nomeResumoLimpo = implode(' - ', $partesNomeResumoLimpas);
-                                $nomeResumoLimpo = preg_replace('/\s{2,}/', ' ', (string)$nomeResumoLimpo);
-                                $nomeResumoLimpo = trim((string)$nomeResumoLimpo, " -\t\n\r\0\x0B");
-                                if ($nomeResumoLimpo === '') {
-                                    $nomeResumoBase = 'Posto ' . $codigoResumo;
-                                } elseif (preg_match('/^posto\s+' . preg_quote($codigoResumo, '/') . '\b/i', $nomeResumoLimpo)) {
-                                    $nomeResumoBase = $nomeResumoLimpo;
-                                } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*$/', $nomeResumoLimpo)) {
-                                    $nomeResumoBase = 'Posto ' . $nomeResumoLimpo;
-                                } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeResumoLimpo)) {
-                                    $nomeResumoBase = 'Posto ' . $nomeResumoLimpo;
-                                } else {
-                                    $nomeResumoBase = 'Posto ' . $codigoResumo . ' - ' . $nomeResumoLimpo;
-                                }
-                            }
-
-                            $linhasMestrePt[] = array(
-                                'row_id' => $codigoResumo,
-                                'posto_base' => $codigoResumo,
-                                'nome' => $nomeResumoBase,
-                                'lacre' => isset($lacresPorPosto[$codigoResumo]) ? $lacresPorPosto[$codigoResumo] : '',
-                                'lacre_correios' => isset($lacresCorreiosPtPorPosto[$codigoResumo]) ? $lacresCorreiosPtPorPosto[$codigoResumo] : '',
-                                'etiqueta' => isset($etiquetasCorreiosPtPorPosto[$codigoResumo]) ? $etiquetasCorreiosPtPorPosto[$codigoResumo] : '',
-                                'extra' => false
-                            );
-
-                            if (!empty($linhasExtrasMestre[$codigoResumo])) {
-                                foreach ($linhasExtrasMestre[$codigoResumo] as $linhaExtraMestre) {
-                                    $linhasMestrePt[] = $linhaExtraMestre;
-                                }
-                            }
-                        }
-                        ?>
                         <div class="grupo-mestre-tabela">
                             <table class="tabela-mestre-pt" style="table-layout:fixed; width:100%; max-width:100%; margin:0;">
                                 <thead>
@@ -2722,33 +2541,60 @@ if (document.readyState === 'loading') {
                                         <th class="col-lacre-pt">Lacre Poupa Tempo</th>
                                         <th class="col-lacre-correios-pt">Lacre Correios Poupa Tempo</th>
                                         <th class="col-etiqueta">Etiqueta Correios</th>
-                                        <th class="col-acoes-mestre nao-imprimir">Ações</th>
                                     </tr>
                                 </thead>
-                                <tbody id="tbody-mestre-pt">
-                                <?php foreach ($linhasMestrePt as $linhaMestrePt): ?>
-                                    <tr data-row-id="<?php echo e($linhaMestrePt['row_id']); ?>" data-posto-base="<?php echo e($linhaMestrePt['posto_base']); ?>" data-linha-extra="<?php echo !empty($linhaMestrePt['extra']) ? '1' : '0'; ?>"<?php echo !empty($linhaMestrePt['extra']) ? ' class="linha-extra-mestre-pt"' : ''; ?>>
+                                <tbody>
+                                <?php foreach ($paginas as $resumoP): ?>
+                                    <?php
+                                    $codigoResumo = str_pad((string)$resumoP['codigo'], 3, '0', STR_PAD_LEFT);
+                                    $nomeOriginalResumo = !empty($nomesPorPosto[$codigoResumo]) ? trim((string)$nomesPorPosto[$codigoResumo]) : trim((string)(isset($resumoP['nome']) ? $resumoP['nome'] : ''));
+                                    if ($nomeOriginalResumo === '') {
+                                        $nomeResumoBase = 'Posto ' . $codigoResumo;
+                                    } else {
+                                        $nomeResumoTrabalho = preg_replace('/\bPOUPA\s+TEMPO\b/i', '', $nomeOriginalResumo);
+                                        $partesNomeResumo = preg_split('/\s*-\s*/', (string)$nomeResumoTrabalho);
+                                        $partesNomeResumoLimpas = array();
+                                        foreach ($partesNomeResumo as $parteNomeResumo) {
+                                            $parteNomeResumo = trim((string)$parteNomeResumo);
+                                            if ($parteNomeResumo === '') {
+                                                continue;
+                                            }
+                                            if (strcasecmp($parteNomeResumo, 'POUPA TEMPO') === 0) {
+                                                continue;
+                                            }
+                                            $partesNomeResumoLimpas[] = $parteNomeResumo;
+                                        }
+                                        $nomeResumoLimpo = implode(' - ', $partesNomeResumoLimpas);
+                                        $nomeResumoLimpo = preg_replace('/\s{2,}/', ' ', (string)$nomeResumoLimpo);
+                                        $nomeResumoLimpo = trim((string)$nomeResumoLimpo, " -\t\n\r\0\x0B");
+                                        if ($nomeResumoLimpo === '') {
+                                            $nomeResumoBase = 'Posto ' . $codigoResumo;
+                                        } elseif (preg_match('/^posto\s+' . preg_quote($codigoResumo, '/') . '\b/i', $nomeResumoLimpo)) {
+                                            $nomeResumoBase = $nomeResumoLimpo;
+                                        } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*$/', $nomeResumoLimpo)) {
+                                            $nomeResumoBase = 'Posto ' . $nomeResumoLimpo;
+                                        } elseif (preg_match('/^' . preg_quote($codigoResumo, '/') . '\s*-\s*/', $nomeResumoLimpo)) {
+                                            $nomeResumoBase = 'Posto ' . $nomeResumoLimpo;
+                                        } else {
+                                            $nomeResumoBase = 'Posto ' . $codigoResumo . ' - ' . $nomeResumoLimpo;
+                                        }
+                                    }
+                                    $valorLacreResumo = isset($lacresPorPosto[$codigoResumo]) ? $lacresPorPosto[$codigoResumo] : '';
+                                    $valorLacreCorreiosResumo = isset($lacresCorreiosPtPorPosto[$codigoResumo]) ? $lacresCorreiosPtPorPosto[$codigoResumo] : '';
+                                    $valorEtiquetaCorreiosResumo = isset($etiquetasCorreiosPtPorPosto[$codigoResumo]) ? $etiquetasCorreiosPtPorPosto[$codigoResumo] : '';
+                                    ?>
+                                    <tr>
                                         <td class="col-posto">
-                                            <textarea name="nome_posto[<?php echo e($linhaMestrePt['row_id']); ?>]" class="input-editavel texto-posto-mestre" rows="1"><?php echo e($linhaMestrePt['nome']); ?></textarea>
-                                            <input type="hidden" name="posto_base[<?php echo e($linhaMestrePt['row_id']); ?>]" value="<?php echo e($linhaMestrePt['posto_base']); ?>">
-                                            <input type="hidden" name="linha_extra_pt[<?php echo e($linhaMestrePt['row_id']); ?>]" value="<?php echo !empty($linhaMestrePt['extra']) ? '1' : '0'; ?>">
+                                            <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel texto-posto-mestre" rows="1"><?php echo e($nomeResumoBase); ?></textarea>
                                         </td>
                                         <td class="col-lacre-pt">
-                                            <input type="text" name="lacre_iipr[<?php echo e($linhaMestrePt['row_id']); ?>]" value="<?php echo e($linhaMestrePt['lacre']); ?>" class="input-editavel" style="text-align:center;">
+                                            <input type="text" name="lacre_iipr[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreResumo); ?>" class="input-editavel" style="text-align:center;">
                                         </td>
                                         <td class="col-lacre-correios-pt">
-                                            <input type="text" name="lacre_correios_pt[<?php echo e($linhaMestrePt['row_id']); ?>]" value="<?php echo e($linhaMestrePt['lacre_correios']); ?>" class="input-editavel" style="text-align:center;">
+                                            <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
                                         </td>
                                         <td class="col-etiqueta">
-                                            <input type="text" name="etiqueta_correios_pt[<?php echo e($linhaMestrePt['row_id']); ?>]" value="<?php echo e($linhaMestrePt['etiqueta']); ?>" class="input-editavel campo-etiqueta-mestre" style="text-align:center;" maxlength="35">
-                                        </td>
-                                        <td class="col-acoes-mestre nao-imprimir">
-                                            <div class="acoes-mestre-pt">
-                                                <button type="button" class="btn-linha-mestre" onclick="adicionarLinhaMestrePT(this);">+Abaixo</button>
-                                                <?php if (!empty($linhaMestrePt['extra'])): ?>
-                                                <button type="button" class="btn-linha-mestre" onclick="removerLinhaMestrePT(this);">Excluir</button>
-                                                <?php endif; ?>
-                                            </div>
+                                            <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel campo-etiqueta-mestre" style="text-align:left;" maxlength="35">
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
