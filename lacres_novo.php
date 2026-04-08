@@ -4355,20 +4355,6 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         .acoes-cell {
             white-space: nowrap;
         }
-        .coluna-acoes {
-            width: 132px;
-            min-width: 132px;
-            text-align: center;
-            vertical-align: middle;
-        }
-        .acoes-botoes {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            flex-wrap: wrap;
-            min-height: 28px;
-        }
         .acoes-cell button {
             display: inline-block;
             vertical-align: middle;
@@ -5843,7 +5829,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                     <button type="button" class="btn-limpar-coluna" onclick="limparEtiquetasCentral()" title="Apagar todas as etiquetas da Central IIPR">X</button>
                     <?php endif; ?>
                 </th>
-                <th class="coluna-acoes"><?php echo ($grupo === 'POUPA TEMPO') ? '' : 'Acoes'; ?></th>
+                <th><?php echo ($grupo === 'POUPA TEMPO') ? '' : 'Acoes'; ?></th>
             </tr>
         </thead>
         <tbody>
@@ -5919,45 +5905,39 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         <div class="alerta-duplicata" id="alerta-<?php echo $dado['posto_codigo'] ?>"></div>
     <?php endif; ?>
 </td>
-                <td class="acoes-cell coluna-acoes">
+                <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
-                    <div class="acoes-botoes">
-                        <button type="button" class="btn-add-below"
-                                data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
-                                data-posicao="abaixo"
-                                onclick="abrirModalInserir(this);">
-                            +Abaixo
-                        </button>
-                    </div>
+                    <button type="button" class="btn-add-below"
+                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                            data-posicao="abaixo"
+                            onclick="abrirModalInserir(this);">
+                        +Abaixo
+                    </button>
                     <?php elseif ($grupo === 'REGIONAIS'): ?>
-                    <div class="acoes-botoes">
-                        <button type="button" class="btn-excluir-regional"
-                                onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
-                            Excluir
-                        </button>
-                        <button type="button" class="btn-add-below"
-                                data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
-                                data-posicao="abaixo"
-                                onclick="abrirModalInserir(this);">
-                            +Abaixo
-                        </button>
-                    </div>
+                    <button type="button" class="btn-excluir-regional"
+                            onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
+                        Excluir
+                    </button>
+                    <button type="button" class="btn-add-below"
+                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                            data-posicao="abaixo"
+                            onclick="abrirModalInserir(this);">
+                        +Abaixo
+                    </button>
                     <?php else: ?>
-                    <div class="acoes-botoes">
-                        <button type="button" class="btn-excluir"
-                                onclick="excluirPosto('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
-                            Excluir
-                        </button>
-                        <button type="button" class="btn-add-below"
-                                data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
-                                data-posicao="abaixo"
-                                onclick="abrirModalInserir(this);">
-                            +Abaixo
-                        </button>
-                    </div>
+                    <button type="button" class="btn-excluir"
+                            onclick="excluirPosto('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
+                        Excluir
+                    </button>
+                    <button type="button" class="btn-add-below"
+                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                            data-posicao="abaixo"
+                            onclick="abrirModalInserir(this);">
+                        +Abaixo
+                    </button>
                     <?php endif; ?>
                 </td>
             </tr>
