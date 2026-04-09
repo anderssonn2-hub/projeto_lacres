@@ -7,7 +7,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Início - Projeto Lacres v1.0.6</title>
+  <title>Início - Projeto Lacres v1.0.7</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -111,7 +111,7 @@
         <h1>Projeto Lacres</h1>
         <div class="sub">Selecione um tema e inicie sua rotina.</div>
       </div>
-      <div class="version">v1.0.6</div>
+      <div class="version">v1.0.7</div>
     </div>
 
     <div class="quadrants">

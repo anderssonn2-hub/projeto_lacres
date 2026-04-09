@@ -1,6 +1,12 @@
 <?php
-/* lacres_novo.php — v1.0.6
+/* lacres_novo.php — v1.0.7
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.7 (09/04/2026):
+ * - [NOVO] Inputs de lacre aceitam multiplos valores separados por hifen
+ * - [NOVO] Sequencia automatica continua a partir do ultimo lacre digitado
+ * - [NOVO] Modo discreto de lacre avulso por input
+ * - [MELHORADO] Inputs de lacre ampliados para visualizacao completa
  *
  * CHANGELOG v1.0.6 (09/04/2026):
  * - [CORRIGIDO] Exclusão de linha preserva lacres e etiquetas já digitados
@@ -1278,8 +1284,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 }
 
                 $dados = array(
-                    'lacre_iipr' => ($lacreI === '' ? 0 : (int)$lacreI),
-                    'lacre_correios' => ($lacreC === '' ? 0 : (int)$lacreC),
+                    'lacre_iipr' => ($lacreI === '' ? 0 : extrairUltimoLacreSequencial($lacreI)),
+                    'lacre_correios' => ($lacreC === '' ? 0 : extrairUltimoLacreSequencial($lacreC)),
                     'etiqueta_correios' => ($etiq === '' ? null : $etiq),
                 );
 
@@ -1345,8 +1351,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $grupo = isset($gruposLacres_post[$idx]) ? trim((string)$gruposLacres_post[$idx]) : '';
 
                 $mapaLacresPorPosto[$postoCodigo] = array(
-                    'lacre_iipr' => ($lacreI === '' ? 0 : (int)$lacreI),
-                    'lacre_correios' => ($lacreC === '' ? 0 : (int)$lacreC),
+                    'lacre_iipr' => ($lacreI === '' ? 0 : extrairUltimoLacreSequencial($lacreI)),
+                    'lacre_correios' => ($lacreC === '' ? 0 : extrairUltimoLacreSequencial($lacreC)),
                     'etiqueta_correios' => ($eti === '' ? null : $eti),
                     'grupo' => $grupo,
                 );
@@ -1368,8 +1374,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $etiquetaCorr = isset($etiquetas[$postoCodigo]) ? trim((string)$etiquetas[$postoCodigo]) : '';
 
                 $mapaLacresPorPosto[$postoCodigo] = array(
-                    'lacre_iipr' => ($lacreIIPR === '' ? 0 : (int)$lacreIIPR),
-                    'lacre_correios' => ($lacreCorreios === '' ? 0 : (int)$lacreCorreios),
+                    'lacre_iipr' => ($lacreIIPR === '' ? 0 : extrairUltimoLacreSequencial($lacreIIPR)),
+                    'lacre_correios' => ($lacreCorreios === '' ? 0 : extrairUltimoLacreSequencial($lacreCorreios)),
                     'etiqueta_correios' => $etiquetaCorr !== '' ? $etiquetaCorr : null,
                     'grupo' => '', // grupo desconhecido no fallback
                 );
@@ -1436,10 +1442,10 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                     );
                 }
                 if ($lacreI !== '') {
-                    $mapaLacresPorRegional[$regional]['lacre_iipr'] = (int)$lacreI;
+                    $mapaLacresPorRegional[$regional]['lacre_iipr'] = extrairUltimoLacreSequencial($lacreI);
                 }
                 if ($lacreC !== '') {
-                    $mapaLacresPorRegional[$regional]['lacre_correios'] = (int)$lacreC;
+                    $mapaLacresPorRegional[$regional]['lacre_correios'] = extrairUltimoLacreSequencial($lacreC);
                 }
                 if ($eti !== '') {
                     $mapaLacresPorRegional[$regional]['etiqueta_correios'] = $eti;
@@ -1598,14 +1604,16 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $lacreDetalhado = $mapaLacresPorLote[$chaveLacreLote];
             }
             if (is_array($lacreDetalhado)) {
-                if (isset($lacreDetalhado['lacre_iipr']) && (int)$lacreDetalhado['lacre_iipr'] > 0) {
-                    $lacreIIPR_lote = (int)$lacreDetalhado['lacre_iipr'];
+                $lacreIiprDetalhado = isset($lacreDetalhado['lacre_iipr']) ? extrairUltimoLacreSequencial($lacreDetalhado['lacre_iipr']) : 0;
+                if ($lacreIiprDetalhado > 0) {
+                    $lacreIIPR_lote = $lacreIiprDetalhado;
                     $grupoIIPR_lote = isset($lacreDetalhado['grupo_iipr']) ? trim((string)$lacreDetalhado['grupo_iipr']) : null;
                     $aplicar_mapa = true;
                     $origem_lacre = 'CHIPS:IIPR';
                 }
-                if (isset($lacreDetalhado['lacre_correios']) && (int)$lacreDetalhado['lacre_correios'] > 0) {
-                    $lacreCorreios_lote = (int)$lacreDetalhado['lacre_correios'];
+                $lacreCorreiosDetalhado = isset($lacreDetalhado['lacre_correios']) ? extrairUltimoLacreSequencial($lacreDetalhado['lacre_correios']) : 0;
+                if ($lacreCorreiosDetalhado > 0) {
+                    $lacreCorreios_lote = $lacreCorreiosDetalhado;
                     $grupoCorreios_lote = isset($lacreDetalhado['grupo_correios']) ? trim((string)$lacreDetalhado['grupo_correios']) : null;
                     $aplicar_mapa = true;
                     $origem_lacre = 'CHIPS:CORREIOS';
@@ -2291,6 +2299,17 @@ function inserir_dados_cipostos_barcode($pdo_controle, $codigo_barras, $data, $t
         ));
         return array('sucesso' => false, 'mensagem' => "Erro: " . $e->getMessage());
     }
+}
+
+function extrairUltimoLacreSequencial($valor) {
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return 0;
+    }
+    if (preg_match_all('/\d+/', $valor, $matches) && !empty($matches[0])) {
+        return (int)$matches[0][count($matches[0]) - 1];
+    }
+    return 0;
 }
 
 // Definições dos grupos de postos
@@ -3514,8 +3533,8 @@ $ultimo_central = null;
 // - Segunda linha: lacre_iipr=N+2, lacre_correios=N+3
 // - Exemplo: lacre inicial=18 → linhas: 18/19, 20/21, 22/23...
 // - Se lacre_capital=0 ou vazio: deixa TODOS os inputs em branco
-if ($recalcular_capital && (int)$lacre_capital > 0) {
-    $lacre_iipr_cur = (int)$lacre_capital;
+if ($recalcular_capital && extrairUltimoLacreSequencial($lacre_capital) > 0) {
+    $lacre_iipr_cur = extrairUltimoLacreSequencial($lacre_capital);
     $lacre_corr_cur = $lacre_iipr_cur + 1;
     foreach ($dados['CAPITAL'] as &$linha) {
         $indice = $linha['posto_codigo'];
@@ -3557,8 +3576,8 @@ if ($recalcular_capital && (int)$lacre_capital > 0) {
 // - Exemplo: 7 postos com lacre inicial=5 → IIPR: 5,6,7,8,9,10,11 | Correios (todos): 12
 // - Com SPLITs: cada grupo visual tem seu próprio lacre Correios = max(IIPR_grupo) + 1
 // - Se lacre_central=0 ou vazio: deixa TODOS os inputs em branco
-if ($recalcular_central && (int)$lacre_central > 0) {
-    $lacre_iipr_cur = (int)$lacre_central;
+if ($recalcular_central && extrairUltimoLacreSequencial($lacre_central) > 0) {
+    $lacre_iipr_cur = extrairUltimoLacreSequencial($lacre_central);
     foreach ($dados['CENTRAL IIPR'] as &$linha) {
         $indice = $linha['posto_codigo'];
         $linha['lacre_iipr'] = $lacre_iipr_cur;
@@ -3592,7 +3611,7 @@ if ($recalcular_central && (int)$lacre_central > 0) {
 // - Exemplo: último IIPR=11 → lacre Correios de todos=12 (NUNCA 11)
 // - Validação: lacre Correios NUNCA pode ser igual ao último IIPR
 if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
-    if ($recalcular_central && (int)$lacre_central > 0) {
+    if ($recalcular_central && extrairUltimoLacreSequencial($lacre_central) > 0) {
         // v8.13.4: GARANTIDO - último IIPR + 1 vira lacre Correios de TODOS
         $lacreCorreiosCentral = $ultimo_central + 1;
         // v8.13.4: Validação extra - garantir que Correios ≠ último IIPR
@@ -3676,8 +3695,8 @@ if (!empty($dados['CENTRAL IIPR']) && $ultimo_central !== null) {
 // - Esses lacres serão aplicados a TODOS os postos daquela regional ao salvar
 // - Lacre IIPR e Lacre Correios DEVEM ser diferentes (ex: 5/6, não 5/5)
 // - Se lacre_regionais=0 ou vazio: deixa TODOS os inputs em branco
-if ($recalcular_regionais && (int)$lacre_regionais > 0) {
-    $lacre_iipr_cur = (int)$lacre_regionais;
+if ($recalcular_regionais && extrairUltimoLacreSequencial($lacre_regionais) > 0) {
+    $lacre_iipr_cur = extrairUltimoLacreSequencial($lacre_regionais);
     $lacre_corr_cur = $lacre_iipr_cur + 1;
     foreach ($dados['REGIONAIS'] as &$linha) {
         $indice = $linha['posto_codigo'];
@@ -3962,7 +3981,30 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         th:nth-child(5), td:nth-child(5) { width: 13%; }
         th { background-color: #f0f0f0; }
         input[type='text'] { width: 240px; font-family: monospace; text-align: center; font-size: inherit; }
-        input.lacre { width: 80px; text-align: center; font-weight: bold }
+        input.lacre { width: 100%; min-width: 120px; text-align: left; font-weight: bold; font-family: 'Courier New', Courier, monospace; }
+        .lacre-wrapper { display: flex; align-items: center; gap: 4px; width: 100%; }
+        .lacre-wrapper .lacre { flex: 1 1 auto; width: 100%; }
+        .btn-lacre-avulso {
+            flex: 0 0 auto;
+            border: 1px solid #b8c2cc;
+            background: #f4f6f8;
+            color: #4b5a68;
+            border-radius: 4px;
+            font-size: 10px;
+            line-height: 1;
+            padding: 4px 5px;
+            cursor: pointer;
+            min-width: 28px;
+        }
+        .btn-lacre-avulso.ativo {
+            background: #fff3cd;
+            border-color: #d9b66d;
+            color: #7a4f00;
+        }
+        .lacre-avulso {
+            background: #fff8e1;
+            border-color: #d9b66d !important;
+        }
         .quadro { border: 1px solid black; padding: 6px; margin-bottom: 8px; }
         .topo-formulario { display: flex; flex-wrap: wrap; gap: 12px; }
         .topo-formulario label { display: flex; flex-direction: column; }
@@ -4742,6 +4784,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             width: 100%;
             box-sizing: border-box;
         }
+        .lacre-wrapper { width: 100%; }
 
         @media print {
             .somente-impressao { display: block !important; }
@@ -5369,7 +5412,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.6</div>
+<div class="version-info">v1.0.7</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5947,8 +5990,8 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                     <input type="hidden" name="grupo_posto[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>">
                     <?php endif; ?>
                 </td>
-                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre" type="text" name="lacre_iipr[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_iipr']) ? $dado['lacre_iipr'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="iipr"><?php endif; ?></td>
-                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><input class="lacre <?php if ($grupo === 'CENTRAL IIPR'): ?>central-correios<?php endif; ?>" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_correios']) ? $dado['lacre_correios'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios"><?php endif; ?></td>
+                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><div class="lacre-wrapper"><input class="lacre" type="text" name="lacre_iipr[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_iipr']) ? $dado['lacre_iipr'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="iipr" inputmode="numeric" placeholder="14266 ou 14266-14267"><button type="button" class="btn-lacre-avulso" data-tipo-avulso="iipr" title="Ativar lacre avulso">Av</button></div><?php endif; ?></td>
+                <td><?php if ($grupo === 'POUPA TEMPO'): ?>—<?php else: ?><div class="lacre-wrapper"><input class="lacre <?php if ($grupo === 'CENTRAL IIPR'): ?>central-correios<?php endif; ?>" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_correios']) ? $dado['lacre_correios'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios" inputmode="numeric" placeholder="14268"><button type="button" class="btn-lacre-avulso" data-tipo-avulso="correios" title="Ativar lacre avulso">Av</button></div><?php endif; ?></td>
                 <td class="acoes-cell">
     <?php if ($grupo === 'POUPA TEMPO'): ?>—
     <?php elseif ($grupo === 'CENTRAL IIPR'): ?>
@@ -6808,7 +6851,7 @@ function podeAplicarSequenciaDuranteDigitacao(valor) {
     if (texto === '') {
         return true;
     }
-    return /^\d+$/.test(texto);
+    return /^\d+(?:-\d+)*$/.test(texto);
 }
 
 function obterTabelaGrupoLacres(grupo) {
@@ -6834,6 +6877,35 @@ function obterInputLacreLinha(linha, tipo) {
         return linha.querySelector('input[data-tipo="correios"], input[name^="lacre_correios["]');
     }
     return null;
+}
+
+function inputLacreAvulso(input) {
+    return !!(input && String(input.getAttribute('data-lacre-avulso') || '') === '1');
+}
+
+function definirEstadoLacreAvulso(input, botao, ativo) {
+    if (!input || !botao) return;
+    if (ativo) {
+        input.setAttribute('data-lacre-avulso', '1');
+        if (input.className.indexOf('lacre-avulso') < 0) input.className += ' lacre-avulso';
+        if (botao.className.indexOf('ativo') < 0) botao.className += ' ativo';
+        botao.title = 'Lacre avulso ativo';
+    } else {
+        input.setAttribute('data-lacre-avulso', '0');
+        input.className = input.className.replace(/\s*lacre-avulso/g, '');
+        botao.className = botao.className.replace(/\s*ativo/g, '');
+        botao.title = 'Ativar lacre avulso';
+    }
+}
+
+function alternarLacreAvulso(botao) {
+    if (!botao || !botao.parentNode) return false;
+    var input = botao.parentNode.querySelector('input.lacre');
+    if (!input) return false;
+    definirEstadoLacreAvulso(input, botao, !inputLacreAvulso(input));
+    try { salvarEstadoEtiquetasCorreios(); } catch (e) { }
+    marcarComoNaoSalvo();
+    return false;
 }
 
 function obterIndicesSplitCentralOrdenados(totalLinhas) {
@@ -6929,8 +7001,13 @@ function aplicarSequenciaParPorGrupo(grupo, valorInicial) {
     for (var i = 0; i < linhas.length; i++) {
         var inputI = obterInputLacreLinha(linhas[i], 'iipr');
         var inputC = obterInputLacreLinha(linhas[i], 'correios');
-        if (inputI) inputI.value = String(atual);
-        if (inputC) inputC.value = String(atual + 1);
+        if (i === 0) {
+            if (inputC && !inputLacreAvulso(inputC)) inputC.value = String(atual + 1);
+            atual += 2;
+            continue;
+        }
+        if (inputI && !inputLacreAvulso(inputI)) inputI.value = String(atual);
+        if (inputC && !inputLacreAvulso(inputC)) inputC.value = String(atual + 1);
         atual += 2;
     }
 
@@ -6986,13 +7063,16 @@ function aplicarSequenciaCentralNoBloco(indiceLinha, valorInicial) {
 
     for (i = faixa.start; i <= faixa.end; i++) {
         var inputI = obterInputLacreLinha(linhas[i], 'iipr');
-        if (inputI) inputI.value = String(atual + (i - faixa.start));
+        if (i === faixa.start) {
+            continue;
+        }
+        if (inputI && !inputLacreAvulso(inputI)) inputI.value = String(atual + (i - faixa.start));
     }
 
     var lacreCorreios = atual + (faixa.end - faixa.start) + 1;
     for (i = faixa.start; i <= faixa.end; i++) {
         var inputC = obterInputLacreLinha(linhas[i], 'correios');
-        if (inputC) inputC.value = String(lacreCorreios);
+        if (inputC && !inputLacreAvulso(inputC)) inputC.value = String(lacreCorreios);
     }
 
     atualizarInputsTopoPorPlanilha();
@@ -7370,9 +7450,12 @@ function preencherLacresParaPostoManual(event) {
         var encontrarUltimo = function(inputs) {
             var ultimo = null;
             for (var i = 0; i < inputs.length; i++) {
+                if (inputLacreAvulso(inputs[i])) {
+                    continue;
+                }
                 var v = String(inputs[i].value || '').trim();
                 if (v !== '') {
-                    var n = parseInt(v, 10);
+                    var n = inteiroPositivoOuZero(v);
                     if (!isNaN(n)) ultimo = n;
                 }
             }
@@ -7516,8 +7599,12 @@ function propagarSequenciaLinhaInserida(linhaOrigem, tipoOrigem) {
         return;
     }
 
-    var valorIipr = inputIiprOrigem ? parseInt(String(inputIiprOrigem.value || '').replace(/\D+/g, ''), 10) : NaN;
-    var valorCorreios = inputCorreiosOrigem ? parseInt(String(inputCorreiosOrigem.value || '').replace(/\D+/g, ''), 10) : NaN;
+    var valorIipr = inputIiprOrigem ? inteiroPositivoOuZero(inputIiprOrigem.value || '') : NaN;
+    var valorCorreios = inputCorreiosOrigem ? inteiroPositivoOuZero(inputCorreiosOrigem.value || '') : NaN;
+
+    if ((tipoOrigem === 'iipr' && inputLacreAvulso(inputIiprOrigem)) || (tipoOrigem === 'correios' && inputLacreAvulso(inputCorreiosOrigem))) {
+        return;
+    }
 
     if (tipoOrigem === 'correios' && isNaN(valorIipr) && !isNaN(valorCorreios)) {
         valorIipr = valorCorreios - 1;
@@ -7530,7 +7617,7 @@ function propagarSequenciaLinhaInserida(linhaOrigem, tipoOrigem) {
         return;
     }
 
-    if (inputCorreiosOrigem) {
+    if (inputCorreiosOrigem && !inputLacreAvulso(inputCorreiosOrigem)) {
         valorCorreios = valorIipr + 1;
         inputCorreiosOrigem.value = String(valorCorreios);
     }
@@ -7547,10 +7634,10 @@ function propagarSequenciaLinhaInserida(linhaOrigem, tipoOrigem) {
 
         var inputIipr = linha.querySelector('input[data-tipo="iipr"]');
         var inputCorreios = linha.querySelector('input[data-tipo="correios"]');
-        if (inputIipr) {
+        if (inputIipr && !inputLacreAvulso(inputIipr)) {
             inputIipr.value = String(proximoIipr);
         }
-        if (inputCorreios) {
+        if (inputCorreios && !inputLacreAvulso(inputCorreios)) {
             inputCorreios.value = String(proximoCorreios);
         }
 
@@ -7790,6 +7877,18 @@ function inicializarMonitoramentoAlteracoes() {
     try {
         vincularSequenciaLinhaInserida();
     } catch (eSequencia) { /* ignore */ }
+
+    try {
+        var botoesAvulso = document.querySelectorAll('button.btn-lacre-avulso');
+        for (var av = 0; av < botoesAvulso.length; av++) {
+            if (botoesAvulso[av].getAttribute('data-avulso-vinculado') === '1') continue;
+            botoesAvulso[av].setAttribute('data-avulso-vinculado', '1');
+            botoesAvulso[av].addEventListener('click', function(evento) {
+                if (evento && evento.preventDefault) evento.preventDefault();
+                alternarLacreAvulso(this);
+            });
+        }
+    } catch (eAvulso) { /* ignore */ }
     
     // VERSAO 3: Iniciar SEM pulsacao (so pulsa quando ha mudanca)
     // Pagina recarrega apos salvar, entao comeca sempre sem pulsacao

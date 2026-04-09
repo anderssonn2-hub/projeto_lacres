@@ -43,6 +43,8 @@ $mensagem = '';
 $mensagem_tipo = '';
 $ultimo_movimento = array();
 $responsavel_salvo = isset($_SESSION['ultimo_responsavel_devolucao']) ? trim((string)$_SESSION['ultimo_responsavel_devolucao']) : '';
+$mostrar_transito = isset($_GET['mostrar_transito']) && $_GET['mostrar_transito'] === '1';
+$etiquetas_transito = array();
 
 function resolverPostoMalote($pdo, $leitura) {
     try {
@@ -100,6 +102,17 @@ function registrarMovimentoEtiqueta($pdo, $leitura_raw, $responsavel, $tipo, &$m
     );
 }
 
+function contarEtiquetasEmTransito($pdo) {
+    $stmtTransito = $pdo->query("SELECT COUNT(DISTINCT m1.leitura) AS total\n                                 FROM ciMalotes m1\n                                 WHERE m1.tipo = 1\n                                   AND NOT EXISTS (\n                                       SELECT 1\n                                       FROM ciMalotes m2\n                                       WHERE m2.leitura = m1.leitura AND m2.tipo = 2\n                                   )");
+    return (int)$stmtTransito->fetchColumn();
+}
+
+function buscarEtiquetasEmTransito($pdo, $limite) {
+    $stmt = $pdo->prepare("SELECT m1.leitura, m1.posto, m1.login, DATE(m1.data) AS data_mov\n                           FROM ciMalotes m1\n                           WHERE m1.tipo = 1\n                             AND NOT EXISTS (\n                                 SELECT 1\n                                 FROM ciMalotes m2\n                                 WHERE m2.leitura = m1.leitura AND m2.tipo = 2\n                             )\n                           ORDER BY m1.data DESC, m1.id DESC\n                           LIMIT " . (int)$limite);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
 try {
     $pdo = new PDO(
         "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8",
@@ -123,12 +136,26 @@ if ($dbOk && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($acao === 'registrar_recebimento') {
         registrarMovimentoEtiqueta($pdo, isset($_POST['leitura_recebimento']) ? $_POST['leitura_recebimento'] : '', $responsavel, 2, $mensagem, $mensagem_tipo, $responsavel_salvo, $ultimo_movimento);
     }
+
+    if (isset($_POST['ajax']) && $_POST['ajax'] === '1') {
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode(array(
+            'ok' => ($mensagem_tipo === 'ok'),
+            'mensagem' => $mensagem,
+            'mensagem_tipo' => $mensagem_tipo,
+            'ultimo_movimento' => $ultimo_movimento,
+            'transito' => contarEtiquetasEmTransito($pdo)
+        ));
+        exit;
+    }
 }
 
 $contagem = array('transito' => 0);
 if ($dbOk) {
-    $stmtTransito = $pdo->query("SELECT COUNT(DISTINCT m1.leitura) AS total\n                                 FROM ciMalotes m1\n                                 WHERE m1.tipo = 1\n                                   AND NOT EXISTS (\n                                       SELECT 1\n                                       FROM ciMalotes m2\n                                       WHERE m2.leitura = m1.leitura AND m2.tipo = 2\n                                   )");
-    $contagem['transito'] = (int)$stmtTransito->fetchColumn();
+    $contagem['transito'] = contarEtiquetasEmTransito($pdo);
+    if ($mostrar_transito) {
+        $etiquetas_transito = buscarEtiquetasEmTransito($pdo, 250);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -136,7 +163,7 @@ if ($dbOk) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devolucao de Etiquetas v1.0.1 - Projeto Lacres</title>
+    <title>Devolucao de Etiquetas v1.0.2 - Projeto Lacres</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -174,6 +201,18 @@ if ($dbOk) {
             gap: 12px;
             margin-bottom: 18px;
         }
+        .painel-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 14px;
+            border-radius: 12px;
+            background: #eef4fb;
+            color: #0b3d91;
+            text-decoration: none;
+            font-weight: 700;
+            border: 1px solid #d9e5f4;
+        }
         .kpi {
             background: #f7f9fb;
             border: 1px solid #e3e7ec;
@@ -195,10 +234,11 @@ if ($dbOk) {
         }
         input[type="text"] {
             width: 100%;
-            padding: 12px;
+            padding: 14px 16px;
             border: 1px solid #d8dde3;
             border-radius: 10px;
-            font-size: 14px;
+            font-size: 22px;
+            font-family: "Courier New", Courier, monospace;
         }
         .full { grid-column: span 2; }
         .btn {
@@ -238,6 +278,21 @@ if ($dbOk) {
             padding: 12px 14px;
             margin-top: 10px;
         }
+        .status-live {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: #eef7ee;
+            border: 1px solid #cce4cf;
+            color: #1f5f2a;
+            min-height: 48px;
+            font-size: 14px;
+        }
+        .status-live.erro {
+            background: #fff4f4;
+            border-color: #f1c7c7;
+            color: #a12828;
+        }
         .status-box.ok { border-color: #c8e6c9; }
         .status-box.aviso { border-color: #ffe0b2; }
         .status-box.erro { border-color: #ffcdd2; }
@@ -253,7 +308,7 @@ if ($dbOk) {
             text-align: left;
         }
         .tabela th { color: #444; font-weight: 700; }
-        .tabela .mono { font-family: "Courier New", Courier, monospace; }
+        .mono, .tabela .mono { font-family: "Courier New", Courier, monospace; }
         .home-link {
             position: absolute;
             top: 18px;
@@ -309,14 +364,15 @@ if ($dbOk) {
 <body>
     <div class="card">
         <a class="home-link" href="inicio.php" title="Voltar ao inicio">⌂</a>
-        <h1>Devolucao de etiquetas (Correios) v1.0.1</h1>
+        <h1>Devolucao de etiquetas (Correios) v1.0.2</h1>
         <div class="sub">Leia a etiqueta de envio ou recebimento. O posto sera identificado automaticamente pelo cadastro do malote.</div>
 
         <div class="painel">
             <div class="kpi">
                 <div class="label">Em transito</div>
-                <div class="valor"><?php echo (int)$contagem['transito']; ?></div>
+                <div class="valor" id="kpi-transito"><?php echo (int)$contagem['transito']; ?></div>
             </div>
+            <a class="painel-link" href="devolucao_etiquetas.php?mostrar_transito=1#transito">Ver etiquetas em transito</a>
         </div>
 
         <div>
@@ -342,17 +398,49 @@ if ($dbOk) {
             </form>
         </div>
 
+        <div class="status-live<?php echo ($mensagem_tipo === 'erro') ? ' erro' : ''; ?>" id="status-live"><?php echo $mensagem !== '' ? e($mensagem) : 'Pronto para nova leitura.'; ?></div>
+
         <?php if ($mensagem !== ''): ?>
             <div class="msg <?php echo e($mensagem_tipo); ?>"><?php echo e($mensagem); ?></div>
         <?php endif; ?>
 
-        <?php if (!empty($ultimo_movimento)): ?>
-            <div class="status-box ok">
+        <div class="status-box ok" id="ultimo-movimento-box"<?php echo empty($ultimo_movimento) ? ' style="display:none;"' : ''; ?>>
+            <?php if (!empty($ultimo_movimento)): ?>
                 <div class="status-title"><?php echo e(((int)$ultimo_movimento['tipo'] === 1) ? 'Envio registrado' : 'Recebimento registrado'); ?></div>
                 <div>Etiqueta: <span class="mono"><?php echo e($ultimo_movimento['leitura']); ?></span></div>
                 <div>Responsavel: <?php echo e($ultimo_movimento['responsavel']); ?></div>
                 <div>Posto: <?php echo e($ultimo_movimento['posto'] !== null && $ultimo_movimento['posto'] !== '' ? $ultimo_movimento['posto'] : '-'); ?></div>
                 <div>Data: <?php echo e($ultimo_movimento['data']); ?></div>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($mostrar_transito): ?>
+            <div class="secao" id="transito">
+                <h2>Etiquetas em transito</h2>
+                <table class="tabela">
+                    <thead>
+                        <tr>
+                            <th>Etiqueta</th>
+                            <th>Posto</th>
+                            <th>Responsavel</th>
+                            <th>Data</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (!empty($etiquetas_transito)): ?>
+                            <?php foreach ($etiquetas_transito as $linhaTransito): ?>
+                            <tr>
+                                <td class="mono"><?php echo e($linhaTransito['leitura']); ?></td>
+                                <td><?php echo e($linhaTransito['posto'] !== null && $linhaTransito['posto'] !== '' ? $linhaTransito['posto'] : '-'); ?></td>
+                                <td><?php echo e($linhaTransito['login'] !== null && $linhaTransito['login'] !== '' ? $linhaTransito['login'] : '-'); ?></td>
+                                <td><?php echo e(formatarDataBr($linhaTransito['data_mov'])); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr><td colspan="4">Nenhuma etiqueta em transito no momento.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         <?php endif; ?>
     </div>
@@ -363,6 +451,8 @@ if ($dbOk) {
             var inputRecebimento = document.getElementById('leitura_recebimento');
             var responsavelInput = document.getElementById('responsavel');
             var responsaveisHidden = document.querySelectorAll('.responsavel-hidden');
+            var statusLive = document.getElementById('status-live');
+            var kpiTransito = document.getElementById('kpi-transito');
 
             function sincronizarResponsavel() {
                 var valor = responsavelInput ? responsavelInput.value : '';
@@ -371,17 +461,84 @@ if ($dbOk) {
                 }
             }
 
+            function escaparHtml(valor) {
+                return String(valor || '').replace(/[&<>"']/g, function(char) {
+                    return {
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        '"': '&quot;',
+                        "'": '&#039;'
+                    }[char];
+                });
+            }
+
+            function atualizarStatusLive(texto, tipo) {
+                if (!statusLive) return;
+                statusLive.className = 'status-live' + (tipo === 'erro' ? ' erro' : '');
+                statusLive.textContent = texto;
+            }
+
+            function renderizarUltimoMovimento(dados) {
+                var box = document.getElementById('ultimo-movimento-box');
+                if (!box || !dados) return;
+                box.style.display = 'block';
+                box.innerHTML = '' +
+                    '<div class="status-title">' + (((parseInt(dados.tipo, 10) || 0) === 1) ? 'Envio registrado' : 'Recebimento registrado') + '</div>' +
+                    '<div>Etiqueta: <span class="mono">' + escaparHtml(dados.leitura || '-') + '</span></div>' +
+                    '<div>Responsavel: ' + escaparHtml(dados.responsavel || '-') + '</div>' +
+                    '<div>Posto: ' + escaparHtml((dados.posto !== null && dados.posto !== '') ? dados.posto : '-') + '</div>' +
+                    '<div>Data: ' + escaparHtml(dados.data || '-') + '</div>';
+            }
+
+            function enviarLeituraAjax(input) {
+                if (!input || !input.form) return;
+                var digits = input.value.replace(/\D+/g, '');
+                if (digits.length !== 35) return;
+
+                sincronizarResponsavel();
+                if (responsavelInput) {
+                    localStorage.setItem('responsavel_devolucao', responsavelInput.value);
+                }
+
+                var formData = new FormData(input.form);
+                formData.append('ajax', '1');
+                formData.set(input.name, digits);
+
+                input.value = '';
+                atualizarStatusLive('Salvando etiqueta...', 'ok');
+                input.focus();
+
+                fetch(window.location.pathname + window.location.search, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin'
+                }).then(function(response) {
+                    return response.json();
+                }).then(function(data) {
+                    if (data && data.ok) {
+                        atualizarStatusLive(data.mensagem || 'Etiqueta salva com sucesso.', 'ok');
+                        if (kpiTransito && typeof data.transito !== 'undefined') {
+                            kpiTransito.textContent = String(data.transito);
+                        }
+                        renderizarUltimoMovimento(data.ultimo_movimento || null);
+                    } else {
+                        atualizarStatusLive((data && data.mensagem) ? data.mensagem : 'Falha ao salvar etiqueta.', 'erro');
+                    }
+                }).catch(function() {
+                    atualizarStatusLive('Falha de comunicacao ao salvar etiqueta.', 'erro');
+                }).then(function() {
+                    input.focus();
+                });
+            }
+
             function prepararLeitura(input) {
                 if (!input) return;
                 input.addEventListener('input', function() {
                     var digits = this.value.replace(/\D+/g, '');
                     if (digits.length === 35) {
                         this.value = digits;
-                        sincronizarResponsavel();
-                        if (responsavelInput) {
-                            localStorage.setItem('responsavel_devolucao', responsavelInput.value);
-                        }
-                        this.form.submit();
+                        enviarLeituraAjax(this);
                     }
                 });
             }
