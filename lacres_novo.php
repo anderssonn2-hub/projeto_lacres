@@ -1,6 +1,13 @@
 <?php
-/* lacres_novo.php — v1.0.3
+/* lacres_novo.php — v1.0.6
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.6 (09/04/2026):
+ * - [CORRIGIDO] Exclusão de linha preserva lacres e etiquetas já digitados
+ * - [CORRIGIDO] Posto 002 deixa de abrir linha própria no ofício dos Correios
+ * - [NOVO] Popup de leitura mostra posto, lacre IIPR e lacre Correios
+ * - [CORRIGIDO] Autoavanço das etiquetas segue Capital > Central > Regionais
+ * - [NOVO] Versão consolidada para v1.0.6
  *
  * CHANGELOG v1.0.3 (07/04/2026):
  * - [CORRIGIDO] Ofício PT com etiqueta Correios volta a gravar normalmente com número de ofício
@@ -608,6 +615,9 @@ if (isset($_POST['snapshot_lacres']) && $_POST['snapshot_lacres'] !== '') {
             }
             if (isset($vals['lacre_correios']) && (string)$vals['lacre_correios'] !== '') {
                 $_SESSION['lacres_personalizados'][$posto_key]['correios'] = $vals['lacre_correios'];
+            }
+            if (isset($vals['etiqueta_correios'])) {
+                $_SESSION['etiquetas'][$posto_key] = (string)$vals['etiqueta_correios'];
             }
         }
     }
@@ -3067,6 +3077,9 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $tem_posto_002 = true;
     }
     
+    // v1.0.6: posto 002 pertence ao 001 e não deve abrir linha própria no ofício
+    if ($posto_num === '002') continue;
+
     // Ignorar posto já processado
     if (in_array($posto_num, $postos_processados)) continue;
     
@@ -5263,6 +5276,36 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             opacity: 0.85;
             margin-top: 10px;
         }
+
+        #popup-etiqueta-focal .popup-lacres {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        #popup-etiqueta-focal .popup-lacre-item {
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 10px 12px;
+            text-align: left;
+        }
+
+        #popup-etiqueta-focal .popup-lacre-label {
+            display: block;
+            font-size: 11px;
+            opacity: 0.82;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }
+
+        #popup-etiqueta-focal .popup-lacre-valor {
+            display: block;
+            font-size: 22px;
+            font-weight: bold;
+            line-height: 1.1;
+        }
         
         #popup-etiqueta-focal .popup-progresso {
             margin-top: 15px;
@@ -5302,6 +5345,16 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
     <div class="popup-header">🎯 Leitura de Etiqueta</div>
     <div class="popup-posto" id="popup-posto-nome">-</div>
     <div class="popup-instrucao">📦 Escaneie o código de barras da etiqueta (35 dígitos)</div>
+    <div class="popup-lacres">
+        <div class="popup-lacre-item">
+            <span class="popup-lacre-label">Lacre IIPR</span>
+            <span class="popup-lacre-valor" id="popup-lacre-iipr">-</span>
+        </div>
+        <div class="popup-lacre-item">
+            <span class="popup-lacre-label">Lacre Correios</span>
+            <span class="popup-lacre-valor" id="popup-lacre-correios">-</span>
+        </div>
+    </div>
     <div class="popup-progresso" id="popup-progresso">-</div>
 </div>
 
@@ -5316,7 +5369,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.3</div>
+<div class="version-info">v1.0.6</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -6047,6 +6100,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
     <input type="hidden" name="codigo_posto" id="excluir_codigo_posto" value="">
     <input type="hidden" name="grupo_posto" id="excluir_grupo_posto" value="">
     <input type="hidden" name="info_regional" id="excluir_info_regional" value="">
+    <input type="hidden" name="snapshot_lacres" value="">
 </form>
 
 <script type="text/javascript">
@@ -6652,23 +6706,31 @@ function apenasGravarCorreios() {
 // Funcoes para excluir postos (compativel com navegadores antigos)
 function excluirPosto(codigo, grupo, nome) {
     if (confirm('Confirma a exclusao do posto ' + nome + '?')) {
+        var formExcluir = document.getElementById('formExcluirPosto');
         try { if (typeof salvarSomenteEtiquetasCorreios === 'function') salvarSomenteEtiquetasCorreios(); } catch (e) { /* ignore */ }
+        try { if (typeof salvarEstadoEtiquetasCorreiosForcado === 'function') salvarEstadoEtiquetasCorreiosForcado(); } catch (e2) { /* ignore */ }
+        try { if (typeof salvarEstadoTemporarioLacres === 'function') salvarEstadoTemporarioLacres(); } catch (e3) { /* ignore */ }
+        try { if (typeof anexarSnapshotAoForm === 'function' && formExcluir) anexarSnapshotAoForm(formExcluir); } catch (e4) { /* ignore */ }
         document.getElementById('excluir_posto_flag').value = '1';
         document.getElementById('excluir_posto_regional_flag').value = '';
         document.getElementById('excluir_codigo_posto').value = codigo;
         document.getElementById('excluir_grupo_posto').value = grupo;
-        document.getElementById('formExcluirPosto').submit();
+        formExcluir.submit();
     }
 }
 
 function excluirPostoRegional(codigo, nome) {
     if (confirm('Confirma a exclusao do posto REGIONAL ' + nome + '?')) {
+        var formExcluir = document.getElementById('formExcluirPosto');
         try { if (typeof salvarSomenteEtiquetasCorreios === 'function') salvarSomenteEtiquetasCorreios(); } catch (e) { /* ignore */ }
+        try { if (typeof salvarEstadoEtiquetasCorreiosForcado === 'function') salvarEstadoEtiquetasCorreiosForcado(); } catch (e2) { /* ignore */ }
+        try { if (typeof salvarEstadoTemporarioLacres === 'function') salvarEstadoTemporarioLacres(); } catch (e3) { /* ignore */ }
+        try { if (typeof anexarSnapshotAoForm === 'function' && formExcluir) anexarSnapshotAoForm(formExcluir); } catch (e4) { /* ignore */ }
         document.getElementById('excluir_posto_flag').value = '';
         document.getElementById('excluir_posto_regional_flag').value = '1';
         document.getElementById('excluir_codigo_posto').value = codigo;
         document.getElementById('excluir_info_regional').value = nome;
-        document.getElementById('formExcluirPosto').submit();
+        formExcluir.submit();
     }
 }
 
@@ -8250,14 +8312,21 @@ document.addEventListener("DOMContentLoaded", function() {
         })(centralEtiquetaInputs[e]);
     }
     
+    function obterEtiquetasNaSequencia() {
+        var todosEtiquetas = document.querySelectorAll('input.etiqueta-barras');
+        var sequencia = [];
+        for (var i = 0; i < todosEtiquetas.length; i++) {
+            var campo = todosEtiquetas[i];
+            if (!campo || campo.disabled) continue;
+            if (campo.offsetParent === null) continue;
+            sequencia.push(campo);
+        }
+        return sequencia;
+    }
+
     // v8.4: Função auxiliar para focar no próximo input de etiqueta_correios
     window.focarProximaEtiqueta = function(inputAtual) {
-        // Buscar todos os inputs de etiqueta_correios (class etiqueta-barras que estão em inputs válidos)
-        var todosEtiquetas = document.querySelectorAll('input.etiqueta-barras');
-        var indices = [];
-        for (var i = 0; i < todosEtiquetas.length; i++) {
-            indices.push(todosEtiquetas[i]);
-        }
+        var indices = obterEtiquetasNaSequencia();
         
         // Encontrar índice do input atual
         var indiceAtual = -1;
@@ -8280,6 +8349,24 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }, 50);
         }
+    };
+
+    window.atualizarDadosPopupEtiqueta = function(inputAtual) {
+        var valorIipr = '-';
+        var valorCorreios = '-';
+        if (inputAtual) {
+            var trLinha = inputAtual.closest('tr');
+            if (trLinha) {
+                var inpIIPR = trLinha.querySelector('input[name^="lacre_iipr"], input[data-tipo="iipr"]');
+                var inpCorreios = trLinha.querySelector('input[name^="lacre_correios"], input[data-tipo="correios"]');
+                valorIipr = inpIIPR && String(inpIIPR.value || '').trim() !== '' ? String(inpIIPR.value || '').trim() : '-';
+                valorCorreios = inpCorreios && String(inpCorreios.value || '').trim() !== '' ? String(inpCorreios.value || '').trim() : '-';
+            }
+        }
+        var campoPopupIipr = document.getElementById('popup-lacre-iipr');
+        var campoPopupCorreios = document.getElementById('popup-lacre-correios');
+        if (campoPopupIipr) campoPopupIipr.textContent = valorIipr;
+        if (campoPopupCorreios) campoPopupCorreios.textContent = valorCorreios;
     };
     
     // v8.3 CORRIGIDA: Validação de etiquetas_correios duplicadas para CAPITAL + REGIONAIS (não CENTRAL)
@@ -8385,6 +8472,31 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         })(etiquetasValidaveis[v]);
     }
+
+    var etiquetasCentral = document.querySelectorAll('input.etiqueta-barras:not(.etiqueta-validavel)');
+    for (var cidx = 0; cidx < etiquetasCentral.length; cidx++) {
+        (function(inputEtiquetaCentral) {
+            inputEtiquetaCentral.addEventListener('focus', function() {
+                mostrarPopupEtiqueta(this);
+            });
+
+            inputEtiquetaCentral.addEventListener('input', function() {
+                var valor = (this.value || '').replace(/\D/g, '');
+                atualizarProgressoPopup(valor.length);
+                if (valor.length >= 35) {
+                    this.blur();
+                }
+            });
+
+            inputEtiquetaCentral.addEventListener('blur', function() {
+                ocultarPopupEtiqueta();
+                var valorAtual = (this.value || '').replace(/\D/g, '');
+                if (valorAtual.length === 35) {
+                    focarProximaEtiqueta(this);
+                }
+            });
+        })(etiquetasCentral[cidx]);
+    }
     
     // v9.7.1: Funções para controlar o pop-up de etiquetas
     window.mostrarPopupEtiqueta = function(inputAtual) {
@@ -8405,9 +8517,10 @@ document.addEventListener("DOMContentLoaded", function() {
         
         // Atualizar conteúdo do popup
         document.getElementById('popup-posto-nome').textContent = nomePosto;
+        atualizarDadosPopupEtiqueta(inputAtual);
         
         // Calcular posição atual
-        var todosEtiquetas = document.querySelectorAll('input.etiqueta-validavel');
+        var todosEtiquetas = obterEtiquetasNaSequencia();
         var posAtual = 0;
         var total = todosEtiquetas.length;
         for (var i = 0; i < todosEtiquetas.length; i++) {
@@ -8437,7 +8550,7 @@ document.addEventListener("DOMContentLoaded", function() {
         var progressoDiv = document.getElementById('popup-progresso');
         if (!progressoDiv) return;
         
-        var todosEtiquetas = document.querySelectorAll('input.etiqueta-validavel');
+        var todosEtiquetas = obterEtiquetasNaSequencia();
         var inputAtual = document.activeElement;
         var posAtual = 0;
         var total = todosEtiquetas.length;
