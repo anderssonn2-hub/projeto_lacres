@@ -1,5 +1,11 @@
 <?php
-/* conferencia_pacotes.php — v1.0.1
+/* conferencia_pacotes.php — v1.0.8
+ * CHANGELOG v1.0.8:
+ * - [NOVO] Chips e linhas destacam retiradas com contagem por posto no período filtrado
+ * - [NOVO] Leitura de outra regional permite aceitar por janela de confirmação ou por 3 leituras seguidas do mesmo código
+ * - [NOVO] Painel da estante mostra intervalos úteis de datas e controle de ofícios já gerados para o filtro atual
+ * - [AJUSTE] Tela e snapshot exibem a versao v1.0.8
+ *
  * CHANGELOG v1.0.1:
  * - [NOVO] Pacote de outra regional agora oferece confirmação para migrar a conferência ao novo contexto
  * - [AJUSTE] Tela e snapshot exibem a versao v1.0.1
@@ -196,6 +202,7 @@ $poupaTempoPostos = array();
 $conferencias = array();
 $conferencias_info = array();
 $conferencias_lote = array();
+$retiradas_por_posto = array();
 $dias_com_conferencia = array();
 $dias_sem_conferencia = array();
 $metadados_dias = array();
@@ -309,6 +316,35 @@ function resolverRegionalRealPorPosto($pdo, $posto, $fallback) {
     }
     $cache[$postoPad] = $regionalFallback;
     return $cache[$postoPad];
+}
+
+function atualizarFaixaDatasEstante(&$faixas, $chave, $dataSql) {
+    $dataSql = trim((string)$dataSql);
+    if ($chave === '' || $dataSql === '') {
+        return;
+    }
+    if (!isset($faixas[$chave])) {
+        $faixas[$chave] = array('min' => $dataSql, 'max' => $dataSql);
+        return;
+    }
+    if ($faixas[$chave]['min'] === '' || $dataSql < $faixas[$chave]['min']) {
+        $faixas[$chave]['min'] = $dataSql;
+    }
+    if ($faixas[$chave]['max'] === '' || $dataSql > $faixas[$chave]['max']) {
+        $faixas[$chave]['max'] = $dataSql;
+    }
+}
+
+function formatarFaixaDatasEstante($faixa) {
+    if (!is_array($faixa) || empty($faixa['min'])) {
+        return 'sem dados';
+    }
+    $dataMin = normalizarDataExib($faixa['min']);
+    $dataMax = normalizarDataExib(isset($faixa['max']) ? $faixa['max'] : $faixa['min']);
+    if ($dataMin === $dataMax) {
+        return $dataMin;
+    }
+    return $dataMin . ' a ' . $dataMax;
 }
 
 // Conexão
@@ -1263,6 +1299,7 @@ try {
                     'usuario_lacre' => $atribuicao_lacre ? (string)$atribuicao_lacre['usuario_lacre'] : '',
                     'atualizado_lacre_em' => $atribuicao_lacre ? (string)$atribuicao_lacre['atualizado_em'] : '',
                     'conferido_em' => $conferido_em,
+                    'retirada_count' => isset($retiradas_por_posto[$posto]['total']) ? (int)$retiradas_por_posto[$posto]['total'] : 0,
                     'isPT' => $isPT,
                     'conf' => $conferido
                 );
@@ -1291,12 +1328,39 @@ try {
     }
     $datas_exib = array_values(array_unique(array_filter($datas_exib)));
 
+    $datas_filtro_sql = array();
+    if ($data_ini_sql !== '' && $data_fim_sql !== '') {
+        try {
+            $dtFiltroIni = new DateTime($data_ini_sql);
+            $dtFiltroFim = new DateTime($data_fim_sql);
+            while ($dtFiltroIni <= $dtFiltroFim) {
+                $datas_filtro_sql[] = $dtFiltroIni->format('Y-m-d');
+                $dtFiltroIni->modify('+1 day');
+            }
+        } catch (Exception $e) {
+        }
+    }
+    if (!empty($datas_sql)) {
+        foreach ($datas_sql as $dataFiltroAvulsa) {
+            $dataFiltroAvulsa = trim((string)$dataFiltroAvulsa);
+            if ($dataFiltroAvulsa !== '') {
+                $datas_filtro_sql[] = $dataFiltroAvulsa;
+            }
+        }
+    }
+    $datas_filtro_sql = array_values(array_unique(array_filter($datas_filtro_sql)));
+
     // v9.22.8: Estatísticas
     $stats = array(
         'carteiras_emitidas' => 0,
         'carteiras_conferidas' => 0,
         'postos_conferidos' => 0,
-        'pacotes_conferidos' => 0
+        'pacotes_conferidos' => 0,
+        'retiradas_total' => 0,
+        'retiradas_canceladas' => 0,
+        'postos_retirados' => 0,
+        'oficios_periodo' => 0,
+        'datas_oficiadas' => 0
     );
 
     $estante_stats = array(
@@ -1309,6 +1373,17 @@ try {
     $estante_lotes_sem_upload = array();
     $estante_sem_upload_por_posto = array();
     $estante_sem_upload_por_lote = array();
+    $retiradas_por_posto = array();
+    $postos_retirados_lista = '';
+    $estante_faixas = array(
+        'capital' => array('min' => '', 'max' => ''),
+        'central' => array('min' => '', 'max' => ''),
+        'regional' => array('min' => '', 'max' => ''),
+        'pt_capital' => array('min' => '', 'max' => ''),
+        'pt_interior' => array('min' => '', 'max' => '')
+    );
+    $oficios_periodo = array();
+    $datas_oficiadas_mapa = array();
 
     $periodo_operacao_label = 'Periodo nao informado';
     if ($data_ini !== '' && $data_fim !== '') {
@@ -1403,6 +1478,103 @@ try {
         }
     }
 
+    try {
+        if (!empty($datas_filtro_sql)) {
+            $phRet = implode(',', array_fill(0, count($datas_filtro_sql), '?'));
+            $stmtRet = $pdo->prepare("SELECT LEFT(protocolo,3) AS posto_codigo,
+                                             COUNT(*) AS total,
+                                             SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS canceladas
+                                        FROM ciRetirada
+                                       WHERE datasolicitacao IS NOT NULL
+                                         AND DATE(datasolicitacao) IN ($phRet)
+                                    GROUP BY LEFT(protocolo,3)");
+            $stmtRet->execute($datas_filtro_sql);
+            $postosRetiradosLista = array();
+            while ($rowRet = $stmtRet->fetch(PDO::FETCH_ASSOC)) {
+                $postoRet = str_pad(preg_replace('/\D+/', '', (string)$rowRet['posto_codigo']), 3, '0', STR_PAD_LEFT);
+                if ($postoRet === '') {
+                    continue;
+                }
+                $totalRet = isset($rowRet['total']) ? (int)$rowRet['total'] : 0;
+                $canceladasRet = isset($rowRet['canceladas']) ? (int)$rowRet['canceladas'] : 0;
+                $retiradas_por_posto[$postoRet] = array(
+                    'total' => $totalRet,
+                    'canceladas' => $canceladasRet
+                );
+                $stats['retiradas_total'] += $totalRet;
+                $stats['retiradas_canceladas'] += $canceladasRet;
+                $postosRetiradosLista[] = $postoRet;
+            }
+            $postosRetiradosLista = array_values(array_unique($postosRetiradosLista));
+            sort($postosRetiradosLista);
+            $stats['postos_retirados'] = count($postosRetiradosLista);
+            $postos_retirados_lista = implode(', ', $postosRetiradosLista);
+        }
+    } catch (Exception $e) {
+        $retiradas_por_posto = array();
+        $postos_retirados_lista = '';
+    }
+
+    try {
+        if (!empty($datas_filtro_sql)) {
+            $likesOficio = array();
+            $paramsOficio = array();
+            foreach ($datas_filtro_sql as $dataFiltroOficio) {
+                $likesOficio[] = "REPLACE(datas_str, ' ', '') LIKE ?";
+                $paramsOficio[] = '%' . $dataFiltroOficio . '%';
+            }
+            $stmtOficios = $pdo->prepare("SELECT id, grupo, usuario, datas_str, criado_at
+                                           FROM ciDespachos
+                                          WHERE ativo = 1
+                                            AND (" . implode(' OR ', $likesOficio) . ")
+                                          ORDER BY id DESC
+                                          LIMIT 200");
+            $stmtOficios->execute($paramsOficio);
+            while ($rowOficio = $stmtOficios->fetch(PDO::FETCH_ASSOC)) {
+                $datasOficio = preg_split('/\s*,\s*/', trim((string)$rowOficio['datas_str']));
+                $datasCobertas = array();
+                foreach ($datasOficio as $dataOficio) {
+                    $dataOficio = trim((string)$dataOficio);
+                    if ($dataOficio === '' || !in_array($dataOficio, $datas_filtro_sql, true)) {
+                        continue;
+                    }
+                    $datasCobertas[] = $dataOficio;
+                    $datas_oficiadas_mapa[$dataOficio] = true;
+                }
+                if (empty($datasCobertas)) {
+                    continue;
+                }
+                $grupoOficio = strtoupper(trim((string)$rowOficio['grupo']));
+                if ($grupoOficio === '') {
+                    $grupoOficio = 'SEM GRUPO';
+                }
+                $oficios_periodo[] = array(
+                    'id' => (int)$rowOficio['id'],
+                    'grupo' => $grupoOficio,
+                    'usuario' => isset($rowOficio['usuario']) ? trim((string)$rowOficio['usuario']) : '',
+                    'datas' => $datasCobertas,
+                    'criado_at' => isset($rowOficio['criado_at']) ? trim((string)$rowOficio['criado_at']) : ''
+                );
+            }
+            $stats['oficios_periodo'] = count($oficios_periodo);
+            $stats['datas_oficiadas'] = count($datas_oficiadas_mapa);
+        }
+    } catch (Exception $e) {
+        $oficios_periodo = array();
+        $datas_oficiadas_mapa = array();
+    }
+
+    if (!empty($regionais_data) && !empty($retiradas_por_posto)) {
+        foreach ($regionais_data as $regionalChave => &$linhasRegional) {
+            foreach ($linhasRegional as &$linhaRegional) {
+                $postoRetLinha = isset($linhaRegional['posto']) ? trim((string)$linhaRegional['posto']) : '';
+                $linhaRegional['retirada_count'] = isset($retiradas_por_posto[$postoRetLinha]['total']) ? (int)$retiradas_por_posto[$postoRetLinha]['total'] : 0;
+            }
+            unset($linhaRegional);
+        }
+        unset($linhasRegional);
+    }
+
     // v9.24.8: Estatisticas da estante (leituras do encontra_posto)
     try {
         if (!empty($condicoes_data)) {
@@ -1444,6 +1616,30 @@ try {
                     }
                 }
 
+                $stmtFaixas = $pdo->prepare("SELECT DISTINCT LPAD(l.posto,3,'0') AS posto,
+                                                     LPAD(CAST(COALESCE(r.regional, l.regional) AS UNSIGNED),3,'0') AS regional_real,
+                                                     COALESCE(r.entrega, '') AS entrega,
+                                                     DATE(l.producao_de) AS data_prod
+                                                FROM lotes_na_estante l
+                                                LEFT JOIN ciRegionais r ON LPAD(r.posto,3,'0') = LPAD(l.posto,3,'0')
+                                                $whereEstante");
+                $stmtFaixas->execute($params_estante);
+                while ($rowFaixa = $stmtFaixas->fetch(PDO::FETCH_ASSOC)) {
+                    $entregaFaixa = strtolower(trim(str_replace(' ', '', (string)$rowFaixa['entrega'])));
+                    $regionalFaixa = isset($rowFaixa['regional_real']) ? trim((string)$rowFaixa['regional_real']) : '';
+                    $dataFaixa = isset($rowFaixa['data_prod']) ? trim((string)$rowFaixa['data_prod']) : '';
+                    $ehPtFaixa = (strpos($entregaFaixa, 'poupa') !== false || strpos($entregaFaixa, 'tempo') !== false);
+                    if ($ehPtFaixa) {
+                        atualizarFaixaDatasEstante($estante_faixas, ((int)$regionalFaixa === 0 ? 'pt_capital' : 'pt_interior'), $dataFaixa);
+                    } elseif ((int)$regionalFaixa === 0) {
+                        atualizarFaixaDatasEstante($estante_faixas, 'capital', $dataFaixa);
+                    } elseif ((int)$regionalFaixa === 999) {
+                        atualizarFaixaDatasEstante($estante_faixas, 'central', $dataFaixa);
+                    } else {
+                        atualizarFaixaDatasEstante($estante_faixas, 'regional', $dataFaixa);
+                    }
+                }
+
                 $params_upload = array();
                 $joinCarga = '';
                 if ($data_ini_sql !== '' && $data_fim_sql !== '') {
@@ -1455,34 +1651,42 @@ try {
                     $joinCarga = "AND DATE(c.dataCarga) IN ($phUpload)";
                     $params_upload = $datas_sql;
                 }
-                $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
-                    FROM lotes_na_estante l
-                    $whereEstante
-                    AND NOT EXISTS (
-                        SELECT 1 FROM ciPostosCsv c
-                        WHERE LPAD(CAST(c.lote AS UNSIGNED),8,'0') = LPAD(l.lote,8,'0')
-                          AND LPAD(CAST(c.posto AS UNSIGNED),3,'0') = LPAD(l.posto,3,'0')
-                          AND LPAD(CAST(COALESCE(c.regional,0) AS UNSIGNED),3,'0') = LPAD(l.regional,3,'0')
-                          $joinCarga
-                    )
-                    ORDER BY l.lote");
+                $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote,
+                                                 LPAD(l.posto,3,'0') AS posto,
+                                                 LPAD(l.regional,3,'0') AS regional,
+                                                 COALESCE(SUM(l.quantidade),0) AS quantidade,
+                                                 DATE(l.producao_de) AS dataexp
+                                            FROM lotes_na_estante l
+                                            $whereEstante
+                                              AND NOT EXISTS (
+                                                  SELECT 1 FROM ciPostosCsv c
+                                                  WHERE LPAD(CAST(c.lote AS UNSIGNED),8,'0') = LPAD(l.lote,8,'0')
+                                                    AND LPAD(CAST(c.posto AS UNSIGNED),3,'0') = LPAD(l.posto,3,'0')
+                                                    AND DATE(c.dataCarga) = DATE(l.producao_de)
+                                                    $joinCarga
+                                              )
+                                         GROUP BY LPAD(l.lote,8,'0'), LPAD(l.posto,3,'0'), LPAD(l.regional,3,'0'), DATE(l.producao_de)
+                                         ORDER BY l.lote");
                 $stmtSem->execute(array_merge($params_estante, $params_upload));
                 while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                     $estante_lotes_sem_upload[] = array(
                         'lote' => isset($row['lote']) ? $row['lote'] : '',
                         'posto' => isset($row['posto']) ? $row['posto'] : '',
-                        'regional' => isset($row['regional']) ? $row['regional'] : ''
+                        'regional' => isset($row['regional']) ? $row['regional'] : '',
+                        'quantidade' => isset($row['quantidade']) ? (int)$row['quantidade'] : 0,
+                        'dataexp' => isset($row['dataexp']) ? (string)$row['dataexp'] : ''
                     );
                     $posto_sem_upload = isset($row['posto']) ? $row['posto'] : '';
                     $lote_sem_upload = isset($row['lote']) ? $row['lote'] : '';
+                    $data_sem_upload = isset($row['dataexp']) ? (string)$row['dataexp'] : '';
                     if ($posto_sem_upload !== '') {
                         if (!isset($estante_sem_upload_por_posto[$posto_sem_upload])) {
                             $estante_sem_upload_por_posto[$posto_sem_upload] = 0;
                         }
                         $estante_sem_upload_por_posto[$posto_sem_upload]++;
                     }
-                    if ($posto_sem_upload !== '' && $lote_sem_upload !== '') {
-                        $estante_sem_upload_por_lote[$posto_sem_upload . '|' . $lote_sem_upload] = true;
+                    if ($posto_sem_upload !== '' && $lote_sem_upload !== '' && $data_sem_upload !== '') {
+                        $estante_sem_upload_por_lote[$posto_sem_upload . '|' . $lote_sem_upload . '|' . $data_sem_upload] = true;
                     }
                 }
             }
@@ -1491,6 +1695,13 @@ try {
         $estante_lotes_sem_upload = array();
         $estante_sem_upload_por_posto = array();
         $estante_sem_upload_por_lote = array();
+        $estante_faixas = array(
+            'capital' => array('min' => '', 'max' => ''),
+            'central' => array('min' => '', 'max' => ''),
+            'regional' => array('min' => '', 'max' => ''),
+            'pt_capital' => array('min' => '', 'max' => ''),
+            'pt_interior' => array('min' => '', 'max' => '')
+        );
     }
 
     // v9.24.0: Carregar postos bloqueados
@@ -1555,7 +1766,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v1.0.1</title>
+    <title>Conferência de Pacotes v1.0.8</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2180,6 +2391,11 @@ try {
         .operacao-chip.sem-upload {
             border-style: dashed;
         }
+        .operacao-chip.retirada {
+            background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+            color: #2b1600;
+            border-color: rgba(120, 53, 15, 0.35);
+        }
         .operacao-chip.tem-iipr {
             box-shadow: inset 0 0 0 1px rgba(255,209,102,0.9);
         }
@@ -2206,6 +2422,18 @@ try {
             border-radius: 999px;
             background: rgba(83, 194, 255, 0.22);
             color: #d8f4ff;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: 0.6px;
+        }
+        .operacao-chip.retirada::before {
+            content: ' RET';
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 5px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.26);
+            color: #572400;
             font-size: 9px;
             font-weight: 900;
             letter-spacing: 0.6px;
@@ -2814,10 +3042,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v1.0.1</div>
+    <div class="versao">v1.0.8</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v1.0.1</h2>
+<h2>📋 Conferência de Pacotes v1.0.8</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -2912,8 +3140,8 @@ try {
         <div class="valor"><?php echo number_format((int)$stats['carteiras_conferidas'], 0, ',', '.'); ?></div>
     </div>
     <div class="card-resumo">
-        <h4>Postos com retirada</h4>
-        <div class="valor"><?php echo (int)$stats['postos_conferidos']; ?></div>
+        <h4>Retiradas no período</h4>
+        <div class="valor"><?php echo (int)$stats['retiradas_total']; ?></div>
     </div>
     <div class="card-resumo">
         <h4>Pacotes conferidos</h4>
@@ -2927,12 +3155,41 @@ try {
         <h4>Lotes sem upload</h4>
         <div class="valor"><?php echo (int)count($estante_lotes_sem_upload); ?></div>
     </div>
+    <div class="card-resumo">
+        <h4>Datas com ofício</h4>
+        <div class="valor"><?php echo (int)$stats['datas_oficiadas']; ?></div>
+    </div>
 </div>
 
 <div class="painel-estante" id="painelEstanteFixo">
     <h4>🔎 Lotes na estante sem upload</h4>
     <div class="breakdown">
         Capital: <?php echo (int)$estante_stats['capital']; ?> | Central: <?php echo (int)$estante_stats['central']; ?> | Regional: <?php echo (int)$estante_stats['regional']; ?> | PT: <?php echo (int)$estante_stats['poupatempo']; ?>
+    </div>
+    <div class="breakdown">
+        PT Capital: <?php echo e(formatarFaixaDatasEstante($estante_faixas['pt_capital'])); ?> | PT Interior: <?php echo e(formatarFaixaDatasEstante($estante_faixas['pt_interior'])); ?>
+    </div>
+    <div class="breakdown">
+        Correios Capital: <?php echo e(formatarFaixaDatasEstante($estante_faixas['capital'])); ?> | Central: <?php echo e(formatarFaixaDatasEstante($estante_faixas['central'])); ?> | Interior: <?php echo e(formatarFaixaDatasEstante($estante_faixas['regional'])); ?>
+    </div>
+    <div class="breakdown">
+        Retiradas: <?php echo (int)$stats['retiradas_total']; ?><?php echo $postos_retirados_lista !== '' ? ' | Postos: ' . e($postos_retirados_lista) : ''; ?>
+    </div>
+    <div class="breakdown">
+        Ofícios no filtro: <?php echo (int)$stats['oficios_periodo']; ?><?php
+            if (!empty($oficios_periodo)) {
+                $resumoOficios = array();
+                $limiteOficiosResumo = 6;
+                $oficiosMostrar = array_slice($oficios_periodo, 0, $limiteOficiosResumo);
+                foreach ($oficiosMostrar as $oficioResumo) {
+                    $resumoOficios[] = '#' . (int)$oficioResumo['id'] . ' ' . e($oficioResumo['grupo']);
+                }
+                echo ' | ' . implode(' • ', $resumoOficios);
+                if (count($oficios_periodo) > $limiteOficiosResumo) {
+                    echo ' • +' . (count($oficios_periodo) - $limiteOficiosResumo) . ' outros';
+                }
+            }
+        ?>
     </div>
     <?php if (!empty($estante_lotes_sem_upload)) { ?>
         <div class="lista-lotes">
@@ -2944,9 +3201,10 @@ try {
                 $loteBadge = isset($itemSemUpload['lote']) ? $itemSemUpload['lote'] : '';
                 $regionalBadge = isset($itemSemUpload['regional']) ? $itemSemUpload['regional'] : '';
                 $postoBadge = isset($itemSemUpload['posto']) ? $itemSemUpload['posto'] : '';
+                $dataBadge = isset($itemSemUpload['dataexp']) ? normalizarDataExib((string)$itemSemUpload['dataexp']) : '';
                 $tituloBadge = 'Lote ' . $loteBadge;
-                $detalheBadge = trim('Regional ' . $regionalBadge . ' | Posto ' . $postoBadge, ' |');
-                echo '<span class="lote-badge" title="' . e($tituloBadge . ' - ' . $detalheBadge) . '">' . e($loteBadge) . ' <small>R ' . e($regionalBadge) . ' • P ' . e($postoBadge) . '</small></span>';
+                $detalheBadge = trim('Regional ' . $regionalBadge . ' | Posto ' . $postoBadge . ' | Data ' . $dataBadge, ' |');
+                echo '<span class="lote-badge" title="' . e($tituloBadge . ' - ' . $detalheBadge) . '">' . e($loteBadge) . ' <small>R ' . e($regionalBadge) . ' • P ' . e($postoBadge) . ($dataBadge !== '' ? ' • D ' . e($dataBadge) : '') . '</small></span>';
             }
             if ($total_lotes > $limite) {
                 echo '<span class="lote-badge">+ ' . e($total_lotes - $limite) . ' outros</span>';
@@ -3414,6 +3672,12 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
         }
         $pendentes = max(0, $totalPacotes - $conferidos);
         $semUploadCount = isset($estanteSemUploadPorPosto[$postoKey]) ? (int)$estanteSemUploadPorPosto[$postoKey] : 0;
+        $retiradaCount = 0;
+        foreach ($listaPosto as $itemRetirada) {
+            if (isset($itemRetirada['retirada_count']) && (int)$itemRetirada['retirada_count'] > $retiradaCount) {
+                $retiradaCount = (int)$itemRetirada['retirada_count'];
+            }
+        }
         echo '<div class="operacao-posto-row" data-posto="' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '" data-grupo="' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '">';
         echo '<div><span class="operacao-posicao">' . htmlspecialchars($postoKey, ENT_QUOTES, 'UTF-8') . '</span></div>';
         echo '<div class="operacao-posto-meta">';
@@ -3421,6 +3685,9 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
         echo '<div class="operacao-posto-sub">' . htmlspecialchars($tituloGrupo, ENT_QUOTES, 'UTF-8') . '</div>';
         if ($semUploadCount > 0) {
             echo '<div class="operacao-posto-aux">Sem upload: ' . $semUploadCount . '</div>';
+        }
+        if ($retiradaCount > 0) {
+            echo '<div class="operacao-posto-aux">Retirada: ' . $retiradaCount . '</div>';
         }
         echo '</div>';
         echo '<div class="operacao-chips">';
@@ -3435,8 +3702,13 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
             if (!empty($item['lacre_correios']) || !empty($item['etiqueta_correios'])) {
                 $chipClasses .= ' tem-correios';
             }
+            $retiradaChipCount = isset($item['retirada_count']) ? (int)$item['retirada_count'] : 0;
+            if ($retiradaChipCount > 0) {
+                $chipClasses .= ' retirada';
+            }
             $loteChip = isset($item['lote']) ? str_pad(preg_replace('/\D+/', '', (string)$item['lote']), 8, '0', STR_PAD_LEFT) : '';
-            $chipSemUpload = ($postoKey !== '' && $loteChip !== '' && isset($estanteSemUploadPorLote[$postoKey . '|' . $loteChip]));
+            $dataChipSemUpload = isset($item['data_sql']) ? trim((string)$item['data_sql']) : '';
+            $chipSemUpload = ($postoKey !== '' && $loteChip !== '' && $dataChipSemUpload !== '' && isset($estanteSemUploadPorLote[$postoKey . '|' . $loteChip . '|' . $dataChipSemUpload]));
             if ($chipSemUpload) {
                 $chipClasses .= ' sem-upload';
             }
@@ -3458,9 +3730,13 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
             echo ' data-etiqueta-correios="' . htmlspecialchars((string)$item['etiqueta_correios'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-usuario-lacre="' . htmlspecialchars((string)$item['usuario_lacre'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-atualizado-lacre="' . htmlspecialchars((string)$item['atualizado_lacre_em'], ENT_QUOTES, 'UTF-8') . '"';
+            echo ' data-retirada="' . $retiradaChipCount . '"';
             echo ' data-conferido-em="' . htmlspecialchars($item['conferido_em'], ENT_QUOTES, 'UTF-8') . '"';
             echo ' data-conf="' . (!empty($item['conf']) ? '1' : '0') . '">';
             echo htmlspecialchars($item['lote'], ENT_QUOTES, 'UTF-8');
+            if ($retiradaChipCount > 0) {
+                echo ' <small>R ' . $retiradaChipCount . '</small>';
+            }
             echo '</button>';
         }
         echo '</div>';
@@ -3541,6 +3817,7 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
     echo '<th>Posto</th>';
     echo '<th class="sortable" data-sort="data">Data Expedição <span class="sort-indicator">↕</span></th>';
     echo '<th>Quantidade</th>';
+    echo '<th>Retirada</th>';
     echo '<th>Responsável Produção</th>';
     echo '<th>Código de Barras</th>';
     echo '<th>Conferido em</th>';
@@ -3568,6 +3845,7 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
         echo 'data-etiqueta-correios="' . htmlspecialchars((string)$posto['etiqueta_correios'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-usuario-lacre="' . htmlspecialchars((string)$posto['usuario_lacre'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-atualizado-lacre="' . htmlspecialchars((string)$posto['atualizado_lacre_em'], ENT_QUOTES, 'UTF-8') . '" ';
+        echo 'data-retirada="' . (isset($posto['retirada_count']) ? (int)$posto['retirada_count'] : 0) . '" ';
         echo 'data-conferido-em="' . htmlspecialchars($posto['conferido_em'], ENT_QUOTES, 'UTF-8') . '" ';
         echo 'data-ispt="' . $posto['isPT'] . '" ';
         echo 'data-pt-group="' . htmlspecialchars($ptGroup, ENT_QUOTES, 'UTF-8') . '">';
@@ -3582,6 +3860,7 @@ function renderizarTabela($titulo, $dados, $ehPoupaTempo = false, $ptGroup = '')
             if ($ts) { $conferido_em_fmt = date('d-m-Y H:i', $ts); }
         }
         echo '<td>' . htmlspecialchars($posto['qtd'], ENT_QUOTES, 'UTF-8') . '</td>';
+        echo '<td>' . ((isset($posto['retirada_count']) && (int)$posto['retirada_count'] > 0) ? (int)$posto['retirada_count'] : '—') . '</td>';
         echo '<td>' . htmlspecialchars($posto['usuario_prod'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td>' . htmlspecialchars($posto['codigo'], ENT_QUOTES, 'UTF-8') . '</td>';
         echo '<td class="col-conferido-em">' . htmlspecialchars($conferido_em_fmt, ENT_QUOTES, 'UTF-8') . '</td>';
@@ -3919,23 +4198,67 @@ function iniciarConferenciaPacotes() {
         return partes.length ? partes.join(' / ') : 'novo contexto';
     }
 
-    function confirmarMigracaoConferenciaCorreios(linha, regionalNorm, postoCodigo, valorLido) {
-        var descricao = descreverContextoCorreios(regionalNorm, postoCodigo);
-        var mensagem = 'Pacote de outra regional identificado (' + descricao + ').\n\nDeseja mudar a conferência para este contexto?';
-        if (!window.confirm(mensagem)) {
-            return false;
-        }
+    function limparTentativaMigracaoOutraRegional() {
+        tentativaMigracaoOutraRegional.codigo = '';
+        tentativaMigracaoOutraRegional.tentativas = 0;
+        tentativaMigracaoOutraRegional.regional = '';
+        tentativaMigracaoOutraRegional.posto = '';
+        tentativaMigracaoOutraRegional.expiraEm = 0;
+    }
 
+    function registrarTentativaMigracaoOutraRegional(valorLido, regionalNorm, postoCodigo) {
+        var agora = Date.now();
+        var codigo = String(valorLido || '').replace(/\D+/g, '');
+        var regional = formatarCodigoComZeros(regionalNorm || '', 3);
+        var posto = formatarCodigoComZeros(postoCodigo || '', 3);
+        if (!codigo) {
+            limparTentativaMigracaoOutraRegional();
+            return { tentativas: 0, restantes: 3, autoMigrar: false, primeiraTentativa: false };
+        }
+        var mesmaLeitura = tentativaMigracaoOutraRegional.codigo === codigo &&
+            tentativaMigracaoOutraRegional.regional === regional &&
+            tentativaMigracaoOutraRegional.posto === posto &&
+            tentativaMigracaoOutraRegional.expiraEm >= agora;
+        if (!mesmaLeitura) {
+            tentativaMigracaoOutraRegional.codigo = codigo;
+            tentativaMigracaoOutraRegional.tentativas = 1;
+        } else {
+            tentativaMigracaoOutraRegional.tentativas += 1;
+        }
+        tentativaMigracaoOutraRegional.regional = regional;
+        tentativaMigracaoOutraRegional.posto = posto;
+        tentativaMigracaoOutraRegional.expiraEm = agora + 12000;
+        var tentativas = tentativaMigracaoOutraRegional.tentativas;
+        return {
+            tentativas: tentativas,
+            restantes: Math.max(0, 3 - tentativas),
+            autoMigrar: tentativas >= 3,
+            primeiraTentativa: tentativas === 1
+        };
+    }
+
+    function aplicarMigracaoConferenciaCorreios(linha, regionalNorm, postoCodigo, valorLido, origem) {
+        var descricao = descreverContextoCorreios(regionalNorm, postoCodigo);
         tipoAtual = 'correios';
         regionalAtual = regionalNorm || obterRegionalLinha(linha);
         postoAtual = contextoCorreiosExigeMesmoPosto(regionalAtual) ? postoCodigo : null;
         primeiroConferido = true;
+        limparTentativaMigracaoOutraRegional();
 
         if (mensagemLeitura) {
             mensagemLeitura.innerHTML = '<strong>Contexto alterado:</strong> conferência movida para ' + descricao + '.';
         }
-        registrarHistoricoLeitura('Contexto alterado', 'Conferência movida manualmente para ' + descricao + '.', valorLido || '');
+        registrarHistoricoLeitura('Contexto alterado', 'Conferência movida para ' + descricao + ' via ' + (origem || 'confirmação') + '.', valorLido || '');
         return true;
+    }
+
+    function confirmarMigracaoConferenciaCorreios(linha, regionalNorm, postoCodigo, valorLido) {
+        var descricao = descreverContextoCorreios(regionalNorm, postoCodigo);
+        var mensagem = 'Pacote de outra regional identificado (' + descricao + ').\n\nDeseja mudar a conferência para este contexto?\n\nDica: ler o mesmo código 3 vezes seguidas também confirma automaticamente.';
+        if (!window.confirm(mensagem)) {
+            return false;
+        }
+        return aplicarMigracaoConferenciaCorreios(linha, regionalNorm, postoCodigo, valorLido, 'confirmação');
     }
 
     if (btnFecharModalChip) {
@@ -6279,6 +6602,13 @@ function iniciarConferenciaPacotes() {
     var ultimaRegionalLida = null;
     var ultimoPostoLido = null;
     var ultimoTipoLido = null;
+    var tentativaMigracaoOutraRegional = {
+        codigo: '',
+        tentativas: 0,
+        regional: '',
+        posto: '',
+        expiraEm: 0
+    };
 
     function contextoCorreiosExigeMesmoPosto(regionalNorm) {
         return regionalNorm === '000' || regionalNorm === '999';
@@ -6313,6 +6643,7 @@ function iniciarConferenciaPacotes() {
         ultimaRegionalLida = null;
         ultimoPostoLido = null;
         ultimoTipoLido = null;
+        limparTentativaMigracaoOutraRegional();
         try {
             sessionStorage.setItem(storageTipoKey, tipo);
         } catch (e) {}
@@ -7137,10 +7468,29 @@ function iniciarConferenciaPacotes() {
                 enfileirarSom(somAlerta);
             }
             if (somAlerta === pacoteOutraRegional && tipoPacote === 'correios') {
-                if (confirmarMigracaoConferenciaCorreios(linha, regionalDoPacoteNorm || regionalDoPacote, postoDoPacote, valor)) {
+                var tentativaOutraRegional = registrarTentativaMigracaoOutraRegional(valor, regionalDoPacoteNorm || regionalDoPacote, postoDoPacote);
+                if (tentativaOutraRegional.autoMigrar) {
+                    if (mensagemLeitura) {
+                        mensagemLeitura.innerHTML = '<strong>Contexto alterado:</strong> terceira leitura igual confirmada para ' + descreverContextoCorreios(regionalDoPacoteNorm || regionalDoPacote, postoDoPacote) + '.';
+                    }
+                    aplicarMigracaoConferenciaCorreios(linha, regionalDoPacoteNorm || regionalDoPacote, postoDoPacote, valor, 'triplo scan');
                     podeConferir = true;
                     somAlerta = null;
+                } else if (tentativaOutraRegional.primeiraTentativa) {
+                    if (confirmarMigracaoConferenciaCorreios(linha, regionalDoPacoteNorm || regionalDoPacote, postoDoPacote, valor)) {
+                        podeConferir = true;
+                        somAlerta = null;
+                    } else if (mensagemLeitura) {
+                        mensagemLeitura.innerHTML = '<strong>Pacote de outra regional:</strong> leia mais ' + tentativaOutraRegional.restantes + ' vez(es) o mesmo código para aceitar automaticamente.';
+                    }
+                } else if (mensagemLeitura) {
+                    mensagemLeitura.innerHTML = '<strong>Pacote de outra regional:</strong> leia mais ' + tentativaOutraRegional.restantes + ' vez(es) o mesmo código para aceitar automaticamente.';
                 }
+                if (!podeConferir) {
+                    registrarHistoricoLeitura('Outra regional detectada', 'Aguardando confirmação manual ou mais ' + tentativaOutraRegional.restantes + ' leitura(s) iguais para migrar o contexto.', valor);
+                }
+            } else {
+                limparTentativaMigracaoOutraRegional();
             }
         }
 
@@ -7190,6 +7540,7 @@ function iniciarConferenciaPacotes() {
         ultimaRegionalLida = regionalDoPacoteNorm || regionalDoPacote;
         ultimoPostoLido = tipoPacote === 'correios' ? postoDoPacote : null;
         ultimoTipoLido = tipoPacote;
+        limparTentativaMigracaoOutraRegional();
 
         if (usuarioAtual) {
             var lote = linha.getAttribute('data-lote');
@@ -7263,6 +7614,7 @@ function iniciarConferenciaPacotes() {
             ultimaRegionalLida = null;
             ultimoPostoLido = null;
             ultimoTipoLido = null;
+            limparTentativaMigracaoOutraRegional();
         }
 
         finalizarProcessamento(true);
@@ -7375,6 +7727,7 @@ function iniciarConferenciaPacotes() {
             ultimaRegionalLida = null;
             ultimoPostoLido = null;
             ultimoTipoLido = null;
+            limparTentativaMigracaoOutraRegional();
             valoresDigitadosPorContexto = {};
             ultimoLacreIiprAplicado = '';
             ultimoLacreCorreiosAplicado = '';
