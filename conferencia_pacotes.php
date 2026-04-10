@@ -1,10 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v1.0.2
- * CHANGELOG v1.0.2:
- * - [CORRIGIDO] Chips de sem upload agora validam o lote contra o CSV filtrado usando lote, posto e data com normalização de regional real/PT
- * - [NOVO] Painel para carregar lotes da estante sem upload de forma individual ou consolidada para um responsável
- * - [AJUSTE] Tela e snapshot exibem a versao v1.0.2
- *
+/* conferencia_pacotes.php — v1.0.1
  * CHANGELOG v1.0.1:
  * - [NOVO] Pacote de outra regional agora oferece confirmação para migrar a conferência ao novo contexto
  * - [AJUSTE] Tela e snapshot exibem a versao v1.0.1
@@ -1118,7 +1113,6 @@ try {
 
     $atribuicoes_lacres_por_codigo = array();
     $atribuicoes_lacres_por_chave = array();
-    $cargas_csv_por_lote_posto_data = array();
 
     // Busca dados do ciPostosCsv (com LIMIT)
     $condicoes_data = array();
@@ -1219,14 +1213,6 @@ try {
                     } elseif ((int)$regional_real === 1) {
                         $regional_label = 'Posto 01';
                     }
-                }
-
-                $chaveCargaBaseData = $lote . '|' . $posto . '|' . $data_sql_row;
-                $cargas_csv_por_lote_posto_data[$chaveCargaBaseData] = true;
-                $cargas_csv_por_lote_posto_data[$lote . '|' . $posto . '|' . $regional_str . '|' . $data_sql_row] = true;
-                $cargas_csv_por_lote_posto_data[$lote . '|' . $posto . '|' . $regional_grupo . '|' . $data_sql_row] = true;
-                if ($isPT == 1) {
-                    $cargas_csv_por_lote_posto_data[$lote . '|' . $posto . '|' . $posto . '|' . $data_sql_row] = true;
                 }
 
                 $keysToTry = array(
@@ -1458,55 +1444,45 @@ try {
                     }
                 }
 
-                $stmtSem = $pdo->prepare("SELECT LPAD(l.lote,8,'0') AS lote,
-                                                 LPAD(l.posto,3,'0') AS posto,
-                                                 LPAD(l.regional,3,'0') AS regional,
-                                                 COALESCE(SUM(l.quantidade),0) AS quantidade,
-                                                 DATE(l.producao_de) AS dataexp
+                $params_upload = array();
+                $joinCarga = '';
+                if ($data_ini_sql !== '' && $data_fim_sql !== '') {
+                    $joinCarga = 'AND DATE(c.dataCarga) BETWEEN ? AND ?';
+                    $params_upload[] = $data_ini_sql;
+                    $params_upload[] = $data_fim_sql;
+                } elseif (!empty($datas_sql)) {
+                    $phUpload = implode(',', array_fill(0, count($datas_sql), '?'));
+                    $joinCarga = "AND DATE(c.dataCarga) IN ($phUpload)";
+                    $params_upload = $datas_sql;
+                }
+                $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
                     FROM lotes_na_estante l
                     $whereEstante
-                    GROUP BY LPAD(l.lote,8,'0'), LPAD(l.posto,3,'0'), LPAD(l.regional,3,'0'), DATE(l.producao_de)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM ciPostosCsv c
+                        WHERE LPAD(CAST(c.lote AS UNSIGNED),8,'0') = LPAD(l.lote,8,'0')
+                          AND LPAD(CAST(c.posto AS UNSIGNED),3,'0') = LPAD(l.posto,3,'0')
+                          AND LPAD(CAST(COALESCE(c.regional,0) AS UNSIGNED),3,'0') = LPAD(l.regional,3,'0')
+                          $joinCarga
+                    )
                     ORDER BY l.lote");
-                $stmtSem->execute($params_estante);
+                $stmtSem->execute(array_merge($params_estante, $params_upload));
                 while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
-                    $loteSemUpload = isset($row['lote']) ? $row['lote'] : '';
-                    $postoSemUpload = isset($row['posto']) ? $row['posto'] : '';
-                    $regionalSemUpload = isset($row['regional']) ? $row['regional'] : '';
-                    $dataSemUpload = isset($row['dataexp']) ? trim((string)$row['dataexp']) : '';
-                    $quantidadeSemUpload = isset($row['quantidade']) ? (int)$row['quantidade'] : 0;
-                    $chavesCarga = array(
-                        $loteSemUpload . '|' . $postoSemUpload . '|' . $regionalSemUpload . '|' . $dataSemUpload,
-                        $loteSemUpload . '|' . $postoSemUpload . '|' . $dataSemUpload
-                    );
-                    $jaCarregado = false;
-                    foreach ($chavesCarga as $chaveCarga) {
-                        if ($chaveCarga !== '' && isset($cargas_csv_por_lote_posto_data[$chaveCarga])) {
-                            $jaCarregado = true;
-                            break;
-                        }
-                    }
-                    if ($jaCarregado) {
-                        continue;
-                    }
-
                     $estante_lotes_sem_upload[] = array(
-                        'lote' => $loteSemUpload,
-                        'posto' => $postoSemUpload,
-                        'regional' => $regionalSemUpload,
-                        'quantidade' => $quantidadeSemUpload,
-                        'dataexp' => $dataSemUpload
+                        'lote' => isset($row['lote']) ? $row['lote'] : '',
+                        'posto' => isset($row['posto']) ? $row['posto'] : '',
+                        'regional' => isset($row['regional']) ? $row['regional'] : ''
                     );
-                    $posto_sem_upload = $postoSemUpload;
-                    $lote_sem_upload = $loteSemUpload;
-                    $data_sem_upload = $dataSemUpload;
+                    $posto_sem_upload = isset($row['posto']) ? $row['posto'] : '';
+                    $lote_sem_upload = isset($row['lote']) ? $row['lote'] : '';
                     if ($posto_sem_upload !== '') {
                         if (!isset($estante_sem_upload_por_posto[$posto_sem_upload])) {
                             $estante_sem_upload_por_posto[$posto_sem_upload] = 0;
                         }
                         $estante_sem_upload_por_posto[$posto_sem_upload]++;
                     }
-                    if ($posto_sem_upload !== '' && $lote_sem_upload !== '' && $data_sem_upload !== '') {
-                        $estante_sem_upload_por_lote[$posto_sem_upload . '|' . $lote_sem_upload . '|' . $data_sem_upload] = true;
+                    if ($posto_sem_upload !== '' && $lote_sem_upload !== '') {
+                        $estante_sem_upload_por_lote[$posto_sem_upload . '|' . $lote_sem_upload] = true;
                     }
                 }
             }
@@ -1579,7 +1555,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conferência de Pacotes v1.0.2</title>
+    <title>Conferência de Pacotes v1.0.1</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif; padding: 20px; padding-top: 90px; background: #f5f5f5; }
@@ -2735,10 +2711,6 @@ try {
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
         .painel-pacotes-novos table { margin-top: 8px; }
-        .painel-carga-estante table { margin-top: 8px; }
-        .painel-carga-estante .linha-carga-estante td { vertical-align: middle; }
-        .painel-carga-estante .resumo-selecao { font-size:12px; color:#555; margin-top:6px; }
-        .painel-carga-estante .acoes-carga-estante { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
         .btn-acao {
             padding: 8px 12px;
             border: none;
@@ -2842,10 +2814,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v1.0.2</div>
+    <div class="versao">v1.0.1</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v1.0.2</h2>
+<h2>📋 Conferência de Pacotes v1.0.1</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -2972,10 +2944,9 @@ try {
                 $loteBadge = isset($itemSemUpload['lote']) ? $itemSemUpload['lote'] : '';
                 $regionalBadge = isset($itemSemUpload['regional']) ? $itemSemUpload['regional'] : '';
                 $postoBadge = isset($itemSemUpload['posto']) ? $itemSemUpload['posto'] : '';
-                $dataBadge = isset($itemSemUpload['dataexp']) ? normalizarDataExib((string)$itemSemUpload['dataexp']) : '';
                 $tituloBadge = 'Lote ' . $loteBadge;
-                $detalheBadge = trim('Regional ' . $regionalBadge . ' | Posto ' . $postoBadge . ' | Data ' . $dataBadge, ' |');
-                echo '<span class="lote-badge" title="' . e($tituloBadge . ' - ' . $detalheBadge) . '">' . e($loteBadge) . ' <small>R ' . e($regionalBadge) . ' • P ' . e($postoBadge) . ($dataBadge !== '' ? ' • D ' . e($dataBadge) : '') . '</small></span>';
+                $detalheBadge = trim('Regional ' . $regionalBadge . ' | Posto ' . $postoBadge, ' |');
+                echo '<span class="lote-badge" title="' . e($tituloBadge . ' - ' . $detalheBadge) . '">' . e($loteBadge) . ' <small>R ' . e($regionalBadge) . ' • P ' . e($postoBadge) . '</small></span>';
             }
             if ($total_lotes > $limite) {
                 echo '<span class="lote-badge">+ ' . e($total_lotes - $limite) . ' outros</span>';
@@ -2985,75 +2956,6 @@ try {
     <?php } else { ?>
         <div style="font-size:12px; color:#666;">Nenhum lote pendente no filtro atual.</div>
     <?php } ?>
-</div>
-
-<div class="painel-pacotes-novos painel-carga-estante" id="painelCargaEstante"<?php echo empty($estante_lotes_sem_upload) ? ' style="display:none;"' : ''; ?>>
-    <strong>📦 Carregar lotes da estante sem upload</strong>
-    <div class="resumo-selecao" id="resumoCargaEstante">Selecione um ou mais lotes para enviar a carga ao ciPostosCsv e ao ciPostos.</div>
-    <div style="margin-top:8px; overflow-x:auto;">
-        <table>
-            <thead>
-                <tr>
-                    <th><input type="checkbox" id="marcarTodosCargaEstante"></th>
-                    <th>Lote</th>
-                    <th>Regional</th>
-                    <th>Posto</th>
-                    <th>Qtd</th>
-                    <th>Data</th>
-                    <th>Ação</th>
-                </tr>
-            </thead>
-            <tbody id="listaCargaEstante">
-                <?php foreach ($estante_lotes_sem_upload as $idxSemUpload => $itemSemUpload): ?>
-                    <tr class="linha-carga-estante"
-                        data-lote="<?php echo e($itemSemUpload['lote']); ?>"
-                        data-regional="<?php echo e($itemSemUpload['regional']); ?>"
-                        data-posto="<?php echo e($itemSemUpload['posto']); ?>"
-                        data-quantidade="<?php echo (int)$itemSemUpload['quantidade']; ?>"
-                        data-dataexp="<?php echo e($itemSemUpload['dataexp']); ?>">
-                        <td><input type="checkbox" class="check-carga-estante" data-idx="<?php echo (int)$idxSemUpload; ?>"></td>
-                        <td><?php echo e($itemSemUpload['lote']); ?></td>
-                        <td><?php echo e($itemSemUpload['regional']); ?></td>
-                        <td><?php echo e($itemSemUpload['posto']); ?></td>
-                        <td><?php echo (int)$itemSemUpload['quantidade']; ?></td>
-                        <td><?php echo e(normalizarDataExib((string)$itemSemUpload['dataexp'])); ?></td>
-                        <td><button type="button" class="btn-acao btn-salvar" data-carregar-estante="<?php echo (int)$idxSemUpload; ?>">Carregar</button></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-    <div style="margin-top:10px; padding:10px; border:1px solid #d7e2f2; border-radius:8px; background:#f7fbff; display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; align-items:end;">
-        <div>
-            <label for="responsavel_carga_estante" style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Responsável da carga</label>
-            <input type="text" id="responsavel_carga_estante" placeholder="Responsável pelos lotes">
-        </div>
-        <div>
-            <label for="autor_carga_estante" style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Autor</label>
-            <input type="text" id="autor_carga_estante" placeholder="Autor do lançamento">
-        </div>
-        <div>
-            <label for="turno_carga_estante" style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Turno</label>
-            <select id="turno_carga_estante" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
-                <option value="Manhã">Manhã</option>
-                <option value="Tarde">Tarde</option>
-                <option value="Noite">Noite</option>
-                <option value="Madrugada">Madrugada</option>
-            </select>
-        </div>
-        <div>
-            <label for="criado_carga_estante" style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Data da carga</label>
-            <input type="datetime-local" id="criado_carga_estante">
-        </div>
-        <div style="display:flex; align-items:center; gap:6px; min-height:38px;">
-            <input type="checkbox" id="consolidar_carga_estante">
-            <label for="consolidar_carga_estante" style="margin:0; font-size:12px; color:#333;">Consolidar lançamentos por responsável</label>
-        </div>
-    </div>
-    <div class="acoes-carga-estante">
-        <button type="button" class="btn-acao btn-salvar" id="btnCarregarSelecionadosEstante">Carregar selecionados</button>
-        <button type="button" class="btn-acao btn-salvar" id="btnCarregarTodosEstante">Carregar todos</button>
-    </div>
 </div>
 
 
@@ -3534,8 +3436,7 @@ function renderizarLinhasOperacao($tituloGrupo, $dados, $estanteSemUploadPorPost
                 $chipClasses .= ' tem-correios';
             }
             $loteChip = isset($item['lote']) ? str_pad(preg_replace('/\D+/', '', (string)$item['lote']), 8, '0', STR_PAD_LEFT) : '';
-            $dataChipSemUpload = isset($item['data_sql']) ? trim((string)$item['data_sql']) : '';
-            $chipSemUpload = ($postoKey !== '' && $loteChip !== '' && $dataChipSemUpload !== '' && isset($estanteSemUploadPorLote[$postoKey . '|' . $loteChip . '|' . $dataChipSemUpload]));
+            $chipSemUpload = ($postoKey !== '' && $loteChip !== '' && isset($estanteSemUploadPorLote[$postoKey . '|' . $loteChip]));
             if ($chipSemUpload) {
                 $chipClasses .= ' sem-upload';
             }
@@ -3886,17 +3787,6 @@ function iniciarConferenciaPacotes() {
     var btnToggleTodosTradicional = document.getElementById('btnToggleTodosTradicional');
     var btnSalvarPacotes = document.getElementById('btnSalvarPacotes');
     var btnCancelarPacotes = document.getElementById('btnCancelarPacotes');
-    var painelCargaEstante = document.getElementById('painelCargaEstante');
-    var listaCargaEstante = document.getElementById('listaCargaEstante');
-    var marcarTodosCargaEstante = document.getElementById('marcarTodosCargaEstante');
-    var btnCarregarSelecionadosEstante = document.getElementById('btnCarregarSelecionadosEstante');
-    var btnCarregarTodosEstante = document.getElementById('btnCarregarTodosEstante');
-    var resumoCargaEstante = document.getElementById('resumoCargaEstante');
-    var responsavelCargaEstante = document.getElementById('responsavel_carga_estante');
-    var autorCargaEstante = document.getElementById('autor_carga_estante');
-    var turnoCargaEstante = document.getElementById('turno_carga_estante');
-    var criadoCargaEstante = document.getElementById('criado_carga_estante');
-    var consolidarCargaEstante = document.getElementById('consolidar_carga_estante');
     var resumoPacotesPendentes = document.getElementById('resumoPacotesPendentes');
     var autorSalvamentoPacotes = document.getElementById('autor_salvamento_pacotes');
     var turnoSalvamentoPacotes = document.getElementById('turno_salvamento_pacotes');
@@ -6476,125 +6366,6 @@ function iniciarConferenciaPacotes() {
         }
     }
 
-    function atualizarOpcoesCargaEstante() {
-        if (responsavelCargaEstante && !responsavelCargaEstante.value && usuarioAtual) {
-            responsavelCargaEstante.value = usuarioAtual;
-        }
-        if (autorCargaEstante && !autorCargaEstante.value) {
-            autorCargaEstante.value = responsavelCargaEstante && responsavelCargaEstante.value ? responsavelCargaEstante.value : usuarioAtual;
-        }
-        if (criadoCargaEstante && !criadoCargaEstante.value) {
-            criadoCargaEstante.value = formatarDateTimeLocal(new Date());
-        }
-    }
-
-    function atualizarResumoCargaEstante() {
-        if (!painelCargaEstante || !resumoCargaEstante) return;
-        var checks = painelCargaEstante.querySelectorAll('.check-carga-estante');
-        var selecionados = 0;
-        for (var i = 0; i < checks.length; i++) {
-            if (checks[i].checked) selecionados++;
-        }
-        resumoCargaEstante.textContent = selecionados
-            ? (selecionados + ' lote(s) selecionado(s) para carga em ciPostosCsv e ciPostos.')
-            : 'Selecione um ou mais lotes para enviar a carga ao ciPostosCsv e ao ciPostos.';
-        atualizarOpcoesCargaEstante();
-    }
-
-    function montarPacoteCargaEstante(tr) {
-        if (!tr) return null;
-        var lote = tr.getAttribute('data-lote') || '';
-        var regional = tr.getAttribute('data-regional') || '';
-        var posto = tr.getAttribute('data-posto') || '';
-        var quantidade = tr.getAttribute('data-quantidade') || '';
-        var dataexp = tr.getAttribute('data-dataexp') || '';
-        var responsavel = responsavelCargaEstante ? responsavelCargaEstante.value.trim() : '';
-        var pacote = normalizarPacotePendenteComRegionalReal({
-            lote: lote,
-            regional: regional,
-            posto: posto,
-            quantidade: quantidade,
-            dataexp: dataexp,
-            responsavel: responsavel
-        });
-        if (!pacote || !pacote.lote || !pacote.posto || !pacote.regional || !pacote.quantidade || !pacote.dataexp) {
-            return null;
-        }
-        pacote.codbar = String(pacote.lote) + String(pacote.regional) + String(pacote.posto) + String(pacote.quantidade).padStart(5, '0');
-        return pacote;
-    }
-
-    function obterLotesCargaEstanteSelecionados(forcarTodos) {
-        if (!painelCargaEstante) return [];
-        var linhas = painelCargaEstante.querySelectorAll('.linha-carga-estante');
-        var itens = [];
-        for (var i = 0; i < linhas.length; i++) {
-            var check = linhas[i].querySelector('.check-carga-estante');
-            if (!forcarTodos && (!check || !check.checked)) continue;
-            var pacote = montarPacoteCargaEstante(linhas[i]);
-            if (pacote) itens.push(pacote);
-        }
-        return itens;
-    }
-
-    function enviarCargaEstante(pacotes) {
-        if (!usuarioAtual) {
-            alert('Informe o responsável da conferência.');
-            return;
-        }
-        if (!pacotes || !pacotes.length) {
-            alert('Selecione pelo menos um lote sem upload.');
-            return;
-        }
-        atualizarOpcoesCargaEstante();
-        var responsavelSalvar = responsavelCargaEstante ? responsavelCargaEstante.value.trim() : '';
-        var autorSalvar = autorCargaEstante ? autorCargaEstante.value.trim() : '';
-        var criadoSalvar = criadoCargaEstante ? criadoCargaEstante.value.trim() : '';
-        var turnoSalvar = turnoCargaEstante ? turnoCargaEstante.value : 'Manhã';
-        var consolidarSalvar = consolidarCargaEstante ? !!consolidarCargaEstante.checked : false;
-        if (!responsavelSalvar) {
-            alert('Informe o responsável da carga.');
-            if (responsavelCargaEstante) responsavelCargaEstante.focus();
-            return;
-        }
-        if (!autorSalvar) {
-            autorSalvar = responsavelSalvar;
-            if (autorCargaEstante) autorCargaEstante.value = autorSalvar;
-        }
-        if (!criadoSalvar) {
-            alert('Informe a data da carga.');
-            if (criadoCargaEstante) criadoCargaEstante.focus();
-            return;
-        }
-        for (var i = 0; i < pacotes.length; i++) {
-            pacotes[i].responsavel = responsavelSalvar;
-        }
-
-        var formData = new FormData();
-        formData.append('inserir_pacotes_nao_listados', '1');
-        formData.append('usuario', usuarioAtual);
-        formData.append('autor_salvamento', autorSalvar);
-        formData.append('turno_salvamento', turnoSalvar);
-        formData.append('criado_salvamento', criadoSalvar);
-        if (consolidarSalvar) {
-            formData.append('consolidar_salvamento', '1');
-        }
-        formData.append('pacotes', JSON.stringify(pacotes));
-
-        fetch(window.location.href, { method: 'POST', body: formData })
-            .then(function(resp){ return resp.json(); })
-            .then(function(data){
-                if (data && data.success) {
-                    mostrarConfirmacao('Carga da estante salva com sucesso. ' + data.inseridos + ' lote(s) enviados para ciPostosCsv e ' + (data.inseridos_postos || 0) + ' lançamento(s) em ciPostos.', true);
-                    setTimeout(function() { window.location.reload(); }, 1400);
-                } else {
-                    var errosSalvar = data && data.erros && data.erros.length ? ('\n' + data.erros.join('\n')) : '';
-                    alert((data && data.erro) ? data.erro : ('Erro ao carregar lotes da estante.' + errosSalvar));
-                }
-            })
-            .catch(function(){ alert('Erro ao carregar lotes da estante.'); });
-    }
-
     function renderizarPacotesPendentes() {
         if (!listaPacotesNovos) return;
         listaPacotesNovos.innerHTML = '';
@@ -6799,62 +6570,6 @@ function iniciarConferenciaPacotes() {
                 .catch(function(){ alert('Erro ao inserir pacotes.'); });
         });
     }
-
-        if (painelCargaEstante) {
-            atualizarResumoCargaEstante();
-        }
-
-        if (marcarTodosCargaEstante) {
-            marcarTodosCargaEstante.addEventListener('change', function() {
-                if (!painelCargaEstante) return;
-                var checks = painelCargaEstante.querySelectorAll('.check-carga-estante');
-                for (var i = 0; i < checks.length; i++) {
-                    checks[i].checked = !!this.checked;
-                }
-                atualizarResumoCargaEstante();
-            });
-        }
-
-        if (painelCargaEstante) {
-            painelCargaEstante.addEventListener('change', function(e) {
-                var target = e.target;
-                if (!target) return;
-                if (target.classList && target.classList.contains('check-carga-estante')) {
-                    atualizarResumoCargaEstante();
-                }
-            });
-            painelCargaEstante.addEventListener('click', function(e) {
-                var target = e.target;
-                if (!target) return;
-                var idx = target.getAttribute('data-carregar-estante');
-                if (idx === null) return;
-                var linha = target.closest('.linha-carga-estante');
-                var pacote = linha ? montarPacoteCargaEstante(linha) : null;
-                if (pacote) {
-                    enviarCargaEstante([pacote]);
-                }
-            });
-        }
-
-        if (btnCarregarSelecionadosEstante) {
-            btnCarregarSelecionadosEstante.addEventListener('click', function() {
-                enviarCargaEstante(obterLotesCargaEstanteSelecionados(false));
-            });
-        }
-
-        if (btnCarregarTodosEstante) {
-            btnCarregarTodosEstante.addEventListener('click', function() {
-                enviarCargaEstante(obterLotesCargaEstanteSelecionados(true));
-            });
-        }
-
-        if (responsavelCargaEstante) {
-            responsavelCargaEstante.addEventListener('input', function() {
-                if (autorCargaEstante && !autorCargaEstante.value.trim()) {
-                    autorCargaEstante.value = this.value;
-                }
-            });
-        }
     
     if (usuarioInputModal) {
         usuarioInputModal.focus();
