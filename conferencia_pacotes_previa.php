@@ -226,6 +226,7 @@ try {
             font-weight: bold;
             letter-spacing: 0.04em;
             text-transform: uppercase;
+            text-align: center;
             border-right: 1px solid rgba(45,43,39,0.4);
             background: #efefef;
         }
@@ -314,7 +315,7 @@ try {
             background: #f3f3f3;
             font-size: 12px;
             font-weight: bold;
-            text-align: left;
+            text-align: center;
             text-transform: uppercase;
         }
         .linha-secao th:not(:first-child) {
@@ -322,12 +323,13 @@ try {
             font-size: 11px;
             text-transform: none;
         }
-        .col-posto { width: 34%; text-align: left; }
+        .col-posto { width: 34%; text-align: center; }
         .col-iipr { width: 12%; }
         .col-correios { width: 12%; }
         .col-etiqueta { width: 32%; }
         .destino {
             font-size: 12px;
+            text-align: center;
         }
         .campo-impressao {
             width: 100%;
@@ -1017,11 +1019,11 @@ try {
         }
 
         function atualizarCabecalho(snapshot, linhas) {
-            var datas = snapshot && snapshot.datas_filtro && snapshot.datas_filtro.length ? snapshot.datas_filtro.join(', ') : '-';
+            var datas = formatarListaDatasExibicao(snapshot && snapshot.datas_filtro ? snapshot.datas_filtro : []);
             var usuario = snapshot && snapshot.usuario ? snapshot.usuario : 'Equipe de Conferência';
             var numeroAtual = estadoOficio.salvoNumero || (snapshot && snapshot.oficio_numero ? parseInt(snapshot.oficio_numero, 10) || 0 : 0);
             var ultimoTexto = estadoOficio.ultimoConhecido > 0 ? String(estadoOficio.ultimoConhecido) : 'nenhum';
-            var geradoEm = snapshot && snapshot.gerado_em ? snapshot.gerado_em : '-';
+            var geradoEm = snapshot && snapshot.gerado_em ? formatarDataHoraExibicao(snapshot.gerado_em) : '-';
 
             statusLinhas.textContent = String(linhas.length || 0);
             statusDatas.textContent = datas;
@@ -1056,6 +1058,51 @@ try {
             } else {
                 textoRodapeLotes.textContent = 'Nenhuma linha pronta do ofício foi gerada.';
             }
+        }
+
+        function formatarDataExibicao(valor) {
+            if (!valor) {
+                return '';
+            }
+
+            var texto = String(valor).trim();
+            var match = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (match) {
+                return match[3] + '-' + match[2] + '-' + match[1];
+            }
+
+            match = texto.match(/^(\d{2})[\/-](\d{2})[\/-](\d{4})$/);
+            if (match) {
+                return match[1] + '-' + match[2] + '-' + match[3];
+            }
+
+            return texto;
+        }
+
+        function formatarListaDatasExibicao(datas) {
+            if (!datas || !datas.length) {
+                return '-';
+            }
+
+            var lista = [];
+            for (var i = 0; i < datas.length; i++) {
+                lista.push(formatarDataExibicao(datas[i]));
+            }
+            return lista.join(', ');
+        }
+
+        function formatarDataHoraExibicao(valor) {
+            if (!valor) {
+                return '';
+            }
+
+            var texto = String(valor).trim();
+            var match = texto.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+            if (match) {
+                return match[3] + '-' + match[2] + '-' + match[1] + ' ' + match[4] + ':' + match[5];
+            }
+
+            return formatarDataExibicao(texto);
         }
 
         function renderizar(snapshot) {
@@ -1144,6 +1191,22 @@ try {
             window.print();
         }
 
+        function garantirResponsavelSnapshot(snapshot) {
+            var nome = snapshot && snapshot.usuario ? String(snapshot.usuario).trim() : '';
+            if (nome) {
+                return nome;
+            }
+            nome = window.prompt('Informe o nome do responsável para gravar o ofício:', '');
+            nome = nome ? String(nome).trim() : '';
+            if (!nome) {
+                return '';
+            }
+            snapshot.usuario = nome;
+            salvarSnapshot(snapshot);
+            renderizar(snapshot);
+            return nome;
+        }
+
         function gravarOficio(modo) {
             if (estadoOficio.salvando) return;
             var snapshot = lerSnapshot();
@@ -1154,9 +1217,15 @@ try {
             }
 
             snapshot = garantirChavesResumo(snapshot, false);
+            var usuarioResponsavel = garantirResponsavelSnapshot(snapshot);
+            if (!usuarioResponsavel) {
+                exibirAviso('Informe o responsável antes de gravar o ofício.', true);
+                fecharModal();
+                return;
+            }
             var formData = new FormData();
             formData.append('salvar_oficio_correios_preview_ajax', '1');
-            formData.append('usuario', snapshot.usuario || 'Equipe de Conferência');
+            formData.append('usuario', usuarioResponsavel);
             formData.append('modo_oficio', modo === 'novo' ? 'novo' : 'sobrescrever');
             formData.append('id_oficio_sobrescrever', String(estadoOficio.salvoId || estadoOficio.ultimoConhecido || 0));
             formData.append('datas_json', JSON.stringify(snapshot.datas_filtro || []));
