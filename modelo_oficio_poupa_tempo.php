@@ -1652,12 +1652,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .valor-espacamento-mestre{display:inline-block; min-width:36px; text-align:center}
 .folha-mestre-pt-correios .btn-espacamento-mestre{min-width:28px; height:24px; border:1px solid #777; background:#f2f2f2; border-radius:4px; cursor:pointer; font-weight:bold}
 .folha-mestre-pt-correios .btn-espacamento-mestre:hover{background:#e3e3e3}
-.folha-mestre-pt-correios .acoes-mestre-wrap{display:flex; align-items:center; justify-content:center; gap:4px}
-.folha-mestre-pt-correios .btn-acao-mestre{display:inline-block; min-width:58px; padding:3px 6px; font-size:11px; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px; white-space:nowrap}
+.folha-mestre-pt-correios .acoes-mestre-wrap{display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:4px; width:100%}
+.folha-mestre-pt-correios .btn-acao-mestre{display:block; width:100%; min-width:0; padding:3px 4px; font-size:10px; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px; white-space:nowrap; box-sizing:border-box}
 .folha-mestre-pt-correios .btn-acao-mestre:hover{background:#e2e2e2}
 .folha-mestre-pt-correios .btn-acao-mestre-adicionar{background:#eef6ff; border-color:#7aa7d8; color:#184a7a}
 .folha-mestre-pt-correios .btn-acao-mestre-excluir{background:#fff1f1; border-color:#c66; color:#8a1f1f}
-.folha-mestre-pt-correios .campo-lacre-mestre{display:block; width:100%; min-width:0; max-width:100%; min-height:26px; height:auto; resize:horizontal; overflow:auto; text-align:left; font-size:12px; line-height:1.2; font-family:'Courier New',Courier,monospace; font-weight:bold; white-space:nowrap; box-sizing:border-box}
+.folha-mestre-pt-correios .campo-lacre-mestre{display:block; width:100%; min-width:0; max-width:100%; min-height:32px; height:auto; resize:horizontal; overflow:auto; text-align:left; font-size:11px; line-height:1.1; font-family:'Courier New',Courier,monospace; font-weight:bold; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; box-sizing:border-box}
 .folha-mestre-pt-correios .campo-lacre-mestre::-webkit-resizer{background:#d8dde3}
 .folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:12px; line-height:1.0}
 .folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
@@ -1670,11 +1670,11 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .numero-oficio-mestre{position:absolute; top:8px; right:8px; padding:6px 12px; border:2px solid #000; background:#fff; font-size:15px; font-weight:bold; min-width:72px; text-align:center}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-acao{width:12%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:27%; text-align:left}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:14%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:14%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:33%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-acao{width:13%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:29%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:17%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:17%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:24%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:auto}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.15; font-weight:normal; min-height:32px; overflow:visible; white-space:normal; word-break:break-word}
 .folha-mestre-pt-correios .tabela-mestre-pt th.col-etiqueta{text-align:center}
@@ -1742,7 +1742,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{height:auto !important; min-height:32px !important; line-height:1.15 !important; overflow:visible !important; white-space:normal !important; word-break:break-word !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-acao,
     .folha-a4-oficio.folha-mestre-pt-correios .controles-mestre-pt{display:none !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .campo-lacre-mestre{resize:none !important; overflow:hidden !important; max-width:100% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .campo-lacre-mestre{resize:none !important; overflow:visible !important; max-width:100% !important; min-height:32px !important; height:auto !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; word-break:break-word !important; font-size:11px !important; line-height:1.1 !important}
     
     /* v9.12.0: Page break para páginas divididas */
     .pagina-split-1{
@@ -2645,8 +2645,8 @@ function criarLinhaMestrePT(chaveBase) {
             '</div>' +
         '</td>' +
         '<td class="col-posto"><textarea name="nome_posto[' + chave + ']" class="input-editavel texto-posto-mestre" rows="2"></textarea></td>' +
-        '<td class="col-lacre-pt"><textarea name="lacre_iipr[' + chave + ']" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="1"></textarea></td>' +
-        '<td class="col-lacre-correios-pt"><textarea name="lacre_correios_pt[' + chave + ']" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="1"></textarea></td>' +
+        '<td class="col-lacre-pt"><textarea name="lacre_iipr[' + chave + ']" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="2"></textarea></td>' +
+        '<td class="col-lacre-correios-pt"><textarea name="lacre_correios_pt[' + chave + ']" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="2"></textarea></td>' +
         '<td class="col-etiqueta"><input type="text" name="etiqueta_correios_pt[' + chave + ']" value="" class="input-editavel campo-etiqueta-mestre" style="text-align:left;" maxlength="35"></td>';
     return linha;
 }
@@ -2987,10 +2987,10 @@ if (document.readyState === 'loading') {
                                             <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel texto-posto-mestre" rows="2"><?php echo e($nomeResumoBase); ?></textarea>
                                         </td>
                                         <td class="col-lacre-pt">
-                                            <textarea name="lacre_iipr[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="1"><?php echo e($valorLacreResumo); ?></textarea>
+                                            <textarea name="lacre_iipr[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="2"><?php echo e($valorLacreResumo); ?></textarea>
                                         </td>
                                         <td class="col-lacre-correios-pt">
-                                            <textarea name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="1"><?php echo e($valorLacreCorreiosResumo); ?></textarea>
+                                            <textarea name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-cabecalho-pt campo-lacre-multiplo-pt campo-lacre-mestre" rows="2"><?php echo e($valorLacreCorreiosResumo); ?></textarea>
                                         </td>
                                         <td class="col-etiqueta">
                                             <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel campo-etiqueta-mestre" style="text-align:left;" maxlength="35">
