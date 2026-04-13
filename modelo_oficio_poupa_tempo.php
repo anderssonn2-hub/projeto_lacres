@@ -1738,11 +1738,18 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt thead{display:table-header-group}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tbody{display:table-row-group}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tr{page-break-inside:avoid !important; break-inside:avoid !important; height:auto !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .grupo-mestre-tabela{width:100% !important; margin:0 !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt{width:100% !important; max-width:none !important; table-layout:fixed !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif !important; font-size:12px !important; letter-spacing:0 !important; padding:0 2px !important; height:22px !important; line-height:22px !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{height:auto !important; min-height:32px !important; line-height:1.15 !important; overflow:visible !important; white-space:normal !important; word-break:break-word !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-acao,
     .folha-a4-oficio.folha-mestre-pt-correios .controles-mestre-pt{display:none !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:34% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:18% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:18% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:30% !important}
     .folha-a4-oficio.folha-mestre-pt-correios .campo-lacre-mestre{resize:none !important; overflow:visible !important; max-width:100% !important; min-height:32px !important; height:auto !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; word-break:break-word !important; font-size:11px !important; line-height:1.1 !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .campo-etiqueta-mestre{width:100% !important; max-width:none !important; overflow:visible !important; text-overflow:clip !important; font-size:11px !important}
     
     /* v9.12.0: Page break para páginas divididas */
     .pagina-split-1{
