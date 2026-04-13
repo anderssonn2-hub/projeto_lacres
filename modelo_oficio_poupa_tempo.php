@@ -243,6 +243,17 @@ function e($s){
     return htmlspecialchars(normalizarTextoUtf8Seguro($s), ENT_QUOTES, 'UTF-8');
 }
 
+function extrairUltimoLacreSequencialPt($valor) {
+    $texto = trim((string)$valor);
+    if ($texto === '') {
+        return 0;
+    }
+    if (!preg_match_all('/\d+/', $texto, $matches) || empty($matches[0])) {
+        return 0;
+    }
+    return (int)$matches[0][count($matches[0]) - 1];
+}
+
 function normalizarDataPtSql($valor) {
     $valor = trim((string)$valor);
     if ($valor === '') {
@@ -439,7 +450,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                 }
             }
             $dados_salvos[$posto]['lacre'] = isset($lacres[$posto]) ? trim($lacres[$posto]) : '';
-            $dados_salvos[$posto]['lacre_correios_pt'] = isset($lacresCorreiosPt[$posto]) ? preg_replace('/\D+/', '', (string)$lacresCorreiosPt[$posto]) : '';
+            $dados_salvos[$posto]['lacre_correios_pt'] = isset($lacresCorreiosPt[$posto]) ? trim((string)$lacresCorreiosPt[$posto]) : '';
             $dados_salvos[$posto]['etiqueta_correios_pt'] = isset($etiquetasCorreiosPt[$posto]) ? substr(preg_replace('/\D+/', '', (string)$etiquetasCorreiosPt[$posto]), 0, 35) : '';
             $dados_salvos[$posto]['nome'] = isset($nomes[$posto]) ? trim($nomes[$posto]) : '';
             $dados_salvos[$posto]['endereco'] = isset($enderecos[$posto]) ? trim($enderecos[$posto]) : '';
@@ -832,8 +843,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                             $row['data_carga'],
                             $row['responsaveis']
                         );
-                        if ($temEtiquetaIiprLote) $paramsInsertLote[] = ($lacrePtLote === '' ? null : (int)$lacrePtLote);
-                        if ($temEtiquetaCorreiosLote) $paramsInsertLote[] = ($lacreCorreiosPtLote === '' ? null : (int)$lacreCorreiosPtLote);
+                        if ($temEtiquetaIiprLote) $paramsInsertLote[] = ($lacrePtLote === '' ? null : extrairUltimoLacreSequencialPt($lacrePtLote));
+                        if ($temEtiquetaCorreiosLote) $paramsInsertLote[] = ($lacreCorreiosPtLote === '' ? null : extrairUltimoLacreSequencialPt($lacreCorreiosPtLote));
                         if ($temEtiquetaCodigoLote) $paramsInsertLote[] = ($etiquetaCorreiosPtLote === '' ? null : $etiquetaCorreiosPtLote);
                         $stInsLote->execute($paramsInsertLote);
                     } else {
@@ -848,8 +859,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                             $payloadInfo && !empty($payloadInfo['data_carga']) ? $payloadInfo['data_carga'] : null,
                             $payloadInfo && isset($payloadInfo['responsaveis']) && $payloadInfo['responsaveis'] !== '' ? $payloadInfo['responsaveis'] : $respFallback
                         );
-                        if ($temEtiquetaIiprLote) $paramsInsertLote[] = ($lacrePtLote === '' ? null : (int)$lacrePtLote);
-                        if ($temEtiquetaCorreiosLote) $paramsInsertLote[] = ($lacreCorreiosPtLote === '' ? null : (int)$lacreCorreiosPtLote);
+                        if ($temEtiquetaIiprLote) $paramsInsertLote[] = ($lacrePtLote === '' ? null : extrairUltimoLacreSequencialPt($lacrePtLote));
+                        if ($temEtiquetaCorreiosLote) $paramsInsertLote[] = ($lacreCorreiosPtLote === '' ? null : extrairUltimoLacreSequencialPt($lacreCorreiosPtLote));
                         if ($temEtiquetaCodigoLote) $paramsInsertLote[] = ($etiquetaCorreiosPtLote === '' ? null : $etiquetaCorreiosPtLote);
                         $stInsLote->execute($paramsInsertLote);
                     }
@@ -1045,7 +1056,18 @@ if ($modo_visual_pt === '') {
 $modo_visual_correios = ($modo_visual_pt === 'correios');
 
 if (!$modo_branco && !empty($paginasDinamicas)) {
-    $paginas = $paginasDinamicas;
+    if (!empty($postosSelecionados)) {
+        $paginasFiltradas = array();
+        foreach ($paginasDinamicas as $paginaDinamica) {
+            $codigoPagina = isset($paginaDinamica['codigo']) ? str_pad(preg_replace('/\D+/', '', (string)$paginaDinamica['codigo']), 3, '0', STR_PAD_LEFT) : '';
+            if ($codigoPagina !== '' && in_array($codigoPagina, $postosSelecionados, true)) {
+                $paginasFiltradas[] = $paginaDinamica;
+            }
+        }
+        $paginas = !empty($paginasFiltradas) ? $paginasFiltradas : $paginasDinamicas;
+    } else {
+        $paginas = $paginasDinamicas;
+    }
 } elseif (!$modo_branco && $pdo_controle && !empty($datasNorm)) {
 
     $in = "'" . implode("','", array_map('strval', $datasNorm)) . "'";
@@ -1433,7 +1455,6 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-a4-oficio{
     width:210mm;
     min-height:297mm;
-    max-height:297mm;
     margin:20px auto;
     padding:8mm;
     background:#fff;
@@ -1442,7 +1463,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     display:block;
     page-break-after:always;
     position:relative;
-    overflow:hidden;
+    overflow:visible;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
 
@@ -1586,11 +1607,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .btn-voltar-inicio:hover{background:#162057;}
 
 /* v1.0.9: Coluna de ações dos lotes */
-.col-acoes-lote{width:78px; text-align:center}
+.col-acoes-lote{width:138px; text-align:center}
 .acoes-lote-wrap{display:flex; align-items:center; justify-content:center; gap:4px}
-.btn-lote-acao{display:inline-block; min-width:30px; padding:2px 6px; font-size:11px; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px}
+.btn-lote-acao{display:inline-block; min-width:58px; padding:3px 6px; font-size:11px; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px; white-space:nowrap}
 .btn-lote-acao:hover{background:#e2e2e2}
-.btn-lote-remover{background:#fff1f1; border-color:#c66}
+.btn-lote-adicionar{background:#eef6ff; border-color:#7aa7d8; color:#184a7a}
+.btn-lote-excluir{background:#fff1f1; border-color:#c66; color:#8a1f1f}
 .btn-remover-desmarcados{margin-top:12px; padding:8px 14px; border:none; border-radius:4px; background:#8b5e00; color:#fff; font-size:12px; font-weight:bold; cursor:pointer}
 .btn-remover-desmarcados:hover{background:#6f4b00}
 .campo-lote-manual,.campo-qtd-manual,.campo-data-manual{width:100%; border:none; background:transparent; font-size:10px; text-align:inherit; padding:0}
@@ -1598,6 +1620,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .campo-data-manual{text-align:center}
 .campo-lote-manual:focus,.campo-qtd-manual:focus,.campo-data-manual:focus{outline:1px solid #6c63ff; background:#fff}
 .lacre-avulso-wrap{display:flex; align-items:center; gap:6px}
+.campo-lacre-multiplo-pt{flex:1 1 auto; width:100%; min-width:120px; min-height:26px; resize:horizontal; overflow:auto; text-align:left; font-size:12px; line-height:1.2; font-family:'Courier New',Courier,monospace; font-weight:bold; white-space:nowrap}
+.campo-lacre-multiplo-pt::-webkit-resizer{background:#d8dde3}
 .btn-av-pt{display:inline-flex; align-items:center; justify-content:center; min-width:32px; height:26px; padding:0 8px; border:1px solid #666; background:#f4f4f4; color:#333; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold}
 .btn-av-pt.ativo{background:#2d2d2d; color:#fff; border-color:#2d2d2d}
 
@@ -1721,7 +1745,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .tabela-lotes{
         max-height:none !important;
         overflow:visible !important;
-        page-break-inside:avoid !important;
+        page-break-inside:auto !important;
+        break-inside:auto !important;
         background:transparent !important;
         border:none !important;
         padding:0 !important;
@@ -1748,6 +1773,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     
     /* Garantir que tabelas não quebrem */
     table{page-break-inside:auto}
+    .tabela-lotes-pt tbody tr{page-break-inside:avoid !important; break-inside:avoid !important}
     
     /* v9.9.0: Ocultar lotes desmarcados na impressão */
     .linha-lote[data-checked="0"]{
@@ -2853,10 +2879,16 @@ if (document.readyState === 'loading') {
                                             <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel texto-posto-mestre" rows="1"><?php echo e($nomeResumoBase); ?></textarea>
                                         </td>
                                         <td class="col-lacre-pt">
-                                            <input type="text" name="lacre_iipr[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreResumo); ?>" class="input-editavel" style="text-align:center;">
+                                            <div class="lacre-avulso-wrap">
+                                                <textarea name="lacre_iipr[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-cabecalho-pt lacre-pt-input campo-lacre-multiplo-pt" rows="1" data-lacre-avulso="0"><?php echo e($valorLacreResumo); ?></textarea>
+                                                <button type="button" class="btn-av-pt nao-imprimir" title="Ativar lacre avulso" onclick="alternarLacreAvulsoPT(this)">Av</button>
+                                            </div>
                                         </td>
                                         <td class="col-lacre-correios-pt">
-                                            <input type="text" name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorLacreCorreiosResumo); ?>" class="input-editavel" style="text-align:center;">
+                                            <div class="lacre-avulso-wrap">
+                                                <textarea name="lacre_correios_pt[<?php echo e($codigoResumo); ?>]" class="input-editavel campo-cabecalho-pt lacre-pt-input campo-lacre-multiplo-pt" rows="1" data-lacre-avulso="0"><?php echo e($valorLacreCorreiosResumo); ?></textarea>
+                                                <button type="button" class="btn-av-pt nao-imprimir" title="Ativar lacre avulso" onclick="alternarLacreAvulsoPT(this)">Av</button>
+                                            </div>
                                         </td>
                                         <td class="col-etiqueta">
                                             <input type="text" name="etiqueta_correios_pt[<?php echo e($codigoResumo); ?>]" value="<?php echo e($valorEtiquetaCorreiosResumo); ?>" class="input-editavel campo-etiqueta-mestre" style="text-align:left;" maxlength="35">
