@@ -3174,6 +3174,7 @@ if (document.readyState === 'loading') {
         </div>
       </div>
     </div>
+        </div>
     <?php endforeach; ?>  <!-- Fecha o foreach de $paginas -->
 
 <?php else: ?>  <!-- Se $temDados for false, exibe mensagem de erro -->
