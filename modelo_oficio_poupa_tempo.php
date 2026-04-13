@@ -1,5 +1,11 @@
 <?php
 /* modelo_oficio_poupa_tempo.php – Poupatempo (uma página por posto)
+    v1.0.9: fluxo PT sem divisão manual por páginas
+    - [CORRIGIDO] Postos com muitos lotes passam a quebrar naturalmente para a próxima página do mesmo posto
+    - [REMOVIDO] Setas de mover lote e botão de dividir páginas deixam de fazer parte do fluxo PT
+    - [NOVO] Linhas de lote podem ser adicionadas, excluídas e removidas da folha quando desmarcadas
+    - [NOVO] Botão AV aparece na tela dos lacres PT e segue oculto na impressão
+
     v1.0.3: Folha mestre PT Correios + persistencia normal
     - [CORRIGIDO] Modo PT com etiqueta Correios volta a gravar ofício normalmente com número em ciDespachos
     - [NOVO] Folha mestre externa passa a usar dados persistidos em ciDespachoLotes por posto/lote
@@ -1579,12 +1585,21 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .btn-voltar-inicio{display:inline-flex; align-items:center; padding:6px 10px; border-radius:6px; background:#1f2b6d; color:#fff; text-decoration:none; font-size:12px; font-weight:bold;}
 .btn-voltar-inicio:hover{background:#162057;}
 
-/* v9.24.x: Coluna de mover lotes (apenas quando ha mais de 1 pagina) */
-.col-mover{width:44px; text-align:center}
-.folha-a4-oficio .col-mover{display:none}
-.folha-a4-oficio.mover-ativo .col-mover{display:table-cell}
-.btn-mover-lote{display:inline-block; margin:0 2px; padding:2px 5px; font-size:11px; border:1px solid #666; background:#f2f2f2; cursor:pointer}
-.btn-mover-lote:hover{background:#e2e2e2}
+/* v1.0.9: Coluna de ações dos lotes */
+.col-acoes-lote{width:78px; text-align:center}
+.acoes-lote-wrap{display:flex; align-items:center; justify-content:center; gap:4px}
+.btn-lote-acao{display:inline-block; min-width:30px; padding:2px 6px; font-size:11px; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px}
+.btn-lote-acao:hover{background:#e2e2e2}
+.btn-lote-remover{background:#fff1f1; border-color:#c66}
+.btn-remover-desmarcados{margin-top:12px; padding:8px 14px; border:none; border-radius:4px; background:#8b5e00; color:#fff; font-size:12px; font-weight:bold; cursor:pointer}
+.btn-remover-desmarcados:hover{background:#6f4b00}
+.campo-lote-manual,.campo-qtd-manual,.campo-data-manual{width:100%; border:none; background:transparent; font-size:10px; text-align:inherit; padding:0}
+.campo-qtd-manual{text-align:center}
+.campo-data-manual{text-align:center}
+.campo-lote-manual:focus,.campo-qtd-manual:focus,.campo-data-manual:focus{outline:1px solid #6c63ff; background:#fff}
+.lacre-avulso-wrap{display:flex; align-items:center; gap:6px}
+.btn-av-pt{display:inline-flex; align-items:center; justify-content:center; min-width:32px; height:26px; padding:0 8px; border:1px solid #666; background:#f4f4f4; color:#333; border-radius:4px; cursor:pointer; font-size:11px; font-weight:bold}
+.btn-av-pt.ativo{background:#2d2d2d; color:#fff; border-color:#2d2d2d}
 
 /* v9.24.5: Grade mais compacta para caber mais lotes */
 .lotes-detalhe-1col th,
@@ -1646,10 +1661,10 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
         box-shadow:none;
         display:block;
         page-break-after:always !important;
-        page-break-inside:avoid !important;
-        min-height:277mm;
-        max-height:277mm;
-        overflow:hidden;
+        page-break-inside:auto !important;
+        min-height:auto;
+        max-height:none;
+        overflow:visible;
     }
 
     .folha-a4-oficio.folha-mestre-pt-correios{
@@ -1693,13 +1708,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .oficio{
         display:flex;
         flex-direction:column;
-        max-height:calc(297mm - 20mm);
-        overflow:hidden;
+        max-height:none;
+        overflow:visible;
     }
     
     .processo{
         flex:1;
-        overflow:hidden;
+        overflow:visible;
     }
     
     /* v9.9.0: Tabela de lotes com altura controlada */
@@ -1732,7 +1747,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     }
     
     /* Garantir que tabelas não quebrem */
-    table{page-break-inside:avoid}
+    table{page-break-inside:auto}
     
     /* v9.9.0: Ocultar lotes desmarcados na impressão */
     .linha-lote[data-checked="0"]{
@@ -1775,8 +1790,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
         border:none !important;
     }
 
-    /* v9.24.x: Remover coluna de mover na impressao */
-    .col-mover{
+    /* v1.0.9: Remover coluna de ações na impressão */
+    .col-acoes-lote{
         display:none !important;
         width:0 !important;
         padding:0 !important;
@@ -2066,6 +2081,7 @@ function mostrarModalResultadoSalvamento(mensagem, aoConfirmar) {
 function executarGravacaoPT(modo, comImpressao) {
     var form = document.getElementById('formOficio');
     if (form) {
+        atualizarPayloadDinamicoPT();
         atualizarFolhasSelecionadasInput();
         document.getElementById('modo_oficio_pt').value = modo;
         document.getElementById('acaoForm').value = 'salvar_oficio_completo';
@@ -2085,12 +2101,10 @@ function gravarEImprimir() {
 function atualizarTotaisContainer(container, posto) {
     if (!container) return;
 
-    // Busca checkboxes APENAS dentro deste container
     var checkboxes = container.querySelectorAll('.checkbox-lote');
     var total = 0;
     var lotesConfirmados = [];
 
-    // Resetar marcação por linha
     var linhas = container.querySelectorAll('tr.linha-lote');
     for (var r = 0; r < linhas.length; r++) {
         linhas[r].setAttribute('data-checked', '0');
@@ -2098,22 +2112,32 @@ function atualizarTotaisContainer(container, posto) {
     
     for (var i = 0; i < checkboxes.length; i++) {
         var cb = checkboxes[i];
-        var quantidade = parseInt(cb.getAttribute('data-quantidade')) || 0;
-        var lote = cb.getAttribute('data-lote');
         var linha = cb.closest('tr');
-        var tdCheck = cb.closest('td');
-        var tdLote = tdCheck ? tdCheck.nextElementSibling : null;
-        var tdQtd = tdLote ? tdLote.nextElementSibling : null;
+        var quantidade = obterQuantidadeLinhaPT(linha);
+        var lote = obterLoteLinhaPT(linha);
+        var tdLote = linha ? linha.querySelector('.celula-lote') : null;
+        var tdQtd = linha ? linha.querySelector('.celula-qtd') : null;
+        var tdData = linha ? linha.querySelector('.celula-data') : null;
 
         if (cb.checked) {
             total += quantidade;
-            lotesConfirmados.push(lote);
+            if (lote !== '') {
+                lotesConfirmados.push(lote);
+            }
             if (linha) linha.setAttribute('data-checked', '1');
             if (tdLote) tdLote.classList.remove('lote-desmarcado');
             if (tdQtd) tdQtd.classList.remove('lote-desmarcado');
+            if (tdData) tdData.classList.remove('lote-desmarcado');
         } else {
             if (tdLote) tdLote.classList.add('lote-desmarcado');
             if (tdQtd) tdQtd.classList.add('lote-desmarcado');
+            if (tdData) tdData.classList.add('lote-desmarcado');
+        }
+
+        if (linha) {
+            linha.setAttribute('data-lote', lote);
+            linha.setAttribute('data-quantidade', quantidade);
+            linha.setAttribute('data-data-carga', obterDataLinhaPT(linha));
         }
     }
     
@@ -2134,7 +2158,6 @@ function atualizarTotaisContainer(container, posto) {
         hiddenQuantidade.value = total;
     }
     
-    // Atualiza checkbox "marcar todos" DENTRO do container
     var marcarTodos = container.querySelector('.marcar-todos');
     if (marcarTodos) {
         var todosMarcados = true;
@@ -2151,6 +2174,8 @@ function atualizarTotaisContainer(container, posto) {
         marcarTodos.checked = todosMarcados;
         marcarTodos.indeterminate = algumMarcado && !todosMarcados;
     }
+
+    atualizarContadores(posto, true);
 }
 
 function recalcularTotal(posto) {
@@ -2188,38 +2213,8 @@ function recalcularTotal(posto) {
     atualizarTotaisContainer(container, posto);
 }
 
-// v9.24.x: Move lote entre folhas do mesmo posto
-function moverLote(botao, direcao) {
-    var linha = botao.closest('tr');
-    var containerAtual = botao.closest('.folha-a4-oficio');
-    if (!linha || !containerAtual) return;
-
-    var posto = containerAtual.getAttribute('data-posto');
-    if (!posto) return;
-
-    var folhas = document.querySelectorAll('.folha-a4-oficio[data-posto="' + posto + '"]');
-    var idxAtual = -1;
-    for (var i = 0; i < folhas.length; i++) {
-        if (folhas[i] === containerAtual) {
-            idxAtual = i;
-            break;
-        }
-    }
-    if (idxAtual < 0) return;
-
-    var idxAlvo = idxAtual + direcao;
-    if (idxAlvo < 0 || idxAlvo >= folhas.length) {
-        return;
-    }
-
-    var containerAlvo = folhas[idxAlvo];
-    var tbodyAlvo = containerAlvo.querySelector('tbody');
-    if (!tbodyAlvo) return;
-
-    tbodyAlvo.appendChild(linha);
-
-    atualizarTotaisContainer(containerAtual, posto);
-    atualizarTotaisContainer(containerAlvo, posto);
+function moverLote() {
+    return false;
 }
 
 // v9.20.1: Marca/desmarca todos os lotes de um posto (CORRIGIDO para clones)
@@ -2292,6 +2287,276 @@ function atualizarSelecaoFolhas() {
             folha.classList.remove('folha-selecionada');
         }
     }
+}
+
+function inputLacreAvulsoPT(input) {
+    return !!(input && String(input.getAttribute('data-lacre-avulso') || '') === '1');
+}
+
+function definirEstadoLacreAvulsoPT(input, botao, ativo) {
+    if (!input || !botao) return;
+    if (ativo) {
+        input.setAttribute('data-lacre-avulso', '1');
+        if (input.className.indexOf('lacre-avulso') < 0) input.className += ' lacre-avulso';
+        if (botao.className.indexOf('ativo') < 0) botao.className += ' ativo';
+        botao.title = 'Lacre avulso ativo';
+    } else {
+        input.setAttribute('data-lacre-avulso', '0');
+        input.className = input.className.replace(/\s*lacre-avulso/g, '');
+        botao.className = botao.className.replace(/\s*ativo/g, '');
+        botao.title = 'Ativar lacre avulso';
+    }
+}
+
+function alternarLacreAvulsoPT(botao) {
+    if (!botao || !botao.parentNode) return false;
+    var input = botao.parentNode.querySelector('input.lacre-pt-input');
+    if (!input) return false;
+    definirEstadoLacreAvulsoPT(input, botao, !inputLacreAvulsoPT(input));
+    sincronizarImpressaoPorCamposCabecalho(input);
+    return false;
+}
+
+function formatarDataPtTela(valor) {
+    var texto = String(valor || '').trim();
+    if (texto === '') return '';
+    var partesSql = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (partesSql) return partesSql[3] + '-' + partesSql[2] + '-' + partesSql[1];
+    return texto;
+}
+
+function normalizarDataPtPayload(valor) {
+    var texto = String(valor || '').trim();
+    if (texto === '') return '';
+    var partesTela = texto.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (partesTela) return partesTela[3] + '-' + partesTela[2] + '-' + partesTela[1];
+    var partesSql = texto.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (partesSql) return texto;
+    return texto;
+}
+
+function obterLoteLinhaPT(linha) {
+    if (!linha) return '';
+    var input = linha.querySelector('.campo-lote-manual');
+    var valor = input ? input.value : (linha.getAttribute('data-lote') || (linha.querySelector('.celula-lote') ? linha.querySelector('.celula-lote').textContent : ''));
+    return String(valor || '').replace(/\D+/g, '').substr(0, 8);
+}
+
+function obterQuantidadeLinhaPT(linha) {
+    if (!linha) return 0;
+    var input = linha.querySelector('.campo-qtd-manual');
+    var valor = input ? input.value : (linha.getAttribute('data-quantidade') || '0');
+    valor = String(valor || '').replace(/[^\d-]/g, '');
+    var numero = parseInt(valor, 10) || 0;
+    return numero < 0 ? 0 : numero;
+}
+
+function obterDataLinhaPT(linha) {
+    if (!linha) return '';
+    var input = linha.querySelector('.campo-data-manual');
+    var valor = input ? input.value : (linha.getAttribute('data-data-carga') || (linha.querySelector('.celula-data') ? linha.querySelector('.celula-data').textContent : ''));
+    return normalizarDataPtPayload(valor);
+}
+
+function sincronizarCamposLinhaPT(linha) {
+    if (!linha) return;
+    var lote = obterLoteLinhaPT(linha);
+    var qtd = obterQuantidadeLinhaPT(linha);
+    var data = obterDataLinhaPT(linha);
+    linha.setAttribute('data-lote', lote);
+    linha.setAttribute('data-quantidade', qtd);
+    linha.setAttribute('data-data-carga', data);
+    var checkbox = linha.querySelector('.checkbox-lote');
+    if (checkbox) {
+        checkbox.setAttribute('data-lote', lote);
+        checkbox.setAttribute('data-quantidade', qtd);
+        checkbox.setAttribute('data-data-carga', data);
+    }
+}
+
+function criarLinhaManualPT(posto, dados) {
+    var info = dados || {};
+    var linha = document.createElement('tr');
+    linha.className = 'linha-lote linha-manual';
+    linha.setAttribute('data-posto', posto || '');
+    linha.setAttribute('data-checked', info.checked === false ? '0' : '1');
+    linha.setAttribute('data-conferido', info.conferido ? '1' : '0');
+
+    var tdCheck = document.createElement('td');
+    tdCheck.className = 'col-checkbox nao-imprimir';
+    tdCheck.style.cssText = 'text-align:center; padding:3px; border:1px solid #000;';
+    var checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'checkbox-lote';
+    checkbox.checked = info.checked === false ? false : true;
+    checkbox.setAttribute('data-posto', posto || '');
+    checkbox.setAttribute('data-conferido', info.conferido ? '1' : '0');
+    checkbox.onchange = function() { recalcularTotal(posto || ''); };
+    tdCheck.appendChild(checkbox);
+    linha.appendChild(tdCheck);
+
+    var tdAcoes = document.createElement('td');
+    tdAcoes.className = 'col-acoes-lote nao-imprimir';
+    tdAcoes.style.cssText = 'text-align:center; padding:3px; border:1px solid #000;';
+    var acoes = document.createElement('div');
+    acoes.className = 'acoes-lote-wrap';
+    var btnAdd = document.createElement('button');
+    btnAdd.type = 'button';
+    btnAdd.className = 'btn-lote-acao';
+    btnAdd.title = 'Adicionar linha abaixo';
+    btnAdd.appendChild(document.createTextNode('+'));
+    btnAdd.onclick = function() { adicionarLinhaLotePT(btnAdd); };
+    var btnDel = document.createElement('button');
+    btnDel.type = 'button';
+    btnDel.className = 'btn-lote-acao';
+    btnDel.title = 'Excluir linha';
+    btnDel.appendChild(document.createTextNode('×'));
+    btnDel.onclick = function() { excluirLinhaLotePT(btnDel); };
+    acoes.appendChild(btnAdd);
+    acoes.appendChild(btnDel);
+    tdAcoes.appendChild(acoes);
+    linha.appendChild(tdAcoes);
+
+    var tdLote = document.createElement('td');
+    tdLote.className = 'celula-lote';
+    tdLote.style.cssText = 'text-align:left; padding:4px; border:1px solid #000; font-size:10px;';
+    var inputLote = document.createElement('input');
+    inputLote.type = 'text';
+    inputLote.className = 'input-editavel campo-lote-manual';
+    inputLote.style.cssText = 'width:100%; border:none; background:transparent; font-size:10px; text-align:left;';
+    inputLote.maxLength = 8;
+    inputLote.value = info.lote || '';
+    inputLote.oninput = function() { sincronizarCamposLinhaPT(linha); recalcularTotal(posto || ''); };
+    tdLote.appendChild(inputLote);
+    linha.appendChild(tdLote);
+
+    var tdQtd = document.createElement('td');
+    tdQtd.className = 'celula-qtd';
+    tdQtd.style.cssText = 'text-align:center; padding:4px; border:1px solid #000; font-size:10px;';
+    var inputQtd = document.createElement('input');
+    inputQtd.type = 'number';
+    inputQtd.className = 'input-editavel campo-qtd-manual';
+    inputQtd.style.cssText = 'width:100%; border:none; background:transparent; font-size:10px; text-align:center;';
+    inputQtd.min = '0';
+    inputQtd.value = String(typeof info.quantidade !== 'undefined' ? info.quantidade : '0');
+    inputQtd.oninput = function() { sincronizarCamposLinhaPT(linha); recalcularTotal(posto || ''); };
+    tdQtd.appendChild(inputQtd);
+    linha.appendChild(tdQtd);
+
+    var tdData = document.createElement('td');
+    tdData.className = 'celula-data';
+    tdData.style.cssText = 'text-align:center; padding:4px; border:1px solid #000; font-size:10px;';
+    var inputData = document.createElement('input');
+    inputData.type = 'text';
+    inputData.className = 'input-editavel campo-data-manual';
+    inputData.placeholder = 'dd-mm-aaaa';
+    inputData.style.cssText = 'width:100%; border:none; background:transparent; font-size:10px; text-align:center;';
+    inputData.value = formatarDataPtTela(info.data_carga || '');
+    inputData.oninput = function() { sincronizarCamposLinhaPT(linha); recalcularTotal(posto || ''); };
+    tdData.appendChild(inputData);
+    linha.appendChild(tdData);
+
+    sincronizarCamposLinhaPT(linha);
+    aplicarEstadoVisualConferenciaLinha(linha, !!info.conferido);
+    return linha;
+}
+
+function adicionarLinhaLotePT(botao) {
+    var linha = botao ? botao.closest('tr.linha-lote') : null;
+    var tbody = linha ? linha.parentNode : null;
+    if (!linha || !tbody) return false;
+    var posto = linha.getAttribute('data-posto') || '';
+    var novaLinha = criarLinhaManualPT(posto, { checked: true });
+    if (linha.nextSibling) tbody.insertBefore(novaLinha, linha.nextSibling);
+    else tbody.appendChild(novaLinha);
+    recalcularTotal(posto);
+    var inputLote = novaLinha.querySelector('.campo-lote-manual');
+    if (inputLote) inputLote.focus();
+    return false;
+}
+
+function adicionarLinhaFimPT(posto) {
+    var tabela = document.getElementById('tabela_lotes_' + posto);
+    if (!tabela) return false;
+    var tbody = tabela.getElementsByTagName('tbody')[0];
+    if (!tbody) return false;
+    var novaLinha = criarLinhaManualPT(posto, { checked: true });
+    tbody.appendChild(novaLinha);
+    recalcularTotal(posto);
+    var inputLote = novaLinha.querySelector('.campo-lote-manual');
+    if (inputLote) inputLote.focus();
+    return false;
+}
+
+function excluirLinhaLotePT(botao) {
+    var linha = botao ? botao.closest('tr.linha-lote') : null;
+    if (!linha) return false;
+    var tbody = linha.parentNode;
+    var posto = linha.getAttribute('data-posto') || '';
+    if (!tbody) return false;
+    if (tbody.querySelectorAll('tr.linha-lote').length <= 1) {
+        alert('Este posto precisa manter ao menos uma linha visível.');
+        return false;
+    }
+    tbody.removeChild(linha);
+    recalcularTotal(posto);
+    return false;
+}
+
+function ocultarDesmarcadosPT(posto) {
+    var tabela = document.getElementById('tabela_lotes_' + posto);
+    if (!tabela) return false;
+    var linhas = tabela.querySelectorAll('tr.linha-lote');
+    var removidas = 0;
+    for (var i = linhas.length - 1; i >= 0; i--) {
+        var linha = linhas[i];
+        var checkbox = linha.querySelector('.checkbox-lote');
+        if (checkbox && !checkbox.checked) {
+            linha.parentNode.removeChild(linha);
+            removidas++;
+        }
+    }
+    recalcularTotal(posto);
+    if (!removidas) {
+        alert('Nenhuma linha desmarcada foi encontrada nesta folha.');
+    }
+    return false;
+}
+
+function atualizarPayloadDinamicoPT() {
+    var inputPayload = document.querySelector("input[name='pt_dinamico_payload']");
+    if (!inputPayload) return;
+    var folhas = document.querySelectorAll('.folha-a4-oficio[data-posto]');
+    var postos = [];
+    for (var i = 0; i < folhas.length; i++) {
+        var folha = folhas[i];
+        var codigo = folha.getAttribute('data-posto') || '';
+        if (!codigo) continue;
+        var nomeCampo = folha.querySelector("textarea[name='nome_posto[" + codigo + "]']");
+        var enderecoCampo = folha.querySelector("input[name='endereco_posto[" + codigo + "]']");
+        var lotes = [];
+        var linhas = folha.querySelectorAll('tr.linha-lote');
+        for (var j = 0; j < linhas.length; j++) {
+            var linha = linhas[j];
+            sincronizarCamposLinhaPT(linha);
+            var lote = obterLoteLinhaPT(linha);
+            if (lote === '') continue;
+            lotes.push({
+                lote: lote,
+                quantidade: obterQuantidadeLinhaPT(linha),
+                data_carga: obterDataLinhaPT(linha),
+                responsaveis: ''
+            });
+        }
+        postos.push({
+            codigo: codigo,
+            nome: nomeCampo ? nomeCampo.value : '',
+            endereco: enderecoCampo ? enderecoCampo.value : '',
+            usuario: '',
+            lotes: lotes
+        });
+    }
+    inputPayload.value = JSON.stringify({ postos: postos });
 }
 
 function sincronizarImpressaoPorCamposCabecalho(inputCampo) {
@@ -2660,19 +2925,10 @@ if (document.readyState === 'loading') {
             $valorLacre = '';
         }
 
-        // v9.24.5: Paginação mais conservadora para evitar sobreposição
-        $max_lotes_por_pagina = 15;
-        $lotes_paginas = $modo_branco ? array(array()) : array_chunk($lotes_array, $max_lotes_por_pagina);
-        $tem_paginas_multiplas = count($lotes_paginas) > 1;
-        foreach ($lotes_paginas as $pagina_idx => $lotes_pagina):
-            $folha_id = $codigo3 . '_' . ($pagina_idx + 1);
-            $qtd_pagina = 0;
-            foreach ($lotes_pagina as $lp) {
-                $qtd_pagina += isset($lp['quantidade']) ? (int)$lp['quantidade'] : 0;
-            }
-            $valorQuantidade = $modo_branco ? '' : $qtd_pagina;
+        $folha_id = $codigo3;
+        $valorQuantidade = $modo_branco ? '' : $qtd_total;
   ?>
-    <div class="folha-a4-oficio<?php echo $tem_paginas_multiplas ? ' mover-ativo' : ''; ?>" data-posto="<?php echo e($codigo3); ?>" data-folha-id="<?php echo e($folha_id); ?>">
+    <div class="folha-a4-oficio" data-posto="<?php echo e($codigo3); ?>" data-folha-id="<?php echo e($folha_id); ?>">
     <div class="oficio">
       <div class="cols100 border-1px">
         <div class="cols25 fleft margin2px">
@@ -2735,12 +2991,16 @@ if (document.readyState === 'loading') {
                             <?php if (!$modo_visual_correios): ?>
                             <!-- Número do lacre -->
                             <td style="text-align:right; padding:8px; border:1px solid #000;">
+                <div class="lacre-avulso-wrap">
                 <input type="text"
                     name="lacre_iipr[<?php echo e($codigo3); ?>]"
                     value="<?php echo e($valorLacre); ?>"
-                                        class="input-editavel campo-cabecalho-pt"
+                                        class="input-editavel campo-cabecalho-pt lacre lacre-pt-input"
                     style="text-align:right; font-size:14px; border:none; background:transparent; width:100%;"
+                    data-lacre-avulso="0"
                 >
+                <button type="button" class="btn-av-pt nao-imprimir" title="Ativar lacre avulso" onclick="alternarLacreAvulsoPT(this)">Av</button>
+                </div>
               </td>
                             <?php endif; ?>
             </tr>
@@ -2783,18 +3043,18 @@ if (document.readyState === 'loading') {
                     <h3 class="titulo-lotes">LOTES</h3>
 
                     <div class="tabela-lotes" style="margin:2px 10px; padding:0; max-width:calc(100% - 20px);">
-                        <table style="width:100%; border-collapse:collapse; border:1px solid #000;" class="lotes-detalhe-1col">
+                        <table id="tabela_lotes_<?php echo e($codigo3); ?>" style="width:100%; border-collapse:collapse; border:1px solid #000;" class="lotes-detalhe-1col tabela-lotes-pt">
                             <thead>
                                 <tr style="background:#e0e0e0;">
                                     <th class="col-checkbox nao-imprimir" style="width:30px; padding:3px; border:1px solid #000; font-size:10px;"></th>
-                                    <th class="col-mover nao-imprimir" style="width:44px; padding:3px; border:1px solid #000; font-size:10px;"></th>
-                                    <th style="width:50%; text-align:left; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Lote</th>
-                                    <th style="width:22%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Qtd</th>
-                                    <th style="width:28%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;"><?php echo $modo_visual_correios ? 'Data Expedicao' : 'Data Produção'; ?></th>
+                                    <th class="col-acoes-lote nao-imprimir" style="width:86px; padding:3px; border:1px solid #000; font-size:10px;">Ações</th>
+                                    <th style="width:44%; text-align:left; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Lote</th>
+                                    <th style="width:18%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;">Qtd</th>
+                                    <th style="width:24%; text-align:center; padding:4px; border:1px solid #000; font-size:10px; font-weight:bold;"><?php echo $modo_visual_correios ? 'Data Expedicao' : 'Data Produção'; ?></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($lotes_pagina as $lote): ?>
+                                <?php foreach ($lotes_array as $lote): ?>
                                 <?php
                                     $lote_num_render = str_pad(preg_replace('/\D+/', '', (string)$lote['lote']), 8, '0', STR_PAD_LEFT);
                                     $esta_conferido = (!$modo_branco && $lote_num_render !== '' && isset($mapaConferidos[$codigo3]) && isset($mapaConferidos[$codigo3][$lote_num_render]));
@@ -2808,45 +3068,41 @@ if (document.readyState === 'loading') {
                                                      data-conferido="<?php echo $esta_conferido ? '1' : '0'; ?>" checked 
                                                      onchange="recalcularTotal('<?php echo e($codigo3); ?>')">
                                     </td>
-                                    <td class="col-mover nao-imprimir" style="text-align:center; padding:3px; border:1px solid #000;">
-                                        <button type="button" class="btn-mover-lote" onclick="moverLote(this, -1)" title="Mover para cima">↑</button>
-                                        <button type="button" class="btn-mover-lote" onclick="moverLote(this, 1)" title="Mover para baixo">↓</button>
+                                    <td class="col-acoes-lote nao-imprimir" style="text-align:center; padding:3px; border:1px solid #000;">
+                                        <div class="acoes-lote-wrap">
+                                            <button type="button" class="btn-lote-acao" onclick="adicionarLinhaLotePT(this)" title="Adicionar linha abaixo">+</button>
+                                            <button type="button" class="btn-lote-acao" onclick="excluirLinhaLotePT(this)" title="Excluir linha">×</button>
+                                        </div>
                                     </td>
-                                    <td class="<?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:left; padding:4px; border:1px solid #000; font-size:10px;"><?php echo e($lote['lote']); ?></td>
-                                    <td class="<?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
+                                    <td class="celula-lote <?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:left; padding:4px; border:1px solid #000; font-size:10px;"><?php echo e($lote['lote']); ?></td>
+                                    <td class="celula-qtd <?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
                                         <span class="valor-tela"><?php echo number_format($lote['quantidade'], 0, ',', '.'); ?></span>
                                     </td>
-                                    <td class="<?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
+                                    <td class="celula-data <?php echo $esta_conferido ? 'lote-conferido' : ''; ?>" style="text-align:center; padding:4px; border:1px solid #000; font-size:10px;">
                                         <?php echo !empty($lote['data_carga']) ? date('d-m-Y', strtotime($lote['data_carga'])) : ''; ?>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
+                             <div class="nao-imprimir" style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px; flex-wrap:wrap;">
+                                 <button type="button" class="btn-remover-desmarcados" onclick="ocultarDesmarcadosPT('<?php echo e($codigo3); ?>')">Ocultar desmarcados desta folha</button>
+                                 <button type="button" class="btn-remover-desmarcados" onclick="adicionarLinhaFimPT('<?php echo e($codigo3); ?>')">Adicionar linha no fim</button>
+                             </div>
                              <input type="hidden" 
                                  name="folha_posto[<?php echo e($folha_id); ?>]" 
                                  value="<?php echo e($codigo3); ?>">
                              <input type="hidden" 
                                  name="lotes_confirmados[<?php echo e($folha_id); ?>]" 
                                  id="lotes_confirmados_<?php echo e($folha_id); ?>" 
-                                 value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_pagina)); ?>">
+                                 value="<?php echo implode(',', array_map(function($l){ return $l['lote']; }, $lotes_array)); ?>">
                              <?php if (!$modo_branco): ?>
                              <input type="hidden" 
                                  name="quantidade_posto[<?php echo e($folha_id); ?>]" 
                                  id="quantidade_final_<?php echo e($folha_id); ?>" 
-                                 value="<?php echo $qtd_pagina; ?>">
+                                 value="<?php echo $qtd_total; ?>">
                              <?php endif; ?>
                     </div>
-          
-          <!-- v9.21.5: Botão centralizado horizontalmente na página -->
-          <div class="controle-split nao-imprimir" style="margin-top:20px; margin-bottom:10px; display:flex; justify-content:center; width:100%;">
-            <button type="button" 
-                    class="btn-split nao-imprimir" 
-                    onclick="clonarPagina('<?php echo e($codigo3); ?>')"
-                    style="padding:10px 20px; background:#17a2b8; color:#fff; border:none; border-radius:4px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.2);">
-              ➕ DIVIDIR EM MAIS MALOTES
-            </button>
-          </div>
           <?php endif; ?>  <!-- Fecha o if (!empty($lotes_array)) -->
 
           <!-- v9.21.6: Espaçador ajustado para tela e impressão -->
@@ -2881,8 +3137,6 @@ if (document.readyState === 'loading') {
         </div>
       </div>
     </div>
-    </div>
-    <?php endforeach; ?>  <!-- Fecha o foreach de $lotes_paginas -->
     <?php endforeach; ?>  <!-- Fecha o foreach de $paginas -->
 
 <?php else: ?>  <!-- Se $temDados for false, exibe mensagem de erro -->
@@ -3194,77 +3448,19 @@ function conferirLote(codigoPosto) {
     if (!loteEncontrado) {
         var tbody = tabela.getElementsByTagName('tbody')[0];
         if (!tbody) return;
-        
-        // v9.9.6: Extrai quantidade do código de barras (ÚLTIMOS 5 dígitos)
-        // Estrutura: [8:lote][6:outros][5:quantidade]
-        // Exemplo: 0075942402302300170 → substring(14,19) = "00170" = 170
         var quantidadeExtraida = 0;
         if (codigoLido.length === 19 && /^\d{19}$/.test(codigoLido)) {
             quantidadeExtraida = parseInt(codigoLido.substring(14, 19), 10);
             console.log('Quantidade extraída (posições 14-18): ' + quantidadeExtraida);
         }
-        
-        // Cria nova linha
-        var novaLinha = document.createElement('tr');
-        novaLinha.className = 'linha-lote nao-encontrado';
-        novaLinha.setAttribute('data-posto', codigoPosto);
-        novaLinha.setAttribute('data-lote', numeroLote);
-        novaLinha.setAttribute('data-checked', '0');
-        
-        // Checkbox (desmarcado)
-        var tdCheckbox = document.createElement('td');
-        tdCheckbox.className = 'col-checkbox';
-        tdCheckbox.style.cssText = 'text-align:center; padding:6px; border:1px solid #ccc;';
-        var checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'checkbox-lote';
-        checkbox.setAttribute('data-posto', codigoPosto);
-        checkbox.setAttribute('data-quantidade', quantidadeExtraida.toString());
-        checkbox.setAttribute('data-lote', numeroLote);
-        checkbox.checked = false;
-        checkbox.onchange = function() { 
-            // v9.9.6: Atualiza data-checked para controlar visibilidade na impressão
-            novaLinha.setAttribute('data-checked', this.checked ? '1' : '0');
-            recalcularTotal(codigoPosto); 
-        };
-        tdCheckbox.appendChild(checkbox);
-        novaLinha.appendChild(tdCheckbox);
-        
-        // Lote
-        var tdLote = document.createElement('td');
-        tdLote.style.cssText = 'text-align:left; padding:8px; border:1px solid #ccc; font-weight:bold; font-size:14px;';
-        tdLote.textContent = numeroLote; // v9.9.5: Removido '(NÃO CADASTRADO)'
-        novaLinha.appendChild(tdLote);
-        
-        // Quantidade (editável, preenchida com valor extraído)
-        var tdQuantidade = document.createElement('td');
-        tdQuantidade.style.cssText = 'text-align:right; padding:8px; border:1px solid #ccc; font-size:14px;';
-        
-        // v9.9.5: Input para tela + span para impressão
-        var inputQtd = document.createElement('input');
-        inputQtd.type = 'number';
-        inputQtd.value = quantidadeExtraida.toString();
-        inputQtd.min = '0';
-        inputQtd.style.cssText = 'width:80px; text-align:right; font-size:14px; padding:4px;';
-        
-        var spanQtd = document.createElement('span');
-        spanQtd.className = 'valor-quantidade';
-        spanQtd.textContent = quantidadeExtraida.toString();
-        spanQtd.style.cssText = 'display:none;'; // Oculto na tela, visível na impressão
-        
-        inputQtd.onchange = function() {
-            checkbox.setAttribute('data-quantidade', this.value);
-            spanQtd.textContent = this.value; // Sincroniza span
-            if (checkbox.checked) {
-                recalcularTotal(codigoPosto);
-            }
-        };
-        
-        tdQuantidade.appendChild(inputQtd);
-        tdQuantidade.appendChild(spanQtd);
-        novaLinha.appendChild(tdQuantidade);
-        
-        // Adiciona no final da tabela
+        var novaLinha = criarLinhaManualPT(codigoPosto, {
+            lote: numeroLote,
+            quantidade: quantidadeExtraida,
+            data_carga: '',
+            checked: false,
+            conferido: false
+        });
+        if (novaLinha.className.indexOf('nao-encontrado') < 0) novaLinha.className += ' nao-encontrado';
         tbody.appendChild(novaLinha);
         
         // Atualiza contador de total de lotes

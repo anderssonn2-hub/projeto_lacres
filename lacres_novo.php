@@ -1,6 +1,11 @@
 <?php
-/* lacres_novo.php — v1.0.7
+/* lacres_novo.php — v1.0.9
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.9 (13/04/2026):
+ * - [CORRIGIDO] Ofício PT deixa de limitar lotes por página e segue em continuidade natural na impressão
+ * - [NOVO] Filtro opcional por postos PT aceita lista digitada além da seleção visual
+ * - [NOVO] Versão consolidada para v1.0.9
  *
  * CHANGELOG v1.0.7 (09/04/2026):
  * - [NOVO] Inputs de lacre aceitam multiplos valores separados por hifen
@@ -5412,7 +5417,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.7</div>
+<div class="version-info">v1.0.9</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5803,6 +5808,10 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
                 <input type="checkbox" id="ptFiltroSemOficio">
                 Somente lotes sem oficio
+            </label>
+            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                Postos PT:
+                <input type="text" id="ptFiltroPostosTexto" placeholder="Ex: 006,028,526" style="padding:4px 6px; min-width:180px;">
             </label>
         </div>
         <script type="text/javascript">
@@ -9047,6 +9056,22 @@ $__pt_datas_join = htmlspecialchars(
 <script>
 (function(){
     window.coletarPostosSelecionadosPT = function(){
+        var texto = document.getElementById('ptFiltroPostosTexto');
+        var listaDigitada = texto ? String(texto.value || '').replace(/[^\d,;\s-]/g, ' ') : '';
+        if (listaDigitada !== '') {
+            var partes = listaDigitada.split(/[,;\s-]+/);
+            var mapa = {};
+            var filtrados = [];
+            for (var p = 0; p < partes.length; p++) {
+                var codigo = partes[p].replace(/\D+/g, '');
+                if (codigo === '') continue;
+                codigo = ('000' + codigo).slice(-3);
+                if (mapa[codigo]) continue;
+                mapa[codigo] = true;
+                filtrados.push(codigo);
+            }
+            if (filtrados.length) return filtrados.join(',');
+        }
         var nodes = document.querySelectorAll('.pt-selecionar');
         if (!nodes || !nodes.length) return '';
         var selecionados = [];
