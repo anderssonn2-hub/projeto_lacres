@@ -1461,11 +1461,14 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     box-shadow:0 2px 8px rgba(0,0,0,0.1);
     box-sizing:border-box;
     display:block;
+    float:none;
+    clear:both;
     page-break-after:always;
     position:relative;
     overflow:visible;
 }
 .folha-a4-oficio:last-of-type{page-break-after:auto}
+.folha-a4-oficio:after{content:"";display:block;clear:both}
 
 /* Estrutura do ofício */
 .oficio{
@@ -1684,6 +1687,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
         padding:8mm;
         box-shadow:none;
         display:block;
+        float:none !important;
+        clear:both !important;
         page-break-after:always !important;
         page-break-inside:auto !important;
         min-height:auto;
