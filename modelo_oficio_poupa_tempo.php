@@ -1645,7 +1645,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .tabela-mestre-pt input,
 .folha-mestre-pt-correios .tabela-mestre-pt textarea{width:100%; border:none; background:transparent; font-size:12px; padding:1px 2px; box-shadow:none}
 .folha-mestre-pt-correios .tabela-mestre-pt input{height:20px}
-.folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:20px; line-height:1.1}
+.folha-mestre-pt-correios .tabela-mestre-pt textarea{resize:none; min-height:20px; height:auto; line-height:1.15; overflow:visible; white-space:normal}
 .folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:12px; line-height:1.0}
 .folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
 .folha-mestre-pt-correios .logo-mestre img{display:block; max-width:100%; height:auto}
@@ -1661,8 +1661,8 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:9%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:10%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:47%; text-align:left}
-.folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:22px}
-.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.1; font-weight:normal}
+.folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:auto}
+.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.15; font-weight:normal; min-height:32px; overflow:visible; white-space:normal; word-break:break-word}
 .folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif; font-size:12px; letter-spacing:0; padding:0 2px; height:22px; line-height:22px; white-space:nowrap; overflow:hidden; text-overflow:clip}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
@@ -1722,8 +1722,9 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt thead{display:table-header-group}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tbody{display:table-row-group}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tr{page-break-inside:avoid !important; break-inside:avoid !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tr{page-break-inside:avoid !important; break-inside:avoid !important; height:auto !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:Arial,Helvetica,sans-serif !important; font-size:12px !important; letter-spacing:0 !important; padding:0 2px !important; height:22px !important; line-height:22px !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{height:auto !important; min-height:32px !important; line-height:1.15 !important; overflow:visible !important; white-space:normal !important; word-break:break-word !important}
     
     /* v9.12.0: Page break para páginas divididas */
     .pagina-split-1{
@@ -2881,7 +2882,7 @@ if (document.readyState === 'loading') {
                                     ?>
                                     <tr>
                                         <td class="col-posto">
-                                            <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel texto-posto-mestre" rows="1"><?php echo e($nomeResumoBase); ?></textarea>
+                                            <textarea name="nome_posto[<?php echo e($codigoResumo); ?>]" class="input-editavel texto-posto-mestre" rows="2"><?php echo e($nomeResumoBase); ?></textarea>
                                         </td>
                                         <td class="col-lacre-pt">
                                             <div class="lacre-avulso-wrap">
