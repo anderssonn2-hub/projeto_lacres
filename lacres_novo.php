@@ -5813,6 +5813,14 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 Postos PT:
                 <input type="text" id="ptFiltroPostosTexto" placeholder="Ex: 006,028,526" style="padding:4px 6px; min-width:180px;">
             </label>
+            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="ptMarcarCapital">
+                Marcar Capital PT
+            </label>
+            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="ptMarcarInterior">
+                Marcar Interior PT
+            </label>
         </div>
         <script type="text/javascript">
         function abrirOficioPoupaTempo() {
@@ -5981,7 +5989,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
                     <label style="margin-right:6px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
-                        <input type="checkbox" class="pt-selecionar" data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" checked>
+                        <input type="checkbox" class="pt-selecionar" data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" data-pt-classe="<?php echo (((int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) >= 5 && (int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) <= 80) ? 'capital' : 'interior'); ?>" checked>
                         Selecionar
                     </label>
                     <?php endif; ?>
@@ -9055,6 +9063,35 @@ $__pt_datas_join = htmlspecialchars(
 
 <script>
 (function(){
+    function atualizarMarcadoresGrupoPT(){
+        var grupos = ['capital', 'interior'];
+        for (var g = 0; g < grupos.length; g++) {
+            var grupo = grupos[g];
+            var marcador = document.getElementById(grupo === 'capital' ? 'ptMarcarCapital' : 'ptMarcarInterior');
+            if (!marcador) continue;
+            var nodes = document.querySelectorAll('.pt-selecionar[data-pt-classe="' + grupo + '"]');
+            if (!nodes.length) {
+                marcador.checked = false;
+                marcador.indeterminate = false;
+                continue;
+            }
+            var totalMarcados = 0;
+            for (var i = 0; i < nodes.length; i++) {
+                if (nodes[i].checked) totalMarcados++;
+            }
+            marcador.checked = totalMarcados === nodes.length;
+            marcador.indeterminate = totalMarcados > 0 && totalMarcados < nodes.length;
+        }
+    }
+
+    function marcarGrupoPT(grupo, marcado){
+        var nodes = document.querySelectorAll('.pt-selecionar[data-pt-classe="' + grupo + '"]');
+        for (var i = 0; i < nodes.length; i++) {
+            nodes[i].checked = !!marcado;
+        }
+        atualizarMarcadoresGrupoPT();
+    }
+
     window.coletarPostosSelecionadosPT = function(){
         var texto = document.getElementById('ptFiltroPostosTexto');
         var listaDigitada = texto ? String(texto.value || '').replace(/[^\d,;\s-]/g, ' ') : '';
@@ -9091,6 +9128,26 @@ $__pt_datas_join = htmlspecialchars(
         if (inputNaoConf) inputNaoConf.value = (naoConf && naoConf.checked) ? '1' : '0';
         if (inputSemOficio) inputSemOficio.value = (semOficio && semOficio.checked) ? '1' : '0';
     };
+
+    document.addEventListener('DOMContentLoaded', function(){
+        var capital = document.getElementById('ptMarcarCapital');
+        var interior = document.getElementById('ptMarcarInterior');
+        if (capital) {
+            capital.addEventListener('change', function(){
+                marcarGrupoPT('capital', this.checked);
+            });
+        }
+        if (interior) {
+            interior.addEventListener('change', function(){
+                marcarGrupoPT('interior', this.checked);
+            });
+        }
+        var nodes = document.querySelectorAll('.pt-selecionar');
+        for (var i = 0; i < nodes.length; i++) {
+            nodes[i].addEventListener('change', atualizarMarcadoresGrupoPT);
+        }
+        atualizarMarcadoresGrupoPT();
+    });
 })();
 
 (function(){

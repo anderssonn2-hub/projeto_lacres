@@ -1652,12 +1652,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .valor-espacamento-mestre{display:inline-block; min-width:36px; text-align:center}
 .folha-mestre-pt-correios .btn-espacamento-mestre{min-width:28px; height:24px; border:1px solid #777; background:#f2f2f2; border-radius:4px; cursor:pointer; font-weight:bold}
 .folha-mestre-pt-correios .btn-espacamento-mestre:hover{background:#e3e3e3}
-.folha-mestre-pt-correios .acoes-mestre-wrap{display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:4px; width:100%}
-.folha-mestre-pt-correios .btn-acao-mestre{display:block; width:100%; min-width:0; padding:3px 4px; font-size:10px; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px; white-space:nowrap; box-sizing:border-box}
+.folha-mestre-pt-correios .acoes-mestre-wrap{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:100%}
+.folha-mestre-pt-correios .btn-acao-mestre{display:block; width:72px; min-width:72px; max-width:72px; margin:0 auto; padding:3px 4px; font-size:10px; line-height:1.1; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px; white-space:nowrap; box-sizing:border-box; text-align:center}
 .folha-mestre-pt-correios .btn-acao-mestre:hover{background:#e2e2e2}
 .folha-mestre-pt-correios .btn-acao-mestre-adicionar{background:#eef6ff; border-color:#7aa7d8; color:#184a7a}
 .folha-mestre-pt-correios .btn-acao-mestre-excluir{background:#fff1f1; border-color:#c66; color:#8a1f1f}
-.folha-mestre-pt-correios .campo-lacre-mestre{display:block; width:100%; min-width:0; max-width:100%; min-height:32px; height:auto; resize:horizontal; overflow:auto; text-align:left; font-size:11px; line-height:1.1; font-family:'Courier New',Courier,monospace; font-weight:bold; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; box-sizing:border-box}
+.folha-mestre-pt-correios .campo-lacre-mestre{display:block; width:100%; min-width:0; max-width:100%; min-height:32px; height:auto; resize:horizontal; overflow:auto; text-align:left; font-size:10.5px; line-height:1.05; font-family:'Courier New',Courier,monospace; font-weight:bold; white-space:nowrap; overflow-wrap:normal; word-break:normal; box-sizing:border-box}
 .folha-mestre-pt-correios .campo-lacre-mestre::-webkit-resizer{background:#d8dde3}
 .folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:12px; line-height:1.0}
 .folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
@@ -1670,15 +1670,15 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .numero-oficio-mestre{position:absolute; top:8px; right:8px; padding:6px 12px; border:2px solid #000; background:#fff; font-size:15px; font-weight:bold; min-width:72px; text-align:center}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-acao{width:13%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:27%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-acao{width:12%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:28%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:16%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:16%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:28%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:auto}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.15; font-weight:normal; min-height:32px; overflow:visible; white-space:normal; word-break:break-word}
 .folha-mestre-pt-correios .tabela-mestre-pt th.col-etiqueta{text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace; font-size:11px; letter-spacing:0; padding:1px 2px; min-height:28px; height:auto; line-height:1.0; white-space:pre-wrap; overflow:visible; overflow-wrap:anywhere; word-break:break-word; resize:none; box-sizing:border-box}
+.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace; font-size:10.5px; letter-spacing:-0.1px; padding:1px 2px; min-height:28px; height:auto; line-height:1.05; white-space:nowrap; overflow:visible; overflow-wrap:normal; word-break:normal; resize:none; box-sizing:border-box}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -1740,15 +1740,15 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tr{page-break-inside:avoid !important; break-inside:avoid !important; height:auto !important}
     .folha-a4-oficio.folha-mestre-pt-correios .grupo-mestre-tabela{width:100% !important; margin:0 !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt{width:100% !important; max-width:none !important; table-layout:fixed !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace !important; font-size:11px !important; letter-spacing:-0.2px !important; padding:0 1px !important; min-height:24px !important; height:auto !important; line-height:1.0 !important; white-space:nowrap !important; overflow:visible !important; overflow-wrap:normal !important; word-break:normal !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace !important; font-size:10.5px !important; letter-spacing:-0.15px !important; padding:0 1px !important; min-height:24px !important; height:auto !important; line-height:1.05 !important; white-space:nowrap !important; overflow:visible !important; overflow-wrap:normal !important; word-break:normal !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{height:auto !important; min-height:32px !important; line-height:1.15 !important; overflow:visible !important; white-space:normal !important; word-break:break-word !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-acao,
     .folha-a4-oficio.folha-mestre-pt-correios .controles-mestre-pt{display:none !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:30% !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:15% !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:15% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:29% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:15.5% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:15.5% !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:40% !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .campo-lacre-mestre{resize:none !important; overflow:visible !important; max-width:100% !important; min-height:32px !important; height:auto !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; word-break:break-word !important; font-size:11px !important; line-height:1.1 !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .campo-lacre-mestre{resize:none !important; overflow:visible !important; max-width:100% !important; min-height:32px !important; height:auto !important; white-space:nowrap !important; overflow-wrap:normal !important; word-break:normal !important; font-size:10.5px !important; line-height:1.05 !important}
     .folha-a4-oficio.folha-mestre-pt-correios .campo-etiqueta-mestre{width:100% !important; max-width:none !important; overflow:visible !important; text-overflow:clip !important}
     
     /* v9.12.0: Page break para páginas divididas */
@@ -2633,7 +2633,7 @@ function atualizarEspacamentoLinhasMestrePT() {
 function ajustarEspacamentoLinhasMestre(delta) {
     espacamentoLinhasMestrePT += delta;
     if (espacamentoLinhasMestrePT > 18) espacamentoLinhasMestrePT = 18;
-    if (espacamentoLinhasMestrePT < -4) espacamentoLinhasMestrePT = -4;
+    if (espacamentoLinhasMestrePT < -8) espacamentoLinhasMestrePT = -8;
     atualizarEspacamentoLinhasMestrePT();
     return false;
 }
