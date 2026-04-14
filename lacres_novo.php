@@ -589,6 +589,30 @@ function json_encode_legado_seguro($valor, $opcoes) {
     return $json;
 }
 
+function normalizarPostoCiMalotes($valor) {
+    $valor = preg_replace('/\D+/', '', (string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    return str_pad($valor, 3, '0', STR_PAD_LEFT);
+}
+
+function resolverPostoCiMalotes($pdo, $leitura, $postoFallback) {
+    $leitura = preg_replace('/\D+/', '', (string)$leitura);
+    if ($leitura !== '') {
+        try {
+            $stmtPosto = $pdo->prepare('SELECT posto FROM cadastroMalotes WHERE leitura = ? ORDER BY id DESC LIMIT 1');
+            $stmtPosto->execute(array($leitura));
+            $postoDb = $stmtPosto->fetchColumn();
+            if ($postoDb !== false && $postoDb !== null && $postoDb !== '') {
+                return normalizarPostoCiMalotes($postoDb);
+            }
+        } catch (Exception $e) {
+        }
+    }
+    return normalizarPostoCiMalotes($postoFallback);
+}
+
 if (!isset($_SESSION['etiquetas'])) $_SESSION['etiquetas'] = array();
 if (!isset($_SESSION['linhas_removidas'])) $_SESSION['linhas_removidas'] = array();
 if (!isset($_SESSION['lacres_personalizados'])) $_SESSION['lacres_personalizados'] = array();
@@ -1811,7 +1835,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 1,
                 $cep,
                 $sequencial,
-                $posto_codigo
+                resolverPostoCiMalotes($pdo_controle, $eti, $posto_codigo)
             ));
             $etiquetas_salvas++;
         }
@@ -1961,7 +1985,7 @@ if (false && isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_e_etique
                             1,
                             $cep,
                             $sequencial,
-                            $posto_codigo
+                            resolverPostoCiMalotes($pdo_controle, $etiqueta, $posto_codigo)
                         ));
                         
                         $etiquetas_salvas++;
@@ -2485,7 +2509,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         1, // Tipo padrão
                         $cep,
                         $sequencial,
-                        $posto_codigo
+                        resolverPostoCiMalotes($pdo_controle, $etiqueta, $posto_codigo)
                     ));
                     
                     $etiquetas_salvas++;
@@ -5704,7 +5728,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             </div>
             <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo $recalculo_por_lacre ? '1' : '0' ?>">
             <input type="hidden" name="recalculo_grupo" id="recalculo_grupo" value="<?php echo htmlspecialchars($recalculo_grupo, ENT_QUOTES, 'UTF-8') ?>">
-            <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
+            <label>Responsável: <input type="text" name="responsavel" id="responsavel_principal" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
             <!-- v8.14.9.3: Exibir último lacre usado -->
             <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
                 <strong style="color:#1976d2;">Últimos Lacres:</strong><br>
@@ -5802,6 +5826,14 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         <button type="button" class="btn btn-warning" id="btnGerarOficioPT" onclick="abrirOficioPoupaTempo();">Ofício PT com Etiqueta Correios</button>
         <div style="display:flex; gap:14px; align-items:center; margin-top:8px; flex-wrap:wrap;">
             <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="ptMarcarCapital" checked>
+                Selecionar todos os postos PT da Capital
+            </label>
+            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="ptMarcarInterior" checked>
+                Selecionar todos os postos PT do Interior
+            </label>
+            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
                 <input type="checkbox" id="ptFiltroNaoConferidos">
                 Somente lotes nao conferidos
             </label>
@@ -5813,18 +5845,34 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 Postos PT:
                 <input type="text" id="ptFiltroPostosTexto" placeholder="Ex: 006,028,526" style="padding:4px 6px; min-width:180px;">
             </label>
-            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-                <input type="checkbox" id="ptMarcarCapital">
-                Marcar Capital PT
-            </label>
-            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-                <input type="checkbox" id="ptMarcarInterior">
-                Marcar Interior PT
-            </label>
+        </div>
+        <div style="margin-top:8px; font-size:12px; color:#495057;">
+            Somente os postos PT marcados serão enviados para gerar folhas e ofícios.
         </div>
         <script type="text/javascript">
         function abrirOficioPoupaTempo() {
             var payload = <?php echo $poupaTempoPayloadJson; ?>;
+                var inputResponsavelTela = document.getElementById('responsavel_principal');
+                var responsavelAtual = inputResponsavelTela ? String(inputResponsavelTela.value || '').trim() : '';
+                if (!responsavelAtual) {
+                    responsavelAtual = window.prompt('Informe o nome do responsável:', '');
+                    if (responsavelAtual === null) {
+                        return;
+                    }
+                    responsavelAtual = String(responsavelAtual || '').trim();
+                    if (!responsavelAtual) {
+                        alert('Informe o nome do responsável para gerar o ofício PT.');
+                        return;
+                    }
+                    if (inputResponsavelTela) {
+                        inputResponsavelTela.value = responsavelAtual;
+                    }
+                }
+                var postosSelecionados = coletarPostosSelecionadosPT();
+                if (!postosSelecionados) {
+                    alert('Selecione ao menos um posto PT para gerar o ofício.');
+                    return;
+                }
                 var form = document.createElement('form');
                 form.method = 'post';
                 form.action = 'modelo_oficio_poupa_tempo.php';
@@ -5842,7 +5890,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 var inputPostos = document.createElement('input');
                 inputPostos.type = 'hidden';
                 inputPostos.name = 'pt_postos_sel';
-                inputPostos.value = coletarPostosSelecionadosPT();
+                inputPostos.value = postosSelecionados;
                 form.appendChild(inputPostos);
                 var inputModoVisual = document.createElement('input');
                 inputModoVisual.type = 'hidden';
@@ -5862,7 +5910,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 var inputResponsavel = document.createElement('input');
                 inputResponsavel.type = 'hidden';
                 inputResponsavel.name = 'responsavel';
-                inputResponsavel.value = <?php echo json_encode_legado_seguro($responsavel, JSON_UNESCAPED_UNICODE); ?>;
+                inputResponsavel.value = responsavelAtual;
                 form.appendChild(inputResponsavel);
                 document.body.appendChild(form);
                 form.submit();
@@ -5891,27 +5939,6 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         Nº #<?php echo (int)$_SESSION['id_despacho_correios']; ?>
     </div>
     <?php endif; ?>
-</div>
-
-<div class="quadro quadro-adicionar">
-    <h3>Adicionar Posto Manualmente</h3>
-    <form method="post" class="form-adicionar">
-        <label>
-            Grupo
-            <select name="tipo_posto" required>
-                <option value="CAPITAL">CAPITAL</option>
-                <option value="CENTRAL IIPR">CENTRAL IIPR</option>
-                <option value="REGIONAIS">REGIONAIS</option>
-            </select>
-        </label>
-        <label>
-            Nome do Posto
-            <input type="text" name="nome_posto" required>
-        </label>
-        <input type="hidden" name="adicionar_manual" value="1">
-        <button type="submit" class="btn-adicionar">Adicionar Posto</button>
-    </form>
-    <div class="texto-ajuda">Preencha lacres e etiqueta diretamente na linha apos inserir o posto.</div>
 </div>
 
 <?php foreach ($dados as $grupo => $itens): if (empty($itens)) continue; ?>
@@ -5989,7 +6016,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
                     <label style="margin-right:6px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
-                        <input type="checkbox" class="pt-selecionar" data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" data-pt-classe="<?php echo (((int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) >= 5 && (int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) <= 80) ? 'capital' : 'interior'); ?>" checked>
+                        <input type="checkbox" class="pt-selecionar" data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" data-pt-classe="<?php echo ((int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) >= 5 && (int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) <= 80) ? 'capital' : 'interior'; ?>" checked>
                         Selecionar
                     </label>
                     <?php endif; ?>
@@ -6020,13 +6047,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </td>
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
-                    <button type="button" class="btn-add-below"
-                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
-                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
-                            data-posicao="abaixo"
-                            onclick="abrirModalInserir(this);">
-                        +Abaixo
-                    </button>
+                    
                     <?php elseif ($grupo === 'REGIONAIS'): ?>
                     <button type="button" class="btn-excluir-regional"
                             onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
@@ -9048,7 +9069,7 @@ $__pt_datas_join = htmlspecialchars(
 <form id="oficioPTForm" method="post" action="modelo_oficio_poupa_tempo.php" target="_blank" style="display:none;">
   <input type="hidden" name="acao" value="oficio_poupatempo" />
   <input type="hidden" name="pt_datas" value="<?php echo $__pt_datas_join; ?>" />
-        <input type="hidden" name="responsavel" value="<?php echo htmlspecialchars($responsavel, ENT_QUOTES, 'UTF-8'); ?>" />
+        <input type="hidden" name="responsavel" id="oficioPTResponsavel" value="<?php echo htmlspecialchars($responsavel, ENT_QUOTES, 'UTF-8'); ?>" />
     <input type="hidden" name="pt_postos_sel" id="ptPostosSel" value="" />
     <input type="hidden" name="pt_filtrar_nao_conferidos" id="ptFiltroNaoConferidosInput" value="0" />
     <input type="hidden" name="pt_filtrar_sem_oficio" id="ptFiltroSemOficioInput" value="0" />
@@ -9063,57 +9084,42 @@ $__pt_datas_join = htmlspecialchars(
 
 <script>
 (function(){
-    function atualizarMarcadoresGrupoPT(){
-        var grupos = ['capital', 'interior'];
-        for (var g = 0; g < grupos.length; g++) {
-            var grupo = grupos[g];
-            var marcador = document.getElementById(grupo === 'capital' ? 'ptMarcarCapital' : 'ptMarcarInterior');
-            if (!marcador) continue;
-            var nodes = document.querySelectorAll('.pt-selecionar[data-pt-classe="' + grupo + '"]');
-            if (!nodes.length) {
-                marcador.checked = false;
-                marcador.indeterminate = false;
-                continue;
-            }
-            var totalMarcados = 0;
-            for (var i = 0; i < nodes.length; i++) {
-                if (nodes[i].checked) totalMarcados++;
-            }
-            marcador.checked = totalMarcados === nodes.length;
-            marcador.indeterminate = totalMarcados > 0 && totalMarcados < nodes.length;
+    function obterMapaFiltroDigitadoPT() {
+        var texto = document.getElementById('ptFiltroPostosTexto');
+        var listaDigitada = texto ? String(texto.value || '').replace(/[^\d,;\s-]/g, ' ') : '';
+        var mapa = {};
+        if (listaDigitada === '') {
+            return mapa;
         }
-    }
-
-    function marcarGrupoPT(grupo, marcado){
-        var nodes = document.querySelectorAll('.pt-selecionar[data-pt-classe="' + grupo + '"]');
-        for (var i = 0; i < nodes.length; i++) {
-            nodes[i].checked = !!marcado;
+        var partes = listaDigitada.split(/[,;\s-]+/);
+        for (var p = 0; p < partes.length; p++) {
+            var codigo = partes[p].replace(/\D+/g, '');
+            if (!codigo) continue;
+            mapa[('000' + codigo).slice(-3)] = true;
         }
-        atualizarMarcadoresGrupoPT();
+        return mapa;
     }
 
     window.coletarPostosSelecionadosPT = function(){
-        var texto = document.getElementById('ptFiltroPostosTexto');
-        var listaDigitada = texto ? String(texto.value || '').replace(/[^\d,;\s-]/g, ' ') : '';
-        if (listaDigitada !== '') {
-            var partes = listaDigitada.split(/[,;\s-]+/);
-            var mapa = {};
-            var filtrados = [];
-            for (var p = 0; p < partes.length; p++) {
-                var codigo = partes[p].replace(/\D+/g, '');
-                if (codigo === '') continue;
-                codigo = ('000' + codigo).slice(-3);
-                if (mapa[codigo]) continue;
-                mapa[codigo] = true;
-                filtrados.push(codigo);
+        var filtroDigitado = obterMapaFiltroDigitadoPT();
+        var usarFiltroDigitado = false;
+        for (var chaveFiltro in filtroDigitado) {
+            if (filtroDigitado.hasOwnProperty(chaveFiltro)) {
+                usarFiltroDigitado = true;
+                break;
             }
-            if (filtrados.length) return filtrados.join(',');
         }
         var nodes = document.querySelectorAll('.pt-selecionar');
         if (!nodes || !nodes.length) return '';
         var selecionados = [];
+        var mapaSelecionados = {};
         for (var i = 0; i < nodes.length; i++) {
-            if (nodes[i].checked) selecionados.push(nodes[i].getAttribute('data-posto') || '');
+            var codigo = nodes[i].getAttribute('data-posto') || '';
+            if (!codigo || !nodes[i].checked) continue;
+            if (usarFiltroDigitado && !filtroDigitado[codigo]) continue;
+            if (mapaSelecionados[codigo]) continue;
+            mapaSelecionados[codigo] = true;
+            selecionados.push(codigo);
         }
         return selecionados.filter(function(v){ return v; }).join(',');
     };
@@ -9125,29 +9131,64 @@ $__pt_datas_join = htmlspecialchars(
         var semOficio = document.getElementById('ptFiltroSemOficio');
         var inputNaoConf = document.getElementById('ptFiltroNaoConferidosInput');
         var inputSemOficio = document.getElementById('ptFiltroSemOficioInput');
+        var inputResponsavel = document.getElementById('oficioPTResponsavel');
+        var responsavelTela = document.getElementById('responsavel_principal');
         if (inputNaoConf) inputNaoConf.value = (naoConf && naoConf.checked) ? '1' : '0';
         if (inputSemOficio) inputSemOficio.value = (semOficio && semOficio.checked) ? '1' : '0';
+        if (inputResponsavel && responsavelTela) inputResponsavel.value = String(responsavelTela.value || '').trim();
     };
 
-    document.addEventListener('DOMContentLoaded', function(){
-        var capital = document.getElementById('ptMarcarCapital');
-        var interior = document.getElementById('ptMarcarInterior');
-        if (capital) {
-            capital.addEventListener('change', function(){
-                marcarGrupoPT('capital', this.checked);
-            });
-        }
-        if (interior) {
-            interior.addEventListener('change', function(){
-                marcarGrupoPT('interior', this.checked);
-            });
-        }
-        var nodes = document.querySelectorAll('.pt-selecionar');
+    function marcarGrupoPT(classe, marcado) {
+        var nodes = document.querySelectorAll('.pt-selecionar[data-pt-classe="' + classe + '"]');
         for (var i = 0; i < nodes.length; i++) {
-            nodes[i].addEventListener('change', atualizarMarcadoresGrupoPT);
+            nodes[i].checked = !!marcado;
         }
-        atualizarMarcadoresGrupoPT();
+    }
+
+    function sincronizarMarcadoresPT() {
+        var capital = document.querySelectorAll('.pt-selecionar[data-pt-classe="capital"]');
+        var interior = document.querySelectorAll('.pt-selecionar[data-pt-classe="interior"]');
+        var marcarCapital = document.getElementById('ptMarcarCapital');
+        var marcarInterior = document.getElementById('ptMarcarInterior');
+        var todosCapital = capital.length > 0;
+        var todosInterior = interior.length > 0;
+        for (var i = 0; i < capital.length; i++) {
+            if (!capital[i].checked) {
+                todosCapital = false;
+                break;
+            }
+        }
+        for (var j = 0; j < interior.length; j++) {
+            if (!interior[j].checked) {
+                todosInterior = false;
+                break;
+            }
+        }
+        if (marcarCapital) marcarCapital.checked = todosCapital;
+        if (marcarInterior) marcarInterior.checked = todosInterior;
+    }
+
+    document.addEventListener('change', function(evento) {
+        var alvo = evento.target;
+        if (!alvo) return;
+        if (alvo.id === 'ptMarcarCapital') {
+            marcarGrupoPT('capital', alvo.checked);
+            return;
+        }
+        if (alvo.id === 'ptMarcarInterior') {
+            marcarGrupoPT('interior', alvo.checked);
+            return;
+        }
+        if (alvo.classList && alvo.classList.contains('pt-selecionar')) {
+            sincronizarMarcadoresPT();
+        }
     });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', sincronizarMarcadoresPT);
+    } else {
+        sincronizarMarcadoresPT();
+    }
 })();
 
 (function(){

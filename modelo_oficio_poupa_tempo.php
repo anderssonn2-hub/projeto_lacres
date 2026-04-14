@@ -279,6 +279,30 @@ function formatarDataPtBr($valorSql) {
     return substr($valorSql, 8, 2) . '-' . substr($valorSql, 5, 2) . '-' . substr($valorSql, 0, 4);
 }
 
+function normalizarPostoPtCodigo($valor) {
+    $valor = preg_replace('/\D+/', '', (string)$valor);
+    if ($valor === '') {
+        return '';
+    }
+    return str_pad($valor, 3, '0', STR_PAD_LEFT);
+}
+
+function resolverPostoMalotePt($pdo, $leitura, $postoFallback) {
+    $leitura = preg_replace('/\D+/', '', (string)$leitura);
+    if ($leitura !== '') {
+        try {
+            $stmtPosto = $pdo->prepare('SELECT posto FROM cadastroMalotes WHERE leitura = ? ORDER BY id DESC LIMIT 1');
+            $stmtPosto->execute(array($leitura));
+            $postoDb = $stmtPosto->fetchColumn();
+            if ($postoDb !== false && $postoDb !== null && $postoDb !== '') {
+                return normalizarPostoPtCodigo($postoDb);
+            }
+        } catch (Exception $e) {
+        }
+    }
+    return normalizarPostoPtCodigo($postoFallback);
+}
+
 /* ============================================================
    1) Conexão com o banco "controle"
    ============================================================ */
@@ -472,6 +496,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                 : (isset($_SESSION['usuario']) && trim((string)$_SESSION['usuario']) !== ''
                     ? trim((string)$_SESSION['usuario'])
                     : 'conferencia'));
+        if ($usuarioResponsavel === '' || strcasecmp($usuarioResponsavel, 'conferencia') === 0) {
+            throw new Exception('Informe o nome do responsável antes de salvar o ofício PT.');
+        }
         $_SESSION['ultimo_responsavel'] = $usuarioResponsavel;
         
         // Se não tiver id_despacho, precisa criar o despacho primeiro
@@ -866,6 +893,32 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                     }
                 }
             }
+        }
+
+        $stmtDelMalotePt = $pdo_controle->prepare('DELETE FROM ciMalotes WHERE leitura = ? AND data = ?');
+        $stmtInsMalotePt = $pdo_controle->prepare('INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto)
+                                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        $dataMalotePt = date('Y-m-d');
+        foreach ($dados_salvos as $postoSalvo => $dadosPostoSalvo) {
+            $etiquetaMalotePt = isset($dadosPostoSalvo['etiqueta_correios_pt']) ? preg_replace('/\D+/', '', (string)$dadosPostoSalvo['etiqueta_correios_pt']) : '';
+            if (strlen($etiquetaMalotePt) !== 35) {
+                continue;
+            }
+            $postoMalotePt = resolverPostoMalotePt($pdo_controle, $etiquetaMalotePt, $postoSalvo);
+            if ($postoMalotePt === '') {
+                continue;
+            }
+            $stmtDelMalotePt->execute(array($etiquetaMalotePt, $dataMalotePt));
+            $stmtInsMalotePt->execute(array(
+                $etiquetaMalotePt,
+                $dataMalotePt,
+                'Oficio PT #' . (int)$id_despacho_post . ' salvo por ' . $usuarioResponsavel . ' em ' . date('d-m-Y'),
+                $usuarioResponsavel,
+                1,
+                substr($etiquetaMalotePt, 0, 8),
+                substr($etiquetaMalotePt, -5),
+                $postoMalotePt
+            ));
         }
 
         $pdo_controle->commit();
@@ -1652,12 +1705,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .valor-espacamento-mestre{display:inline-block; min-width:36px; text-align:center}
 .folha-mestre-pt-correios .btn-espacamento-mestre{min-width:28px; height:24px; border:1px solid #777; background:#f2f2f2; border-radius:4px; cursor:pointer; font-weight:bold}
 .folha-mestre-pt-correios .btn-espacamento-mestre:hover{background:#e3e3e3}
-.folha-mestre-pt-correios .acoes-mestre-wrap{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:100%}
-.folha-mestre-pt-correios .btn-acao-mestre{display:block; width:72px; min-width:72px; max-width:72px; margin:0 auto; padding:3px 4px; font-size:10px; line-height:1.1; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px; white-space:nowrap; box-sizing:border-box; text-align:center}
+.folha-mestre-pt-correios .acoes-mestre-wrap{display:flex; flex-direction:column; align-items:stretch; justify-content:center; gap:4px; width:100%}
+.folha-mestre-pt-correios .btn-acao-mestre{display:block; width:100%; min-width:0; padding:3px 4px; font-size:10px; border:1px solid #666; background:#f2f2f2; cursor:pointer; border-radius:3px; white-space:nowrap; box-sizing:border-box}
 .folha-mestre-pt-correios .btn-acao-mestre:hover{background:#e2e2e2}
 .folha-mestre-pt-correios .btn-acao-mestre-adicionar{background:#eef6ff; border-color:#7aa7d8; color:#184a7a}
 .folha-mestre-pt-correios .btn-acao-mestre-excluir{background:#fff1f1; border-color:#c66; color:#8a1f1f}
-.folha-mestre-pt-correios .campo-lacre-mestre{display:block; width:100%; min-width:0; max-width:100%; min-height:32px; height:auto; resize:horizontal; overflow:auto; text-align:left; font-size:10.5px; line-height:1.05; font-family:'Courier New',Courier,monospace; font-weight:bold; white-space:nowrap; overflow-wrap:normal; word-break:normal; box-sizing:border-box}
+.folha-mestre-pt-correios .campo-lacre-mestre{display:block; width:100%; min-width:0; max-width:100%; min-height:32px; height:auto; resize:horizontal; overflow:auto; text-align:left; font-size:11px; line-height:1.1; font-family:'Courier New',Courier,monospace; font-weight:bold; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; box-sizing:border-box}
 .folha-mestre-pt-correios .campo-lacre-mestre::-webkit-resizer{background:#d8dde3}
 .folha-mestre-pt-correios .quadro-logo-mestre{display:flex; align-items:center; border:1px solid #000; padding:10px 12px; margin-bottom:12px; line-height:1.0}
 .folha-mestre-pt-correios .logo-mestre{width:44%; padding-right:12px}
@@ -1670,15 +1723,15 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
 .folha-mestre-pt-correios .numero-oficio-mestre{position:absolute; top:8px; right:8px; padding:6px 12px; border:2px solid #000; background:#fff; font-size:15px; font-weight:bold; min-width:72px; text-align:center}
 .folha-mestre-pt-correios .grupo-mestre-tabela{margin-bottom:12px}
 .folha-mestre-pt-correios .grupo-mestre-tabela:last-of-type{margin-bottom:0}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-acao{width:12%; text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:28%; text-align:left}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-acao{width:13%; text-align:center}
+.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:27%; text-align:left}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:16%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:16%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:28%; text-align:center}
 .folha-mestre-pt-correios .tabela-mestre-pt tbody tr{height:auto}
 .folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{font-size:13px; line-height:1.15; font-weight:normal; min-height:32px; overflow:visible; white-space:normal; word-break:break-word}
 .folha-mestre-pt-correios .tabela-mestre-pt th.col-etiqueta{text-align:center}
-.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace; font-size:10.5px; letter-spacing:-0.1px; padding:1px 2px; min-height:28px; height:auto; line-height:1.05; white-space:nowrap; overflow:visible; overflow-wrap:normal; word-break:normal; resize:none; box-sizing:border-box}
+.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace; font-size:11px; letter-spacing:0; padding:1px 2px; min-height:28px; height:auto; line-height:1.0; white-space:pre-wrap; overflow:visible; overflow-wrap:anywhere; word-break:break-word; resize:none; box-sizing:border-box}
 .folha-mestre-pt-correios .assinaturas-mestre{display:flex; justify-content:space-between; gap:48px; margin-top:38px; padding:0 18px}
 .folha-mestre-pt-correios .assinatura-mestre{flex:1; text-align:center; font-size:12px}
 .folha-mestre-pt-correios .assinatura-mestre hr{border:none; border-top:1px solid #000; margin:0 0 8px 0}
@@ -1740,15 +1793,15 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt tr{page-break-inside:avoid !important; break-inside:avoid !important; height:auto !important}
     .folha-a4-oficio.folha-mestre-pt-correios .grupo-mestre-tabela{width:100% !important; margin:0 !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt{width:100% !important; max-width:none !important; table-layout:fixed !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace !important; font-size:10.5px !important; letter-spacing:-0.15px !important; padding:0 1px !important; min-height:24px !important; height:auto !important; line-height:1.05 !important; white-space:nowrap !important; overflow:visible !important; overflow-wrap:normal !important; word-break:normal !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .campo-etiqueta-mestre{font-family:'Courier New',Courier,monospace !important; font-size:11px !important; letter-spacing:-0.2px !important; padding:0 1px !important; min-height:24px !important; height:auto !important; line-height:1.0 !important; white-space:nowrap !important; overflow:visible !important; overflow-wrap:normal !important; word-break:normal !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .texto-posto-mestre{height:auto !important; min-height:32px !important; line-height:1.15 !important; overflow:visible !important; white-space:normal !important; word-break:break-word !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-acao,
     .folha-a4-oficio.folha-mestre-pt-correios .controles-mestre-pt{display:none !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:29% !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:15.5% !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:15.5% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-posto{width:30% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-pt{width:15% !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-lacre-correios-pt{width:15% !important}
     .folha-a4-oficio.folha-mestre-pt-correios .tabela-mestre-pt .col-etiqueta{width:40% !important}
-    .folha-a4-oficio.folha-mestre-pt-correios .campo-lacre-mestre{resize:none !important; overflow:visible !important; max-width:100% !important; min-height:32px !important; height:auto !important; white-space:nowrap !important; overflow-wrap:normal !important; word-break:normal !important; font-size:10.5px !important; line-height:1.05 !important}
+    .folha-a4-oficio.folha-mestre-pt-correios .campo-lacre-mestre{resize:none !important; overflow:visible !important; max-width:100% !important; min-height:32px !important; height:auto !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; word-break:break-word !important; font-size:11px !important; line-height:1.1 !important}
     .folha-a4-oficio.folha-mestre-pt-correios .campo-etiqueta-mestre{width:100% !important; max-width:none !important; overflow:visible !important; text-overflow:clip !important}
     
     /* v9.12.0: Page break para páginas divididas */
@@ -2138,6 +2191,19 @@ function mostrarModalResultadoSalvamento(mensagem, aoConfirmar) {
 function executarGravacaoPT(modo, comImpressao) {
     var form = document.getElementById('formOficio');
     if (form) {
+        var campoResponsavel = document.getElementById('responsavel_oficio_pt');
+        if (campoResponsavel && !String(campoResponsavel.value || '').trim()) {
+            var responsavelInformado = window.prompt('Informe o nome do responsável:', '');
+            if (responsavelInformado === null) {
+                return;
+            }
+            responsavelInformado = String(responsavelInformado || '').trim();
+            if (!responsavelInformado) {
+                alert('Informe o nome do responsável para salvar o ofício PT.');
+                return;
+            }
+            campoResponsavel.value = responsavelInformado;
+        }
         atualizarPayloadDinamicoPT();
         atualizarFolhasSelecionadasInput();
         document.getElementById('modo_oficio_pt').value = modo;
@@ -2632,8 +2698,8 @@ function atualizarEspacamentoLinhasMestrePT() {
 
 function ajustarEspacamentoLinhasMestre(delta) {
     espacamentoLinhasMestrePT += delta;
-    if (espacamentoLinhasMestrePT > 18) espacamentoLinhasMestrePT = 18;
-    if (espacamentoLinhasMestrePT < -8) espacamentoLinhasMestrePT = -8;
+    if (espacamentoLinhasMestrePT > 10) espacamentoLinhasMestrePT = 10;
+    if (espacamentoLinhasMestrePT < -10) espacamentoLinhasMestrePT = -10;
     atualizarEspacamentoLinhasMestrePT();
     return false;
 }
@@ -2647,8 +2713,8 @@ function criarLinhaMestrePT(chaveBase) {
     linha.innerHTML = '' +
         '<td class="col-acao nao-imprimir">' +
             '<div class="acoes-mestre-wrap">' +
-                '<button type="button" class="btn-acao-mestre btn-acao-mestre-adicionar" onclick="adicionarLinhaMestrePT(this)">+Abaixo</button>' +
-                '<button type="button" class="btn-acao-mestre btn-acao-mestre-excluir" onclick="excluirLinhaMestrePT(this)">Excluir</button>' +
+                '<button type="button" class="btn-acao-mestre btn-acao-mestre-adicionar" onclick="adicionarLinhaMestrePT(this)">+</button>' +
+                '<button type="button" class="btn-acao-mestre btn-acao-mestre-excluir" onclick="excluirLinhaMestrePT(this)">X</button>' +
             '</div>' +
         '</td>' +
         '<td class="col-posto"><textarea name="nome_posto[' + chave + ']" class="input-editavel texto-posto-mestre" rows="2"></textarea></td>' +
@@ -2800,7 +2866,7 @@ if (document.readyState === 'loading') {
   <input type="hidden" name="acao" id="acaoForm" value="salvar_oficio_completo">
   <!-- Número da expedição (id do despacho), se existir -->
   <input type="hidden" name="id_despacho" value="<?php echo (int)$id_despacho; ?>">
-    <input type="hidden" name="responsavel" value="<?php echo e(isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== '' ? trim((string)$_POST['responsavel']) : (isset($_SESSION['ultimo_responsavel']) ? trim((string)$_SESSION['ultimo_responsavel']) : '')); ?>">
+    <input type="hidden" name="responsavel" id="responsavel_oficio_pt" value="<?php echo e(isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== '' ? trim((string)$_POST['responsavel']) : (isset($_SESSION['ultimo_responsavel']) ? trim((string)$_SESSION['ultimo_responsavel']) : '')); ?>">
   <!-- Datas usadas no ofício (string original, como em ciDespachos.datas_str) -->
   <input type="hidden" name="pt_datas" value="<?php echo e($datasStr); ?>">
   <!-- Flag para imprimir após salvar -->
@@ -2920,15 +2986,15 @@ if (document.readyState === 'loading') {
                         </div>
 
                         <?php if (!empty($datasNorm)): ?>
-                        <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', $datasNorm)); ?></div>
+                        <div class="resumo-datas"><strong>Datas:</strong> <?php echo e(implode(', ', array_map('formatarDataPtBr', $datasNorm))); ?></div>
                         <?php endif; ?>
 
                         <div class="controles-mestre-pt nao-imprimir">
                             <div class="controle-espacamento-mestre">
                                 <span>Espaçamento:</span>
-                                <button type="button" class="btn-espacamento-mestre" onclick="ajustarEspacamentoLinhasMestre(-2)">-</button>
+                                <button type="button" class="btn-espacamento-mestre" onclick="ajustarEspacamentoLinhasMestre(-1)">-</button>
                                 <span class="valor-espacamento-mestre" id="valor_espacamento_mestre">0</span>
-                                <button type="button" class="btn-espacamento-mestre" onclick="ajustarEspacamentoLinhasMestre(2)">+</button>
+                                <button type="button" class="btn-espacamento-mestre" onclick="ajustarEspacamentoLinhasMestre(1)">+</button>
                             </div>
                         </div>
 
@@ -2986,8 +3052,8 @@ if (document.readyState === 'loading') {
                                     <tr class="linha-mestre-pt" data-chave-mestre="<?php echo e($codigoResumo); ?>">
                                         <td class="col-acao nao-imprimir">
                                             <div class="acoes-mestre-wrap">
-                                                <button type="button" class="btn-acao-mestre btn-acao-mestre-adicionar" onclick="adicionarLinhaMestrePT(this)">+Abaixo</button>
-                                                <button type="button" class="btn-acao-mestre btn-acao-mestre-excluir" onclick="excluirLinhaMestrePT(this)">Excluir</button>
+                                                <button type="button" class="btn-acao-mestre btn-acao-mestre-adicionar" onclick="adicionarLinhaMestrePT(this)">+</button>
+                                                <button type="button" class="btn-acao-mestre btn-acao-mestre-excluir" onclick="excluirLinhaMestrePT(this)">X</button>
                                             </div>
                                         </td>
                                         <td class="col-posto">
