@@ -1928,20 +1928,20 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f0f0f0;line-height:1.25}
         padding:8px !important;
     }
     
-    /* v9.9.0: QUEBRA DE PÁGINA - cada ofício em uma folha */
+    /* v1.0.9: Permitir que os lotes continuem na página seguinte sem deixar folha em branco */
     .folha-a4-oficio{
         page-break-after:always !important;
-        page-break-inside:avoid !important;
+        page-break-inside:auto !important;
     }
     
-    /* Evitar quebra dentro da tabela de lotes */
     .tabela-lotes{
-        page-break-inside:avoid !important;
+        page-break-inside:auto !important;
+        break-inside:auto !important;
     }
     
-    /* Evitar quebra da tabela principal */
     .oficio-observacao > table{
         page-break-inside:avoid !important;
+        break-inside:avoid !important;
     }
 }
 
