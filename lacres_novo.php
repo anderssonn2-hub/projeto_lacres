@@ -1,6 +1,12 @@
 <?php
-/* lacres_novo.php — v1.0.9
+/* lacres_novo.php — v1.0.10
  * Sistema de criação e gestão de ofícios (Poupa Tempo e Correios)
+ *
+ * CHANGELOG v1.0.10 (15/04/2026):
+ * - [CORRIGIDO] Impressão dos Correios oculta os botões AV ao gerar PDF
+ * - [NOVO] Modo de exclusão em lote com seleção sob demanda para remover vários postos de uma vez
+ * - [NOVO] Grade do Poupa Tempo pode ser recolhida e expandida sem recarregar a página
+ * - [NOVO] Versão consolidada para v1.0.10
  *
  * CHANGELOG v1.0.9 (13/04/2026):
  * - [CORRIGIDO] Ofício PT deixa de limitar lotes por página e segue em continuidade natural na impressão
@@ -589,30 +595,6 @@ function json_encode_legado_seguro($valor, $opcoes) {
     return $json;
 }
 
-function normalizarPostoCiMalotes($valor) {
-    $valor = preg_replace('/\D+/', '', (string)$valor);
-    if ($valor === '') {
-        return '';
-    }
-    return str_pad($valor, 3, '0', STR_PAD_LEFT);
-}
-
-function resolverPostoCiMalotes($pdo, $leitura, $postoFallback) {
-    $leitura = preg_replace('/\D+/', '', (string)$leitura);
-    if ($leitura !== '') {
-        try {
-            $stmtPosto = $pdo->prepare('SELECT posto FROM cadastroMalotes WHERE leitura = ? ORDER BY id DESC LIMIT 1');
-            $stmtPosto->execute(array($leitura));
-            $postoDb = $stmtPosto->fetchColumn();
-            if ($postoDb !== false && $postoDb !== null && $postoDb !== '') {
-                return normalizarPostoCiMalotes($postoDb);
-            }
-        } catch (Exception $e) {
-        }
-    }
-    return normalizarPostoCiMalotes($postoFallback);
-}
-
 if (!isset($_SESSION['etiquetas'])) $_SESSION['etiquetas'] = array();
 if (!isset($_SESSION['linhas_removidas'])) $_SESSION['linhas_removidas'] = array();
 if (!isset($_SESSION['lacres_personalizados'])) $_SESSION['lacres_personalizados'] = array();
@@ -623,6 +605,55 @@ if (!isset($_SESSION['debug_log'])) $_SESSION['debug_log'] = array();
 if (!isset($_SESSION['excluir_regionais_manual'])) $_SESSION['excluir_regionais_manual'] = array();
 
 if (!isset($_SESSION['id_despacho_poupa_tempo'])) $_SESSION['id_despacho_poupa_tempo'] = 0;
+
+function montarUrlAtualComFiltros() {
+    $params = array();
+    if (isset($_GET['lacre_capital'])) $params[] = 'lacre_capital=' . urlencode($_GET['lacre_capital']);
+    if (isset($_GET['lacre_central'])) $params[] = 'lacre_central=' . urlencode($_GET['lacre_central']);
+    if (isset($_GET['lacre_regionais'])) $params[] = 'lacre_regionais=' . urlencode($_GET['lacre_regionais']);
+    if (isset($_GET['responsavel'])) $params[] = 'responsavel=' . urlencode($_GET['responsavel']);
+
+    if (!empty($_SESSION['datas_filtro'])) {
+        foreach ($_SESSION['datas_filtro'] as $data) {
+            $params[] = 'datas[]=' . urlencode($data);
+        }
+    }
+
+    $redirect_url = $_SERVER['PHP_SELF'] . (isset($_GET['debug']) ? '?debug=1' : '');
+    if (!empty($params)) {
+        $redirect_url .= (strpos($redirect_url, '?') !== false ? '&' : '?') . implode('&', $params);
+    }
+    return $redirect_url;
+}
+
+function removerPostoDaTelaSessao($codigo, $grupo) {
+    $codigo = trim((string)$codigo);
+    $grupo = strtoupper(trim((string)$grupo));
+
+    if ($codigo === '') {
+        return false;
+    }
+
+    if ($grupo === 'REGIONAIS') {
+        if (!in_array($codigo, $_SESSION['excluir_regionais_manual'], true)) {
+            $_SESSION['excluir_regionais_manual'][] = $codigo;
+        }
+    } else {
+        $_SESSION['linhas_removidas'][$codigo] = true;
+    }
+
+    if (isset($_SESSION['lacres_personalizados'][$codigo])) {
+        unset($_SESSION['lacres_personalizados'][$codigo]);
+    }
+    if (isset($_SESSION['etiquetas'][$codigo])) {
+        unset($_SESSION['etiquetas'][$codigo]);
+    }
+    if (strpos($codigo, 'M') === 0 && isset($_SESSION['postos_manuais'][$codigo])) {
+        unset($_SESSION['postos_manuais'][$codigo]);
+    }
+
+    return true;
+}
 
 // Snapshot de lacres enviado pelos formularios auxiliares
 if (isset($_POST['snapshot_lacres']) && $_POST['snapshot_lacres'] !== '') {
@@ -1835,7 +1866,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 1,
                 $cep,
                 $sequencial,
-                resolverPostoCiMalotes($pdo_controle, $eti, $posto_codigo)
+                $posto_codigo
             ));
             $etiquetas_salvas++;
         }
@@ -1985,7 +2016,7 @@ if (false && isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_e_etique
                             1,
                             $cep,
                             $sequencial,
-                            resolverPostoCiMalotes($pdo_controle, $etiqueta, $posto_codigo)
+                            $posto_codigo
                         ));
                         
                         $etiquetas_salvas++;
@@ -2509,7 +2540,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         1, // Tipo padrão
                         $cep,
                         $sequencial,
-                        resolverPostoCiMalotes($pdo_controle, $etiqueta, $posto_codigo)
+                        $posto_codigo
                     ));
                     
                     $etiquetas_salvas++;
@@ -2576,6 +2607,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
+    // Exclusão em lote para múltiplos postos selecionados na interface
+    if (isset($_POST['excluir_postos_lote']) && $_POST['excluir_postos_lote'] === '1') {
+        $payloadExclusao = isset($_POST['postos_excluir_lote']) ? trim((string)$_POST['postos_excluir_lote']) : '';
+        $itensExclusao = json_decode($payloadExclusao, true);
+        $totalExcluidos = 0;
+
+        if (is_array($itensExclusao)) {
+            foreach ($itensExclusao as $itemExclusao) {
+                if (!is_array($itemExclusao)) continue;
+                $codigoExclusao = isset($itemExclusao['codigo']) ? trim((string)$itemExclusao['codigo']) : '';
+                $grupoExclusao = isset($itemExclusao['grupo']) ? trim((string)$itemExclusao['grupo']) : '';
+                if ($codigoExclusao === '' || $grupoExclusao === '') continue;
+                if (removerPostoDaTelaSessao($codigoExclusao, $grupoExclusao)) {
+                    $totalExcluidos++;
+                }
+            }
+        }
+
+        if ($totalExcluidos > 0) {
+            $mensagem_sucesso = $totalExcluidos === 1
+                ? '1 posto foi excluído da tela com sucesso!'
+                : $totalExcluidos . ' postos foram excluídos da tela com sucesso!';
+        } else {
+            $mensagem_erro = 'Nenhum posto válido foi selecionado para exclusão em lote.';
+        }
+
+        header('Location: ' . montarUrlAtualComFiltros());
+        exit;
+    }
+
     // Exclusão dedicada para REGIONAIS
     if (isset($_POST['excluir_posto_regional']) && $_POST['excluir_posto_regional'] === '1') {
         // Código do posto (número ou código manual com M)
@@ -2588,37 +2649,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'regional_info' => isset($_POST['info_regional']) ? $_POST['info_regional'] : 'não informado'
         ));
         
-        // Adicionar no array específico
-        $_SESSION['excluir_regionais_manual'][] = $codigo;
-
-        // Se for posto manual, remover da lista imediatamente
-        if (strpos($codigo, 'M') === 0 && isset($_SESSION['postos_manuais'][$codigo])) {
-            unset($_SESSION['postos_manuais'][$codigo]);
-        }
+        removerPostoDaTelaSessao($codigo, 'REGIONAIS');
         
         // Mensagem de sucesso
         $mensagem_sucesso = "Posto {$codigo} do grupo REGIONAIS foi excluído com sucesso!";
         
-        // Redirecionamento preservando filtros
-        $params = array();
-        if (isset($_GET['lacre_capital'])) $params[] = "lacre_capital=" . urlencode($_GET['lacre_capital']);
-        if (isset($_GET['lacre_central'])) $params[] = "lacre_central=" . urlencode($_GET['lacre_central']);
-        if (isset($_GET['lacre_regionais'])) $params[] = "lacre_regionais=" . urlencode($_GET['lacre_regionais']);
-        if (isset($_GET['responsavel'])) $params[] = "responsavel=" . urlencode($_GET['responsavel']);
-        
-        // Adicionar as datas selecionadas
-        if (!empty($_SESSION['datas_filtro'])) {
-            foreach ($_SESSION['datas_filtro'] as $data) {
-                $params[] = "datas[]=" . urlencode($data);
-            }
-        }
-        
-        $redirect_url = $_SERVER['PHP_SELF'] . (isset($_GET['debug']) ? '?debug=1' : '');
-        if (!empty($params)) {
-            $redirect_url .= (strpos($redirect_url, '?') !== false ? '&' : '?') . implode('&', $params);
-        }
-        
-        header("Location: $redirect_url");
+        header('Location: ' . montarUrlAtualComFiltros());
         exit;
     }
     
@@ -2627,43 +2663,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $codigo = trim((string)$_POST['codigo_posto']);
         $grupo = isset($_POST['grupo_posto']) ? $_POST['grupo_posto'] : 'Não especificado';
         
-        // Para postos de CAPITAL e CENTRAL: usar o sistema tradicional
-        $_SESSION['linhas_removidas'][$codigo] = true;
-        
-        if (isset($_SESSION['lacres_personalizados'][$codigo])) {
-            unset($_SESSION['lacres_personalizados'][$codigo]);
-        }
-        if (isset($_SESSION['etiquetas'][$codigo])) {
-            unset($_SESSION['etiquetas'][$codigo]);
-        }
-        
-        // Se for um posto manual
-        if (strpos($codigo, 'M') === 0 && isset($_SESSION['postos_manuais'][$codigo])) {
-            unset($_SESSION['postos_manuais'][$codigo]);
-        }
+        removerPostoDaTelaSessao($codigo, $grupo);
         
         $mensagem_sucesso = "Posto {$codigo} ({$grupo}) removido com sucesso!";
         
-        // Redirecionamento preservando filtros
-        $params = array();
-        if (isset($_GET['lacre_capital'])) $params[] = "lacre_capital=" . urlencode($_GET['lacre_capital']);
-        if (isset($_GET['lacre_central'])) $params[] = "lacre_central=" . urlencode($_GET['lacre_central']);
-        if (isset($_GET['lacre_regionais'])) $params[] = "lacre_regionais=" . urlencode($_GET['lacre_regionais']);
-        if (isset($_GET['responsavel'])) $params[] = "responsavel=" . urlencode($_GET['responsavel']);
-        
-        // Adicionar as datas selecionadas
-        if (!empty($_SESSION['datas_filtro'])) {
-            foreach ($_SESSION['datas_filtro'] as $data) {
-                $params[] = "datas[]=" . urlencode($data);
-            }
-        }
-        
-        $redirect_url = $_SERVER['PHP_SELF'] . (isset($_GET['debug']) ? '?debug=1' : '');
-        if (!empty($params)) {
-            $redirect_url .= (strpos($redirect_url, '?') !== false ? '&' : '?') . implode('&', $params);
-        }
-        
-        header("Location: $redirect_url");
+        header('Location: ' . montarUrlAtualComFiltros());
         exit;
     }
     
@@ -4515,6 +4519,80 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         .btn-excluir-regional:hover {
             background-color: #7B1FA2;
         }
+
+        .painel-exclusao-lote {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 6px 0 14px 0;
+            padding: 10px 12px;
+            border: 1px solid #d9dee5;
+            background: #f8fafc;
+            border-radius: 6px;
+        }
+        .btn-exclusao-lote-toggle,
+        .btn-exclusao-lote-acao,
+        .btn-toggle-grade-pt {
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 8px 12px;
+        }
+        .btn-exclusao-lote-toggle {
+            background: #355c7d;
+            color: #fff;
+        }
+        .btn-exclusao-lote-toggle:hover {
+            background: #27445c;
+        }
+        .btn-exclusao-lote-acao {
+            display: none;
+            background: #b71c1c;
+            color: #fff;
+        }
+        .btn-exclusao-lote-acao:hover {
+            background: #8b1515;
+        }
+        .btn-toggle-grade-pt {
+            background: #0f766e;
+            color: #fff;
+        }
+        .btn-toggle-grade-pt:hover {
+            background: #0b5b55;
+        }
+        .texto-exclusao-lote {
+            font-size: 12px;
+            color: #495057;
+        }
+        .seletor-exclusao-lote-wrap {
+            display: none;
+            margin-right: 8px;
+            padding: 2px 4px;
+            border-radius: 4px;
+            background: #fff7d6;
+            border: 1px solid #e7d17c;
+            vertical-align: middle;
+        }
+        body.modo-exclusao-lote .seletor-exclusao-lote-wrap {
+            display: inline-flex;
+            align-items: center;
+        }
+        body.modo-exclusao-lote .linha-exclusao-lote-selecionada td {
+            background: #fff8d9 !important;
+        }
+        .painel-grade-pt {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 4px 0 10px 0;
+        }
+        .painel-grade-pt .texto-ajuda {
+            font-size: 12px;
+            color: #5c6670;
+        }
         
         /* Botão imprimir */
         .btn-imprimir {
@@ -4905,7 +4983,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             }
             
             /* Esconder coluna de ações */
-            .btn-excluir, .btn-excluir-regional, .btn-add-above, .btn-add-below, th:last-child, td:last-child { display: none !important; }
+            .btn-excluir, .btn-excluir-regional, .btn-add-above, .btn-add-below, .btn-lacre-avulso, .seletor-exclusao-lote-wrap, th:last-child, td:last-child { display: none !important; }
             
             /* Garantir que o logo fique bem formatado */
             .quadro-logo {line-height: 1.0; border: 1px solid black !important; padding: 12px !important; margin-bottom: 15px !important; box-sizing: border-box !important; }
@@ -5441,7 +5519,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </div>
 <?php endif; ?>
 
-<div class="version-info">v1.0.9</div>
+<div class="version-info">v1.0.10</div>
 
 <!-- v9.21.5: Card oculto na impressão (classe nao-imprimir) -->
 <div id="indicador-dias" class="nao-imprimir collapsed">
@@ -5511,7 +5589,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 
 <div class="painel-analise" id="painel-analise">
     <div class="painel-analise-header" onclick="toggleAnalisePanel()">
-        <span class="icone">📊</span> Análise de Expedição (v9.14.0)
+        <span class="icone">📊</span> Análise de Expedição (v1.0.10)
         <span class="toggle-icon">▼</span>
     </div>
     <div class="painel-analise-content">
@@ -5728,7 +5806,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             </div>
             <input type="hidden" name="recalculo_por_lacre" id="recalculo_por_lacre" value="<?php echo $recalculo_por_lacre ? '1' : '0' ?>">
             <input type="hidden" name="recalculo_grupo" id="recalculo_grupo" value="<?php echo htmlspecialchars($recalculo_grupo, ENT_QUOTES, 'UTF-8') ?>">
-            <label>Responsável: <input type="text" name="responsavel" id="responsavel_principal" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
+            <label>Responsável: <input type="text" name="responsavel" value="<?php echo htmlspecialchars($responsavel) ?>" required></label>
             <!-- v8.14.9.3: Exibir último lacre usado -->
             <div style="display:inline-block; margin-left:15px; padding:8px 12px; background:#e3f2fd; border:1px solid #2196f3; border-radius:4px; font-size:12px;">
                 <strong style="color:#1976d2;">Últimos Lacres:</strong><br>
@@ -5817,6 +5895,13 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
     <!-- <button type="button" class="btn-salvar-etiquetas" onclick="abrirModalConfirmacao()" style="display:none;"><i>💾</i> Salvar Etiquetas Correios</button> -->
 </div>
 
+<div class="painel-exclusao-lote nao-imprimir" id="painelExclusaoLote">
+    <button type="button" class="btn-exclusao-lote-toggle" id="btnToggleExclusaoLote" onclick="alternarModoExclusaoLote();">Selecionar postos para excluir</button>
+    <button type="button" class="btn-exclusao-lote-acao" id="btnExecutarExclusaoLote" onclick="excluirPostosSelecionadosLote();">Excluir selecionados (0)</button>
+    <button type="button" class="btn-exclusao-lote-acao" id="btnCancelarExclusaoLote" onclick="alternarModoExclusaoLote(false);" style="background:#6c757d;">Cancelar seleção</button>
+    <span class="texto-exclusao-lote" id="textoExclusaoLote">Ative o modo de seleção para marcar vários postos e excluí-los de uma vez.</span>
+</div>
+
 <?php if (!empty($poupaTempoPayload)): ?>
         <?php
             // Garante JSON bem formado (com acentos)
@@ -5825,14 +5910,6 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
         <!-- Botão PT com etiqueta Correios (form gerado fora do form principal para evitar forms aninhados) -->
         <button type="button" class="btn btn-warning" id="btnGerarOficioPT" onclick="abrirOficioPoupaTempo();">Ofício PT com Etiqueta Correios</button>
         <div style="display:flex; gap:14px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-                <input type="checkbox" id="ptMarcarCapital" checked>
-                Selecionar todos os postos PT da Capital
-            </label>
-            <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
-                <input type="checkbox" id="ptMarcarInterior" checked>
-                Selecionar todos os postos PT do Interior
-            </label>
             <label style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
                 <input type="checkbox" id="ptFiltroNaoConferidos">
                 Somente lotes nao conferidos
@@ -5846,33 +5923,9 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 <input type="text" id="ptFiltroPostosTexto" placeholder="Ex: 006,028,526" style="padding:4px 6px; min-width:180px;">
             </label>
         </div>
-        <div style="margin-top:8px; font-size:12px; color:#495057;">
-            Somente os postos PT marcados serão enviados para gerar folhas e ofícios.
-        </div>
         <script type="text/javascript">
         function abrirOficioPoupaTempo() {
             var payload = <?php echo $poupaTempoPayloadJson; ?>;
-                var inputResponsavelTela = document.getElementById('responsavel_principal');
-                var responsavelAtual = inputResponsavelTela ? String(inputResponsavelTela.value || '').trim() : '';
-                if (!responsavelAtual) {
-                    responsavelAtual = window.prompt('Informe o nome do responsável:', '');
-                    if (responsavelAtual === null) {
-                        return;
-                    }
-                    responsavelAtual = String(responsavelAtual || '').trim();
-                    if (!responsavelAtual) {
-                        alert('Informe o nome do responsável para gerar o ofício PT.');
-                        return;
-                    }
-                    if (inputResponsavelTela) {
-                        inputResponsavelTela.value = responsavelAtual;
-                    }
-                }
-                var postosSelecionados = coletarPostosSelecionadosPT();
-                if (!postosSelecionados) {
-                    alert('Selecione ao menos um posto PT para gerar o ofício.');
-                    return;
-                }
                 var form = document.createElement('form');
                 form.method = 'post';
                 form.action = 'modelo_oficio_poupa_tempo.php';
@@ -5890,7 +5943,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 var inputPostos = document.createElement('input');
                 inputPostos.type = 'hidden';
                 inputPostos.name = 'pt_postos_sel';
-                inputPostos.value = postosSelecionados;
+                inputPostos.value = coletarPostosSelecionadosPT();
                 form.appendChild(inputPostos);
                 var inputModoVisual = document.createElement('input');
                 inputModoVisual.type = 'hidden';
@@ -5910,7 +5963,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 var inputResponsavel = document.createElement('input');
                 inputResponsavel.type = 'hidden';
                 inputResponsavel.name = 'responsavel';
-                inputResponsavel.value = responsavelAtual;
+                inputResponsavel.value = <?php echo json_encode_legado_seguro($responsavel, JSON_UNESCAPED_UNICODE); ?>;
                 form.appendChild(inputResponsavel);
                 document.body.appendChild(form);
                 form.submit();
@@ -5941,7 +5994,34 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
     <?php endif; ?>
 </div>
 
+<div class="quadro quadro-adicionar">
+    <h3>Adicionar Posto Manualmente</h3>
+    <form method="post" class="form-adicionar">
+        <label>
+            Grupo
+            <select name="tipo_posto" required>
+                <option value="CAPITAL">CAPITAL</option>
+                <option value="CENTRAL IIPR">CENTRAL IIPR</option>
+                <option value="REGIONAIS">REGIONAIS</option>
+            </select>
+        </label>
+        <label>
+            Nome do Posto
+            <input type="text" name="nome_posto" required>
+        </label>
+        <input type="hidden" name="adicionar_manual" value="1">
+        <button type="submit" class="btn-adicionar">Adicionar Posto</button>
+    </form>
+    <div class="texto-ajuda">Preencha lacres e etiqueta diretamente na linha apos inserir o posto.</div>
+</div>
+
 <?php foreach ($dados as $grupo => $itens): if (empty($itens)) continue; ?>
+    <?php if ($grupo === 'POUPA TEMPO'): ?>
+    <div class="painel-grade-pt nao-imprimir">
+        <button type="button" class="btn-toggle-grade-pt" id="btnToggleGradePt" onclick="toggleGradePoupaTempo();">Ocultar grade do Poupa Tempo</button>
+        <span class="texto-ajuda">Recolhe a grade dos postos PT sem perder os dados já carregados.</span>
+    </div>
+    <?php endif; ?>
     <table id="tabela-<?php echo strtolower(str_replace(' ', '-', $grupo)) ?>" data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>">
         <thead>
             <tr>
@@ -6014,9 +6094,12 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             <?php $dado = $linhaRender['item']; ?>
             <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-linha-inserida="<?php echo !empty($dado['manual_inserido']) ? '1' : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td class="acoes-cell">
+                    <span class="seletor-exclusao-lote-wrap nao-imprimir">
+                        <input type="checkbox" class="selecionar-exclusao-lote" data-codigo="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>" onchange="atualizarEstadoSelecaoExclusao(this)">
+                    </span>
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
                     <label style="margin-right:6px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
-                        <input type="checkbox" class="pt-selecionar" data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" data-pt-classe="<?php echo ((int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) >= 5 && (int)preg_replace('/\D+/', '', (string)$dado['posto_codigo']) <= 80) ? 'capital' : 'interior'; ?>" checked>
+                        <input type="checkbox" class="pt-selecionar" data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>" checked>
                         Selecionar
                     </label>
                     <?php endif; ?>
@@ -6047,7 +6130,13 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 </td>
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
-                    
+                    <button type="button" class="btn-add-below"
+                            data-posto="<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>"
+                            data-grupo="<?php echo htmlspecialchars($grupo, ENT_QUOTES, 'UTF-8') ?>"
+                            data-posicao="abaixo"
+                            onclick="abrirModalInserir(this);">
+                        +Abaixo
+                    </button>
                     <?php elseif ($grupo === 'REGIONAIS'): ?>
                     <button type="button" class="btn-excluir-regional"
                             onclick="excluirPostoRegional('<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>', '<?php echo htmlspecialchars($dado['posto_nome'], ENT_QUOTES, 'UTF-8') ?>');">
@@ -6178,9 +6267,11 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
 <form method="post" id="formExcluirPosto" style="display:none;">
     <input type="hidden" name="excluir_posto" id="excluir_posto_flag" value="">
     <input type="hidden" name="excluir_posto_regional" id="excluir_posto_regional_flag" value="">
+    <input type="hidden" name="excluir_postos_lote" id="excluir_postos_lote_flag" value="">
     <input type="hidden" name="codigo_posto" id="excluir_codigo_posto" value="">
     <input type="hidden" name="grupo_posto" id="excluir_grupo_posto" value="">
     <input type="hidden" name="info_regional" id="excluir_info_regional" value="">
+    <input type="hidden" name="postos_excluir_lote" id="excluir_postos_lote_json" value="">
     <input type="hidden" name="snapshot_lacres" value="">
 </form>
 
@@ -6794,8 +6885,10 @@ function excluirPosto(codigo, grupo, nome) {
         try { if (typeof anexarSnapshotAoForm === 'function' && formExcluir) anexarSnapshotAoForm(formExcluir); } catch (e4) { /* ignore */ }
         document.getElementById('excluir_posto_flag').value = '1';
         document.getElementById('excluir_posto_regional_flag').value = '';
+        document.getElementById('excluir_postos_lote_flag').value = '';
         document.getElementById('excluir_codigo_posto').value = codigo;
         document.getElementById('excluir_grupo_posto').value = grupo;
+        document.getElementById('excluir_postos_lote_json').value = '';
         formExcluir.submit();
     }
 }
@@ -6809,10 +6902,146 @@ function excluirPostoRegional(codigo, nome) {
         try { if (typeof anexarSnapshotAoForm === 'function' && formExcluir) anexarSnapshotAoForm(formExcluir); } catch (e4) { /* ignore */ }
         document.getElementById('excluir_posto_flag').value = '';
         document.getElementById('excluir_posto_regional_flag').value = '1';
+        document.getElementById('excluir_postos_lote_flag').value = '';
         document.getElementById('excluir_codigo_posto').value = codigo;
         document.getElementById('excluir_info_regional').value = nome;
+        document.getElementById('excluir_postos_lote_json').value = '';
         formExcluir.submit();
     }
+}
+
+function obterCheckboxesExclusaoLote() {
+    return document.querySelectorAll('.selecionar-exclusao-lote');
+}
+
+function atualizarEstadoLinhaExclusao(checkbox) {
+    if (!checkbox) return;
+    var linha = checkbox;
+    while (linha && linha.tagName !== 'TR') {
+        linha = linha.parentNode;
+    }
+    if (!linha) return;
+    if (checkbox.checked) {
+        if (linha.className.indexOf('linha-exclusao-lote-selecionada') < 0) {
+            linha.className += ' linha-exclusao-lote-selecionada';
+        }
+    } else {
+        linha.className = linha.className.replace(/\s*linha-exclusao-lote-selecionada/g, '');
+    }
+}
+
+function limparSelecaoExclusaoLote() {
+    var checks = obterCheckboxesExclusaoLote();
+    for (var i = 0; i < checks.length; i++) {
+        checks[i].checked = false;
+        atualizarEstadoLinhaExclusao(checks[i]);
+    }
+}
+
+function obterPostosSelecionadosExclusaoLote() {
+    var checks = obterCheckboxesExclusaoLote();
+    var selecionados = [];
+    var mapa = {};
+    for (var i = 0; i < checks.length; i++) {
+        if (!checks[i].checked) continue;
+        var codigo = String(checks[i].getAttribute('data-codigo') || '').trim();
+        var grupo = String(checks[i].getAttribute('data-grupo') || '').trim();
+        var chave = grupo + '|' + codigo;
+        if (codigo === '' || grupo === '' || mapa[chave]) continue;
+        mapa[chave] = true;
+        selecionados.push({ codigo: codigo, grupo: grupo });
+    }
+    return selecionados;
+}
+
+function atualizarPainelExclusaoLote() {
+    var body = document.body || document.getElementsByTagName('body')[0];
+    var ativo = !!(body && body.className.indexOf('modo-exclusao-lote') >= 0);
+    var btnExecutar = document.getElementById('btnExecutarExclusaoLote');
+    var btnCancelar = document.getElementById('btnCancelarExclusaoLote');
+    var btnToggle = document.getElementById('btnToggleExclusaoLote');
+    var texto = document.getElementById('textoExclusaoLote');
+    var selecionados = obterPostosSelecionadosExclusaoLote();
+
+    if (btnToggle) btnToggle.innerHTML = ativo ? 'Ocultar seleção de exclusão' : 'Selecionar postos para excluir';
+    if (btnExecutar) {
+        btnExecutar.style.display = ativo ? 'inline-block' : 'none';
+        btnExecutar.innerHTML = 'Excluir selecionados (' + selecionados.length + ')';
+        btnExecutar.disabled = !selecionados.length;
+    }
+    if (btnCancelar) btnCancelar.style.display = ativo ? 'inline-block' : 'none';
+    if (texto) {
+        texto.innerHTML = ativo
+            ? 'Marque os postos desejados e clique em excluir selecionados.'
+            : 'Ative o modo de seleção para marcar vários postos e excluí-los de uma vez.';
+    }
+}
+
+function atualizarEstadoSelecaoExclusao(checkbox) {
+    atualizarEstadoLinhaExclusao(checkbox);
+    atualizarPainelExclusaoLote();
+}
+
+function alternarModoExclusaoLote(ativar) {
+    var body = document.body || document.getElementsByTagName('body')[0];
+    if (!body) return false;
+    var ativoAtual = body.className.indexOf('modo-exclusao-lote') >= 0;
+    var novoEstado = typeof ativar === 'boolean' ? ativar : !ativoAtual;
+
+    if (novoEstado) {
+        if (body.className.indexOf('modo-exclusao-lote') < 0) body.className += ' modo-exclusao-lote';
+    } else {
+        body.className = body.className.replace(/\s*modo-exclusao-lote/g, '');
+        limparSelecaoExclusaoLote();
+    }
+
+    atualizarPainelExclusaoLote();
+    return false;
+}
+
+function excluirPostosSelecionadosLote() {
+    var selecionados = obterPostosSelecionadosExclusaoLote();
+    var formExcluir = document.getElementById('formExcluirPosto');
+    if (!selecionados.length) {
+        alert('Selecione ao menos um posto para excluir.');
+        return false;
+    }
+    if (!confirm('Confirma a exclusao de ' + selecionados.length + ' posto(s) selecionado(s)?')) {
+        return false;
+    }
+    try { if (typeof salvarSomenteEtiquetasCorreios === 'function') salvarSomenteEtiquetasCorreios(); } catch (e) { /* ignore */ }
+    try { if (typeof salvarEstadoEtiquetasCorreiosForcado === 'function') salvarEstadoEtiquetasCorreiosForcado(); } catch (e2) { /* ignore */ }
+    try { if (typeof salvarEstadoTemporarioLacres === 'function') salvarEstadoTemporarioLacres(); } catch (e3) { /* ignore */ }
+    try { if (typeof anexarSnapshotAoForm === 'function' && formExcluir) anexarSnapshotAoForm(formExcluir); } catch (e4) { /* ignore */ }
+    document.getElementById('excluir_posto_flag').value = '';
+    document.getElementById('excluir_posto_regional_flag').value = '';
+    document.getElementById('excluir_postos_lote_flag').value = '1';
+    document.getElementById('excluir_codigo_posto').value = '';
+    document.getElementById('excluir_grupo_posto').value = '';
+    document.getElementById('excluir_info_regional').value = '';
+    document.getElementById('excluir_postos_lote_json').value = JSON.stringify(selecionados);
+    formExcluir.submit();
+    return false;
+}
+
+function aplicarEstadoGradePoupaTempo(retraida) {
+    var tabela = document.getElementById('tabela-poupa-tempo');
+    var botao = document.getElementById('btnToggleGradePt');
+    if (!tabela || !botao) return;
+    tabela.style.display = retraida ? 'none' : 'table';
+    botao.innerHTML = retraida ? 'Mostrar grade do Poupa Tempo' : 'Ocultar grade do Poupa Tempo';
+    try {
+        if (window.localStorage) {
+            localStorage.setItem('lacres_pt_grade_retraida', retraida ? '1' : '0');
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function toggleGradePoupaTempo() {
+    var tabela = document.getElementById('tabela-poupa-tempo');
+    if (!tabela) return false;
+    aplicarEstadoGradePoupaTempo(tabela.style.display !== 'none');
+    return false;
 }
 
 // Funcao para limpar todos os inputs de uma coluna em um grupo especifico
@@ -7194,6 +7423,15 @@ function configurarAtribuicaoPlanilhaLacres() {
 
     atualizarInputsTopoPorPlanilha();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    atualizarPainelExclusaoLote();
+    try {
+        aplicarEstadoGradePoupaTempo(window.localStorage && localStorage.getItem('lacres_pt_grade_retraida') === '1');
+    } catch (e) {
+        aplicarEstadoGradePoupaTempo(false);
+    }
+});
 
 // v9.25.23: Ativa recálculo automático apenas para o grupo solicitado
 // Esta função ativa a flag que dispara a lógica v9.13.0 apenas no grupo alvo:
@@ -9069,7 +9307,7 @@ $__pt_datas_join = htmlspecialchars(
 <form id="oficioPTForm" method="post" action="modelo_oficio_poupa_tempo.php" target="_blank" style="display:none;">
   <input type="hidden" name="acao" value="oficio_poupatempo" />
   <input type="hidden" name="pt_datas" value="<?php echo $__pt_datas_join; ?>" />
-        <input type="hidden" name="responsavel" id="oficioPTResponsavel" value="<?php echo htmlspecialchars($responsavel, ENT_QUOTES, 'UTF-8'); ?>" />
+        <input type="hidden" name="responsavel" value="<?php echo htmlspecialchars($responsavel, ENT_QUOTES, 'UTF-8'); ?>" />
     <input type="hidden" name="pt_postos_sel" id="ptPostosSel" value="" />
     <input type="hidden" name="pt_filtrar_nao_conferidos" id="ptFiltroNaoConferidosInput" value="0" />
     <input type="hidden" name="pt_filtrar_sem_oficio" id="ptFiltroSemOficioInput" value="0" />
@@ -9084,42 +9322,28 @@ $__pt_datas_join = htmlspecialchars(
 
 <script>
 (function(){
-    function obterMapaFiltroDigitadoPT() {
+    window.coletarPostosSelecionadosPT = function(){
         var texto = document.getElementById('ptFiltroPostosTexto');
         var listaDigitada = texto ? String(texto.value || '').replace(/[^\d,;\s-]/g, ' ') : '';
-        var mapa = {};
-        if (listaDigitada === '') {
-            return mapa;
-        }
-        var partes = listaDigitada.split(/[,;\s-]+/);
-        for (var p = 0; p < partes.length; p++) {
-            var codigo = partes[p].replace(/\D+/g, '');
-            if (!codigo) continue;
-            mapa[('000' + codigo).slice(-3)] = true;
-        }
-        return mapa;
-    }
-
-    window.coletarPostosSelecionadosPT = function(){
-        var filtroDigitado = obterMapaFiltroDigitadoPT();
-        var usarFiltroDigitado = false;
-        for (var chaveFiltro in filtroDigitado) {
-            if (filtroDigitado.hasOwnProperty(chaveFiltro)) {
-                usarFiltroDigitado = true;
-                break;
+        if (listaDigitada !== '') {
+            var partes = listaDigitada.split(/[,;\s-]+/);
+            var mapa = {};
+            var filtrados = [];
+            for (var p = 0; p < partes.length; p++) {
+                var codigo = partes[p].replace(/\D+/g, '');
+                if (codigo === '') continue;
+                codigo = ('000' + codigo).slice(-3);
+                if (mapa[codigo]) continue;
+                mapa[codigo] = true;
+                filtrados.push(codigo);
             }
+            if (filtrados.length) return filtrados.join(',');
         }
         var nodes = document.querySelectorAll('.pt-selecionar');
         if (!nodes || !nodes.length) return '';
         var selecionados = [];
-        var mapaSelecionados = {};
         for (var i = 0; i < nodes.length; i++) {
-            var codigo = nodes[i].getAttribute('data-posto') || '';
-            if (!codigo || !nodes[i].checked) continue;
-            if (usarFiltroDigitado && !filtroDigitado[codigo]) continue;
-            if (mapaSelecionados[codigo]) continue;
-            mapaSelecionados[codigo] = true;
-            selecionados.push(codigo);
+            if (nodes[i].checked) selecionados.push(nodes[i].getAttribute('data-posto') || '');
         }
         return selecionados.filter(function(v){ return v; }).join(',');
     };
@@ -9131,64 +9355,9 @@ $__pt_datas_join = htmlspecialchars(
         var semOficio = document.getElementById('ptFiltroSemOficio');
         var inputNaoConf = document.getElementById('ptFiltroNaoConferidosInput');
         var inputSemOficio = document.getElementById('ptFiltroSemOficioInput');
-        var inputResponsavel = document.getElementById('oficioPTResponsavel');
-        var responsavelTela = document.getElementById('responsavel_principal');
         if (inputNaoConf) inputNaoConf.value = (naoConf && naoConf.checked) ? '1' : '0';
         if (inputSemOficio) inputSemOficio.value = (semOficio && semOficio.checked) ? '1' : '0';
-        if (inputResponsavel && responsavelTela) inputResponsavel.value = String(responsavelTela.value || '').trim();
     };
-
-    function marcarGrupoPT(classe, marcado) {
-        var nodes = document.querySelectorAll('.pt-selecionar[data-pt-classe="' + classe + '"]');
-        for (var i = 0; i < nodes.length; i++) {
-            nodes[i].checked = !!marcado;
-        }
-    }
-
-    function sincronizarMarcadoresPT() {
-        var capital = document.querySelectorAll('.pt-selecionar[data-pt-classe="capital"]');
-        var interior = document.querySelectorAll('.pt-selecionar[data-pt-classe="interior"]');
-        var marcarCapital = document.getElementById('ptMarcarCapital');
-        var marcarInterior = document.getElementById('ptMarcarInterior');
-        var todosCapital = capital.length > 0;
-        var todosInterior = interior.length > 0;
-        for (var i = 0; i < capital.length; i++) {
-            if (!capital[i].checked) {
-                todosCapital = false;
-                break;
-            }
-        }
-        for (var j = 0; j < interior.length; j++) {
-            if (!interior[j].checked) {
-                todosInterior = false;
-                break;
-            }
-        }
-        if (marcarCapital) marcarCapital.checked = todosCapital;
-        if (marcarInterior) marcarInterior.checked = todosInterior;
-    }
-
-    document.addEventListener('change', function(evento) {
-        var alvo = evento.target;
-        if (!alvo) return;
-        if (alvo.id === 'ptMarcarCapital') {
-            marcarGrupoPT('capital', alvo.checked);
-            return;
-        }
-        if (alvo.id === 'ptMarcarInterior') {
-            marcarGrupoPT('interior', alvo.checked);
-            return;
-        }
-        if (alvo.classList && alvo.classList.contains('pt-selecionar')) {
-            sincronizarMarcadoresPT();
-        }
-    });
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', sincronizarMarcadoresPT);
-    } else {
-        sincronizarMarcadoresPT();
-    }
 })();
 
 (function(){
