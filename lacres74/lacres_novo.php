@@ -1966,9 +1966,23 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
         }
 
-        // --- FONTE 2: array POST etiqueta_correios[p_POSTO] (fallback)
-        if (empty($todasEtiquetas) && isset($etiquetas) && is_array($etiquetas)) {
+        // --- FONTE 2: array POST etiqueta_correios[p_POSTO]
+        if (isset($etiquetas) && is_array($etiquetas)) {
             foreach ($etiquetas as $posto_code => $etiqueta_val) {
+                $eti_raw2 = trim((string)$etiqueta_val);
+                if ($eti_raw2 === '') continue;
+                $eti_str2 = preg_replace('/\D+/', '', $eti_raw2);
+                $eti_key2 = (strlen($eti_str2) === 35) ? $eti_str2 : $eti_raw2;
+                $posto_fb = preg_replace('/^p_/i', '', (string)$posto_code);
+                if (!isset($todasEtiquetas[$eti_key2])) {
+                    $todasEtiquetas[$eti_key2] = ($posto_fb !== '') ? $posto_fb : null;
+                }
+            }
+        }
+
+        // --- FONTE 2.1: etiquetas de sessão para evitar perder valores de tela
+        if (!empty($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
+            foreach ($_SESSION['etiquetas'] as $posto_code => $etiqueta_val) {
                 $eti_raw2 = trim((string)$etiqueta_val);
                 if ($eti_raw2 === '') continue;
                 $eti_str2 = preg_replace('/\D+/', '', $eti_raw2);
@@ -6366,7 +6380,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
             <?php continue; ?>
             <?php endif; ?>
             <?php $dado = $linhaRender['item']; ?>
-            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-linha-inserida="<?php echo !empty($dado['manual_inserido']) ? '1' : '0' ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
+            <tr data-posto-codigo="<?php echo $dado['posto_codigo'] ?>" data-grupo="<?php echo $grupo ?>" data-regional="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-regional-codigo="<?php echo isset($dado['regional']) ? htmlspecialchars($dado['regional'], ENT_QUOTES, 'UTF-8') : '0' ?>" data-linha-inserida="<?php echo !empty($dado['manual_inserido']) ? '1' : '0' ?>" data-linha-ordem="<?php echo $key ?>" <?php if ($grupo === 'CENTRAL IIPR'): ?>class="linha-central" data-central-index="<?php echo $key ?>"<?php endif; ?>>
                 <td class="acoes-cell">
                     <?php if ($grupo === 'POUPA TEMPO'): ?>
                     <label style="margin-right:6px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">
@@ -6633,6 +6647,9 @@ document.addEventListener('DOMContentLoaded', function() {
     ligarUndo('input.lacre');
     ligarUndo('input.etiqueta-barras');
     _atualizarBtnUndo();
+    if (typeof mostrarAvisoPostosDuplicados === 'function') {
+        mostrarAvisoPostosDuplicados();
+    }
 
     // Observar novas linhas adicionadas à grade
     var tabela = document.querySelector('table.quadro-tabela') || document.querySelector('form table');
@@ -6705,6 +6722,7 @@ function prepararLacresCorreiosParaSubmit(form) {
             posto: posto,
             grupo: grupo,
             regional: regional,
+            linha_ordem: tr.getAttribute('data-linha-ordem') || r,
             lacre_iipr: valI,
             lacre_correios: valC,
             etiqueta_correios: valE
@@ -6725,6 +6743,53 @@ function prepararLacresCorreiosParaSubmit(form) {
     snapshotInput.name = 'snapshot_oficio';
     snapshotInput.value = JSON.stringify(snapshot);
     form.appendChild(snapshotInput);
+}
+
+function mostrarAvisoPostosDuplicados() {
+    var rows = document.querySelectorAll('tr[data-posto-codigo]');
+    if (!rows || rows.length === 0) return;
+
+    var contPostos = {};
+    var contRegionais = {};
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        var posto = (row.getAttribute('data-posto-codigo') || '').trim();
+        var grupo = (row.getAttribute('data-grupo') || '').trim();
+        var regional = (row.getAttribute('data-regional') || '').trim();
+        if (posto !== '') {
+            contPostos[posto] = (contPostos[posto] || 0) + 1;
+        }
+        if (grupo === 'REGIONAIS' && regional !== '') {
+            contRegionais[regional] = (contRegionais[regional] || 0) + 1;
+        }
+    }
+
+    var mensagens = [];
+    for (var p in contPostos) {
+        if (contPostos.hasOwnProperty(p) && contPostos[p] > 1) {
+            mensagens.push('Posto ' + p + ' tem ' + contPostos[p] + ' linhas');
+        }
+    }
+    for (var r in contRegionais) {
+        if (contRegionais.hasOwnProperty(r) && contRegionais[r] > 1) {
+            mensagens.push('Regional ' + r + ' tem ' + contRegionais[r] + ' linhas');
+        }
+    }
+    if (mensagens.length === 0) return;
+
+    var aviso = document.getElementById('aviso-postos-duplicados');
+    if (!aviso) {
+        aviso = document.createElement('div');
+        aviso.id = 'aviso-postos-duplicados';
+        aviso.style.cssText = 'background:#fff3cd;border:1px solid #e0a800;color:#856404;padding:10px;margin:10px 0;border-radius:4px;font-size:13px;';
+        var form = document.getElementById('formOficioCorreios') || document.body;
+        if (form.parentNode) {
+            form.parentNode.insertBefore(aviso, form);
+        } else {
+            document.body.insertBefore(aviso, document.body.firstChild);
+        }
+    }
+    aviso.textContent = 'Atenção: ' + mensagens.join('; ') + '. Verifique a conferência linha a linha para associar lotes a cada display.';
 }
 
 // v8.11: Persistencia de lacres/etiquetas em localStorage
@@ -9331,7 +9396,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         } else {
                             // ainda há linhas anteriores pendentes -> avisar e exigir conferência
                             var textoAlerta = 'Display do posto ' + res.posto + ' (confirme linha)';
-                            var textoAudio = 'display de outro posto ' + res.posto;
+                            var textoAudio = 'display do posto ' + res.posto;
                             if (String(res.posto).toLowerCase().indexOf('central') >= 0) {
                                 textoAlerta = 'Display da central (confirme linha)';
                                 textoAudio = 'display da central';
@@ -9346,7 +9411,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     // Caso padrão: posto diferente -> alerta; posto igual (única linha) -> ok
                     if (postoEtiq !== postoLn) {
                         var textoAlerta = 'Display do posto ' + res.posto;
-                        var textoAudio = 'display de outro posto ' + res.posto;
+                        var textoAudio = 'display do posto ' + res.posto;
                         if (String(res.posto).toLowerCase().indexOf('central') >= 0) {
                             textoAlerta = 'Display da central';
                             textoAudio = 'display da central';
@@ -9498,15 +9563,34 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (totalOcorrencias > 1) {
                     var jaConfirmado = this.getAttribute('data-dup-confirmado') === '1';
                     var manterDuplicada = jaConfirmado;
+
+                    // coletar postos conflitantes para informar no modal e no áudio
+                    var postosConflitantes = [];
+                    for (var k = 0; k < etiquetasValidaveis.length; k++) {
+                        var oi = etiquetasValidaveis[k];
+                        var ov = (oi.value || '').trim();
+                        if (ov === valorAtual && oi !== this) {
+                            var postoIdx = oi.getAttribute('data-indice') || oi.getAttribute('data-indice');
+                            if (postoIdx && postosConflitantes.indexOf(postoIdx) === -1) postosConflitantes.push(postoIdx);
+                        }
+                    }
+                    var postosMsg = postosConflitantes.join(', ');
+
                     if (!jaConfirmado) {
-                        manterDuplicada = confirm('Etiqueta repetida detectada. Deseja manter este mesmo display em mais de um posto?');
+                        var confirmMsg = postosConflitantes.length > 1 ? ('Etiqueta encontrada nos postos: ' + postosMsg + '. Deseja mantê-la em mais de um posto?') : ('Etiqueta encontrada no posto ' + postosMsg + '. Deseja mantê-la em mais de um posto?');
+                        manterDuplicada = confirm(confirmMsg);
+
+                        // falar o aviso com o primeiro posto conflitante (se houver)
+                        if (postosConflitantes.length > 0) {
+                            try { falarTexto('display do posto ' + postosConflitantes[0]); } catch (e) {}
+                        }
                     }
 
                     if (manterDuplicada) {
                         this.setAttribute('data-dup-confirmado', '1');
                         this.style.background = '#fff3cd';
                         var alertaDivDup = document.getElementById('alerta-' + indice);
-                        mostrarAlertaDuplicata(alertaDivDup, 'Etiqueta repetida (confirmada).');
+                        mostrarAlertaDuplicata(alertaDivDup, 'Etiqueta confirmada em mais de um posto.');
                         focarProximaEtiqueta(this);
                     } else {
                         // Limpar apenas o campo atual, sem reverter a anteriores
