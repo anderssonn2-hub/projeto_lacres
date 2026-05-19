@@ -677,7 +677,37 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'verificar_etiqueta') {
         if ($row && isset($row['posto']) && trim($row['posto']) !== '') {
             echo json_encode(array('ok' => true, 'posto' => trim($row['posto'])));
         } else {
-            echo json_encode(array('ok' => true, 'posto' => null));
+            // Fallback adicional: checar inventário local de displays (arquivo texto)
+            $inventarioFile = __DIR__ . DIRECTORY_SEPARATOR . 'Inventário de displays na empresa.txt';
+            $postoEncontrado = null;
+            if (is_readable($inventarioFile)) {
+                $fh = @fopen($inventarioFile, 'r');
+                if ($fh) {
+                    $postoAtual = null;
+                    while (($line = fgets($fh)) !== false) {
+                        $line = trim($line);
+                        if ($line === '') continue;
+                        // linhas que começam com 'posto <n>' definem o posto corrente
+                        if (preg_match('/^posto\\s+(\\d+)/i', $line, $m)) {
+                            $postoAtual = str_pad($m[1], 3, '0', STR_PAD_LEFT);
+                            continue;
+                        }
+                        // comparar conteúdo numérico da linha com a leitura
+                        $linha_digits = preg_replace('/\\D+/', '', $line);
+                        if ($linha_digits !== '' && $linha_digits === $leitura) {
+                            $postoEncontrado = $postoAtual;
+                            break;
+                        }
+                    }
+                    fclose($fh);
+                }
+            }
+
+            if ($postoEncontrado) {
+                echo json_encode(array('ok' => true, 'posto' => $postoEncontrado));
+            } else {
+                echo json_encode(array('ok' => true, 'posto' => null));
+            }
         }
     } catch (Exception $e) {
         echo json_encode(array('ok' => false, 'msg' => 'Erro BD'));
@@ -1550,6 +1580,33 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
         $totalLotes = 0;
         $etiquetas_debug = array();
         $lotes_processados = array();
+
+        // Contar quantas linhas do snapshot existem por posto e por regional
+        $snapshot_counts_postos = array();
+        $snapshot_counts_regionais = array();
+        if (!empty($snapshot) && is_array($snapshot)) {
+            foreach ($snapshot as $sln) {
+                $posto_raw = isset($sln['posto']) ? trim((string)$sln['posto']) : '';
+                if ($posto_raw !== '') {
+                    if (preg_match('/^M/i', $posto_raw)) {
+                        $posto_key = $posto_raw;
+                    } else {
+                        $posto_key = str_pad(preg_replace('/\D+/', '', $posto_raw), 3, '0', STR_PAD_LEFT);
+                    }
+                    if ($posto_key !== '') {
+                        if (!isset($snapshot_counts_postos[$posto_key])) $snapshot_counts_postos[$posto_key] = 0;
+                        $snapshot_counts_postos[$posto_key]++;
+                    }
+                }
+                $regional_raw = isset($sln['regional']) ? trim((string)$sln['regional']) : '';
+                if ($regional_raw !== '') {
+                    $reg_key = ltrim($regional_raw, '0');
+                    if ($reg_key === '') $reg_key = '0';
+                    if (!isset($snapshot_counts_regionais[$reg_key])) $snapshot_counts_regionais[$reg_key] = 0;
+                    $snapshot_counts_regionais[$reg_key]++;
+                }
+            }
+        }
         
         while ($l = $stmtLotes->fetch(PDO::FETCH_ASSOC)) {
             // O posto do lote ja vem com LPAD do SQL (ex: "041")
@@ -1610,7 +1667,8 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $origem_lacre = ''; // Para debug
             
             // Prioridade 1: posto visível em CAPITAL (valores EXATOS do input)
-            if (isset($mapaCapital[$posto_lote])) {
+            // Se houver mais de uma linha no snapshot para este posto, NÃO associar automaticamente
+            if (isset($mapaCapital[$posto_lote]) && (!isset($snapshot_counts_postos[$posto_lote]) || $snapshot_counts_postos[$posto_lote] <= 1)) {
                 $lacreIIPR_lote       = (int)$mapaCapital[$posto_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = (int)$mapaCapital[$posto_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaCapital[$posto_lote]['etiqueta_correios'];
@@ -1618,7 +1676,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $origem_lacre = 'CAPITAL';
             }
             // Prioridade 2: posto visível em CENTRAL IIPR (valores EXATOS do input)
-            elseif (isset($mapaCentral[$posto_lote])) {
+            elseif (isset($mapaCentral[$posto_lote]) && (!isset($snapshot_counts_postos[$posto_lote]) || $snapshot_counts_postos[$posto_lote] <= 1)) {
                 $lacreIIPR_lote       = (int)$mapaCentral[$posto_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = (int)$mapaCentral[$posto_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaCentral[$posto_lote]['etiqueta_correios'];
@@ -1626,7 +1684,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                 $origem_lacre = 'CENTRAL';
             }
             // Prioridade 3: REGIONAIS - expande postos da regional (valores EXATOS do input)
-            elseif ($regional_lote !== '' && $regional_lote !== '0' && isset($mapaRegional[$regional_lote])) {
+            elseif ($regional_lote !== '' && $regional_lote !== '0' && isset($mapaRegional[$regional_lote]) && (!isset($snapshot_counts_regionais[$regional_lote]) || $snapshot_counts_regionais[$regional_lote] <= 1)) {
                 $lacreIIPR_lote       = (int)$mapaRegional[$regional_lote]['lacre_iipr'];
                 $lacreCorreios_lote   = (int)$mapaRegional[$regional_lote]['lacre_correios'];
                 $etiquetaCorreios_lote = $mapaRegional[$regional_lote]['etiqueta_correios'];
