@@ -623,8 +623,15 @@ function buscarPostoNoInventario($leitura) {
         if ($line === '') {
             continue;
         }
-        if (preg_match('/^posto\s+(\d+)/i', $line, $m)) {
-            $postoAtual = str_pad($m[1], 3, '0', STR_PAD_LEFT);
+        if (preg_match('/^posto\s+(.+)$/i', $line, $m)) {
+            $rawPosto = trim($m[1]);
+            if ($rawPosto !== '') {
+                if (preg_match('/^\d+$/', $rawPosto)) {
+                    $postoAtual = str_pad(ltrim($rawPosto, '0'), 3, '0', STR_PAD_LEFT);
+                } else {
+                    $postoAtual = strtoupper($rawPosto);
+                }
+            }
             continue;
         }
         $linha_digits = preg_replace('/\D+/', '', $line);
@@ -1966,9 +1973,23 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             }
         }
 
-        // --- FONTE 2: array POST etiqueta_correios[p_POSTO]
+        // --- FONTE 2: array POST etiqueta_correios[p_POSTO] ou etiqueta_correios[]
         if (isset($etiquetas) && is_array($etiquetas)) {
             foreach ($etiquetas as $posto_code => $etiqueta_val) {
+                $eti_raw2 = trim((string)$etiqueta_val);
+                if ($eti_raw2 === '') continue;
+                $eti_str2 = preg_replace('/\D+/', '', $eti_raw2);
+                $eti_key2 = (strlen($eti_str2) === 35) ? $eti_str2 : $eti_raw2;
+                $posto_fb = preg_replace('/^p_/i', '', (string)$posto_code);
+                if (!isset($todasEtiquetas[$eti_key2])) {
+                    $todasEtiquetas[$eti_key2] = ($posto_fb !== '') ? $posto_fb : null;
+                }
+            }
+        }
+
+        // --- FONTE 2.0: etiquetas POST sem chave de posto (fallback para inputs antigos ou arrays numerados)
+        if (isset($etiquetas_raw) && is_array($etiquetas_raw)) {
+            foreach ($etiquetas_raw as $posto_code => $etiqueta_val) {
                 $eti_raw2 = trim((string)$etiqueta_val);
                 if ($eti_raw2 === '') continue;
                 $eti_str2 = preg_replace('/\D+/', '', $eti_raw2);
