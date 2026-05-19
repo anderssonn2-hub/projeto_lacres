@@ -9544,7 +9544,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 atualizarProgressoPopup(valor.length);
                 
                 if (valor.length >= 35) {
-                    // Disparar blur para que a validação execute
+                    // Disparar a validação imediatamente e em seguida o blur para avançar
+                    verificarDisplayPosto(this);
                     this.blur();
                 }
             });
@@ -9563,6 +9564,12 @@ document.addEventListener("DOMContentLoaded", function() {
                     var alertaDiv = document.getElementById('alerta-' + indice);
                     if (alertaDiv) { alertaDiv.style.display = 'none'; alertaDiv.textContent = ''; }
                     return;
+                }
+
+                // Garantir sempre validar display ao sair do campo, quando a etiqueta tiver 35 dígitos.
+                var valorDigits = valorAtual.replace(/\D/g, '');
+                if (valorDigits.length === 35) {
+                    verificarDisplayPosto(this);
                 }
                 
                 // v8.3 CORRIGIDA: Contar ocorrências deste valor em CAPITAL (regional=0) + REGIONAIS, excluindo CENTRAL IIPR
