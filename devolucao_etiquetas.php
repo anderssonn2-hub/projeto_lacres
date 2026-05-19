@@ -231,16 +231,42 @@ if ($dbOk && $_SERVER['REQUEST_METHOD']==='POST') {
         $status = ($lote!=='') ? buscarStatusLote($pdo,$lote) : array();
         echo json_encode(array('ok'=>true,'rows'=>$rows,'lote'=>$lote,'status'=>$status));
         exit;
-    } elseif ($acao==='historico') {
-        header('Content-Type: application/json; charset=UTF-8');
-        $leit = preg_replace('/\D+/','',(string)(isset($_POST['leitura'])?$_POST['leitura']:''));
-        $hist = array();
-        if (strlen($leit)===35) {
-            $s=$pdo->prepare("SELECT tipo,login,DATE(data) AS data_mov,observacao FROM ciMalotes WHERE leitura=? ORDER BY id ASC");
-            $s->execute(array($leit)); $hist=$s->fetchAll();
+    } elseif ($acao==='buscar_pares') {
+      header('Content-Type: application/json; charset=UTF-8');
+      $leit = preg_replace('/\D+/','',(string)(isset($_POST['leitura'])?$_POST['leitura']:''));
+      $limit = isset($_POST['limit']) && (int)$_POST['limit']>0 ? (int)$_POST['limit'] : 3;
+      $pares = array();
+      if (strlen($leit)===35) {
+        $sql = "SELECT id,posto,login,DATE(data) AS data_mov FROM ciMalotes WHERE leitura=? AND tipo=1 ORDER BY id DESC LIMIT " . (int)$limit;
+        $s = $pdo->prepare($sql);
+        $s->execute(array($leit));
+        $sends = $s->fetchAll(PDO::FETCH_ASSOC);
+        $getReturn = $pdo->prepare("SELECT id,posto,login,DATE(data) AS data_mov FROM ciMalotes WHERE leitura=? AND tipo=2 AND id > ? ORDER BY id ASC LIMIT 1");
+        $getLote  = $pdo->prepare("SELECT cdl.lote, cdl.id AS cdl_id, cdl.id_despacho, cd.grupo, COALESCE(cd.usuario,'') AS oficio_usuario, COALESCE(cd.criado_em,'') AS oficio_criado_em FROM ciDespachoLotes cdl LEFT JOIN ciDespachos cd ON cd.id = cdl.id_despacho WHERE cdl.etiqueta_correios=? ORDER BY cdl.id DESC LIMIT 1");
+        foreach ($sends as $sd) {
+          $ret = null;
+          $getReturn->execute(array($leit, $sd['id']));
+          $rrow = $getReturn->fetch(PDO::FETCH_ASSOC);
+          if ($rrow) {
+            $ret = array('id'=>$rrow['id'],'posto'=>$rrow['posto'],'usuario'=>$rrow['login'],'data'=>$rrow['data_mov']);
+          }
+          $getLote->execute(array($leit));
+          $lrow = $getLote->fetch(PDO::FETCH_ASSOC);
+          $pares[] = array('envio'=>array('id'=>$sd['id'],'posto'=>$sd['posto'],'usuario'=>$sd['login'],'data'=>$sd['data_mov']), 'retorno'=>$ret, 'lote'=>$lrow);
         }
-        echo json_encode(array('ok'=>true,'historico'=>$hist));
-        exit;
+      }
+      echo json_encode(array('ok'=>true,'pares'=>$pares));
+      exit;
+    } elseif ($acao==='historico') {
+      header('Content-Type: application/json; charset=UTF-8');
+      $leit = preg_replace('/\D+/','',(string)(isset($_POST['leitura'])?$_POST['leitura']:''));
+      $hist = array();
+      if (strlen($leit)===35) {
+        $s=$pdo->prepare("SELECT tipo,login,DATE(data) AS data_mov,observacao FROM ciMalotes WHERE leitura=? ORDER BY id ASC");
+        $s->execute(array($leit)); $hist=$s->fetchAll();
+      }
+      echo json_encode(array('ok'=>true,'historico'=>$hist));
+      exit;
     }
     if (isset($_POST['ajax'])&&$_POST['ajax']==='1') {
         header('Content-Type: application/json; charset=UTF-8');
@@ -277,7 +303,7 @@ $dias_label = array(0=>'Todos',30=>'30 dias',60=>'60 dias',90=>'90 dias');
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Controle de Etiquetas Correios v1.2.2</title>
+<title>Controle de Etiquetas Correios v1.0.12</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:"Trebuchet MS","Segoe UI",Arial,sans-serif;background:#eef2f7;color:#1a2b3c;min-height:100vh;}
@@ -369,7 +395,7 @@ body.dark .filtro-btn.ativo{background:#0b3d91;color:#fff;}
 <body>
 <div class="topbar">
   <a class="home" href="inicio.php">&#8592; Início</a>
-  <h1>&#128230; Controle de Etiquetas Correios</h1><span style="font-size:11px;opacity:.7;margin-left:8px;">v1.2.2</span>
+  <h1>&#128230; Controle de Etiquetas Correios</h1><span style="font-size:11px;opacity:.7;margin-left:8px;">v1.0.12</span>
   <span style="font-size:11px;opacity:.7;">v2.1</span>
 </div>
 
@@ -586,6 +612,17 @@ body.dark .filtro-btn.ativo{background:#0b3d91;color:#fff;}
   </div>
 
   <!-- Histórico por etiqueta -->
+  <div class="card">
+    <h2>&#128269; Pesquisar Display (envio / retorno)</h2>
+    <div class="search-row">
+      <input type="text" id="inputPares" maxlength="35" class="input-etiq" placeholder="Cole ou escaneie a etiqueta (35 dígitos)" style="font-size:12px;letter-spacing:.5px;">
+      <input type="number" id="inputLimit" min="1" max="10" value="3" style="width:80px;padding:9px;border:2px solid #b0c4d8;border-radius:8px;font-size:13px;">
+      <button class="btn-buscar" onclick="consultarPares()">Pesquisar</button>
+    </div>
+    <div id="pares-resultado" class="resultado-busca"></div>
+  </div>
+
+  <!-- Histórico por etiqueta (completo) -->
   <div class="card">
     <h2>&#128269; Histórico de uma etiqueta</h2>
     <div class="search-row">
@@ -814,6 +851,42 @@ body.dark .filtro-btn.ativo{background:#0b3d91;color:#fff;}
         html+='</tbody></table>';
         el.innerHTML=html;
       });
+  };
+
+  /* ── CONSULTAR PARES ENVIO/RETORNO ── */
+  window.consultarPares = function() {
+    var inp=document.getElementById('inputPares'); if(!inp) return;
+    var leit=inp.value.replace(/\D+/g,'');
+    if(leit.length!==35){alert('Informe 35 digitos.');return;}
+    var lim = parseInt((document.getElementById('inputLimit')||{}).value,10) || 3;
+    var el=document.getElementById('pares-resultado'); if(!el) return;
+    el.innerHTML='<em>Buscando...</em>';
+    var fd=new FormData(); fd.append('acao','buscar_pares'); fd.append('leitura',leit); fd.append('limit',String(lim));
+    fetch(window.location.pathname,{method:'POST',body:fd,credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(!d.pares||d.pares.length===0){ el.innerHTML='<p style="color:#888;margin-top:8px;">Nenhum par encontrado para esta etiqueta.</p>'; return; }
+        var html='<p style="font-size:12px;margin-bottom:8px;font-weight:700;color:#3a5068;">Resultados (ultimos '+d.pares.length+' envios)</p>';
+        html+='<table class="tabela"><thead><tr><th>#</th><th>Envio</th><th>Retorno</th><th>Posto</th><th>Etiqueta</th><th>Lote</th><th>Ofício</th></tr></thead><tbody>';
+        for(var i=0;i<d.pares.length;i++){
+          var p=d.pares[i];
+          var envio = p.envio || {};
+          var retorno = p.retorno || null;
+          var lote = (p.lote && p.lote.lote) ? p.lote.lote : '-';
+          var oficio = (p.lote && p.lote.id_despacho) ? ('#'+p.lote.id_despacho+' '+(p.lote.oficio_usuario||'')) : '-';
+          html+='<tr>'
+            +'<td>'+(i+1)+'</td>'
+            +'<td style="white-space:nowrap;">&#8593; '+(envio.data||'-')+' '+(envio.usuario?'<br><small>'+envio.usuario+'</small>':'')+'</td>'
+            +'<td style="white-space:nowrap;">'+(retorno?('&#8595; '+(retorno.data||'-')+'<br><small>'+(retorno.usuario||'')+'</small>'):'<span style="color:#888">—</span>')+'</td>'
+            +'<td>'+(envio.posto||(retorno?retorno.posto:'-')||'-')+'</td>'
+            +'<td class="mono">'+(document.getElementById('inputPares')?esc(document.getElementById('inputPares').value):'-')+'</td>'
+            +'<td>'+lote+'</td>'
+            +'<td>'+esc(oficio)+'</td>'
+            +'</tr>';
+        }
+        html+='</tbody></table>';
+        el.innerHTML=html;
+      }).catch(function(){ el.innerHTML='<p style="color:#c62828;">Falha de comunicacao.</p>'; });
   };
 
   /* Enter nos campos de pesquisa */

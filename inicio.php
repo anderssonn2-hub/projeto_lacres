@@ -1,5 +1,5 @@
 <?php
-/* inicio.php — v1.2.2 */
+/* inicio.php — v1.0.12 */
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -113,7 +113,7 @@
         <h1>Projeto Lacres</h1>
         <div class="sub">Selecione um tema e inicie sua rotina.</div>
       </div>
-      <div class="version">v1.2.2</div>
+      <div class="version">v1.0.12</div>
     </div>
 
     <div class="quadrants">
@@ -221,9 +221,9 @@
         </div>
       </section>
 
-      <!-- Q4: Etiquetas Correios -->
+      <!-- Q4: DISPLAY CORREIOS (PESQUISA E ADMINISTRAÇÃO) -->
       <section class="quadrant">
-        <h2>Etiquetas Correios</h2>
+        <h2>DISPLAY CORREIOS (PESQUISA E ADMINISTRAÇÃO)</h2>
         <div class="actions">
           <a class="btn btn-devol" href="devolucao_etiquetas.php">
             Devolucao de etiquetas
