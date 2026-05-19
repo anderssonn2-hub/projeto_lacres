@@ -1840,6 +1840,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $data_malote = date('Y-m-d');
         $etiquetas_salvas = 0;
+        $etiquetas_ignoras = array();
         // Mapa final: leitura => posto_code
         $todasEtiquetas = array();
 
@@ -1898,14 +1899,14 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             } catch (Exception $eMal) { /* continua sem lote */ }
         }
 
-        // --- INSERIR em ciMalotes com verificação de duplicata
-        $stmtDupChk = $pdo_controle->prepare('SELECT COUNT(*) FROM ciMalotes WHERE leitura = ? AND tipo = 1');
+        // --- INSERIR em ciMalotes com verificação de duplicata somente no mesmo dia
+        $stmtDupChk = $pdo_controle->prepare('SELECT COUNT(*) FROM ciMalotes WHERE leitura = ? AND tipo = 1 AND DATE(data) = ?');
         foreach ($todasEtiquetas as $eti => $posto_malote) {
             $eti = (string)$eti;
             $eti_digits = preg_replace('/\D+/', '', $eti);
             $cep        = strlen($eti_digits) >= 8 ? substr($eti_digits, 0, 8) : substr($eti, 0, 8);
             $sequencial = strlen($eti_digits) >= 5 ? substr($eti_digits, -5) : substr($eti, -5);
-            $stmtDupChk->execute(array($eti));
+            $stmtDupChk->execute(array($eti, $data_malote));
             if ((int)$stmtDupChk->fetchColumn() === 0) {
                 $stmtMalotes->execute(array(
                     $eti,          // leitura
@@ -1918,7 +1919,13 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
                     $posto_malote  // posto
                 ));
                 $etiquetas_salvas++;
+            } else {
+                $etiquetas_ignoras[] = $eti;
             }
+        }
+
+        if (!empty($etiquetas_ignoras)) {
+            add_debug('V1.0.12 - Etiquetas ignoradas por duplicata mesmo dia', $etiquetas_ignoras);
         }
         
         $pdo_controle->commit();
