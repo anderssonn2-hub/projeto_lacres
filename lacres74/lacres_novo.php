@@ -604,6 +604,90 @@ function json_encode_legado_seguro($valor, $opcoes) {
     return $json;
 }
 
+function buscarPostoNoInventario($leitura) {
+    $leitura = preg_replace('/\D+/', '', (string)$leitura);
+    if (strlen($leitura) !== 35) {
+        return null;
+    }
+    $inventarioFile = __DIR__ . DIRECTORY_SEPARATOR . 'Inventário de displays na empresa.txt';
+    if (!is_readable($inventarioFile)) {
+        return null;
+    }
+    $fh = @fopen($inventarioFile, 'r');
+    if (!$fh) {
+        return null;
+    }
+    $postoAtual = null;
+    while (($line = fgets($fh)) !== false) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        if (preg_match('/^posto\s+(\d+)/i', $line, $m)) {
+            $postoAtual = str_pad($m[1], 3, '0', STR_PAD_LEFT);
+            continue;
+        }
+        $linha_digits = preg_replace('/\D+/', '', $line);
+        if ($linha_digits !== '' && $linha_digits === $leitura) {
+            fclose($fh);
+            return $postoAtual;
+        }
+    }
+    fclose($fh);
+    return null;
+}
+
+function normalizarPostoCodigo($posto) {
+    $posto = trim((string)$posto);
+    if ($posto === '') {
+        return '';
+    }
+    if (preg_match('/^p_/i', $posto)) {
+        $posto = preg_replace('/^p_/i', '', $posto);
+    }
+    if (preg_match('/[A-Za-z]/', $posto)) {
+        return strtoupper($posto);
+    }
+    $posto = preg_replace('/\D+/', '', $posto);
+    $posto = preg_replace('/^0+/', '', $posto);
+    return $posto !== '' ? $posto : '';
+}
+
+function buscarPostoPorLeitura($leitura) {
+    global $pdo_controle;
+    $leitura = preg_replace('/\D+/', '', (string)$leitura);
+    if (strlen($leitura) !== 35) {
+        return null;
+    }
+    if (!isset($pdo_controle) || !($pdo_controle instanceof PDO)) {
+        return buscarPostoNoInventario($leitura);
+    }
+    try {
+        $st = $pdo_controle->prepare('SELECT posto FROM cadastroMalotes WHERE leitura = ? ORDER BY id DESC LIMIT 1');
+        $st->execute(array($leitura));
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !isset($row['posto']) || trim($row['posto']) === '') {
+            $cep = substr($leitura, 0, 8);
+            $seq = substr($leitura, -5);
+            $st2 = $pdo_controle->prepare('SELECT posto FROM cadastroMalotes WHERE cep = ? AND sequencial = ? ORDER BY id DESC LIMIT 1');
+            $st2->execute(array($cep, $seq));
+            $row = $st2->fetch(PDO::FETCH_ASSOC);
+        }
+        if ((!$row || !isset($row['posto']) || trim($row['posto']) === '') && strlen($leitura) >= 8) {
+            $cep = substr($leitura, 0, 8);
+            $st3 = $pdo_controle->prepare('SELECT posto FROM cadastroMalotes WHERE cep = ? ORDER BY id DESC LIMIT 1');
+            $st3->execute(array($cep));
+            $row = $st3->fetch(PDO::FETCH_ASSOC);
+        }
+        if ($row && isset($row['posto']) && trim($row['posto']) !== '') {
+            return normalizarPostoCodigo($row['posto']);
+        }
+    } catch (Exception $e) {
+        // ignore and fallback to inventory
+    }
+    return buscarPostoNoInventario($leitura);
+}
+
 if (!isset($_SESSION['etiquetas'])) $_SESSION['etiquetas'] = array();
 if (!isset($_SESSION['linhas_removidas'])) $_SESSION['linhas_removidas'] = array();
 if (!isset($_SESSION['lacres_personalizados'])) $_SESSION['lacres_personalizados'] = array();
@@ -661,53 +745,11 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'verificar_etiqueta') {
     $cep_etiq = substr($leitura, 0, 8);
     $seq_etiq  = substr($leitura, -5);
     try {
-        $st = $pdo_controle->prepare(
-            'SELECT posto FROM cadastroMalotes WHERE cep=? AND sequencial=? ORDER BY id DESC LIMIT 1'
-        );
-        $st->execute(array($cep_etiq, $seq_etiq));
-        $row = $st->fetch(PDO::FETCH_ASSOC);
-        if (!$row) {
-            // Fallback: só pelo CEP
-            $st2 = $pdo_controle->prepare(
-                'SELECT posto FROM cadastroMalotes WHERE cep=? ORDER BY id DESC LIMIT 1'
-            );
-            $st2->execute(array($cep_etiq));
-            $row = $st2->fetch(PDO::FETCH_ASSOC);
-        }
-        if ($row && isset($row['posto']) && trim($row['posto']) !== '') {
-            echo json_encode(array('ok' => true, 'posto' => trim($row['posto'])));
+        $posto = buscarPostoPorLeitura($leitura);
+        if ($posto !== null) {
+            echo json_encode(array('ok' => true, 'posto' => $posto));
         } else {
-            // Fallback adicional: checar inventário local de displays (arquivo texto)
-            $inventarioFile = __DIR__ . DIRECTORY_SEPARATOR . 'Inventário de displays na empresa.txt';
-            $postoEncontrado = null;
-            if (is_readable($inventarioFile)) {
-                $fh = @fopen($inventarioFile, 'r');
-                if ($fh) {
-                    $postoAtual = null;
-                    while (($line = fgets($fh)) !== false) {
-                        $line = trim($line);
-                        if ($line === '') continue;
-                        // linhas que começam com 'posto <n>' definem o posto corrente
-                        if (preg_match('/^posto\\s+(\\d+)/i', $line, $m)) {
-                            $postoAtual = str_pad($m[1], 3, '0', STR_PAD_LEFT);
-                            continue;
-                        }
-                        // comparar conteúdo numérico da linha com a leitura
-                        $linha_digits = preg_replace('/\\D+/', '', $line);
-                        if ($linha_digits !== '' && $linha_digits === $leitura) {
-                            $postoEncontrado = $postoAtual;
-                            break;
-                        }
-                    }
-                    fclose($fh);
-                }
-            }
-
-            if ($postoEncontrado) {
-                echo json_encode(array('ok' => true, 'posto' => $postoEncontrado));
-            } else {
-                echo json_encode(array('ok' => true, 'posto' => null));
-            }
+            echo json_encode(array('ok' => true, 'posto' => null));
         }
     } catch (Exception $e) {
         echo json_encode(array('ok' => false, 'msg' => 'Erro BD'));
@@ -1761,7 +1803,9 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             // VERSAO 6: Garantir que etiqueta seja passada como STRING pura
             $etiqueta_para_banco = (string)$etiqueta_do_posto;
             if (empty($etiquetaCorreios_lote) && $etiqueta_para_banco !== '') {
-                $etiquetaCorreios_lote = $etiqueta_para_banco;
+                if (!isset($snapshot_counts_postos[$posto_lote]) || $snapshot_counts_postos[$posto_lote] <= 1) {
+                    $etiquetaCorreios_lote = $etiqueta_para_banco;
+                }
             }
             
             // v8.13.3: Debug detalhado quando debug_lacres=1
@@ -1964,6 +2008,10 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_correios') {
             $eti_digits = preg_replace('/\D+/', '', $eti);
             $cep        = strlen($eti_digits) >= 8 ? substr($eti_digits, 0, 8) : substr($eti, 0, 8);
             $sequencial = strlen($eti_digits) >= 5 ? substr($eti_digits, -5) : substr($eti, -5);
+            $posto_malote = normalizarPostoCodigo($posto_malote);
+            if ($posto_malote === '') {
+                $posto_malote = buscarPostoPorLeitura($eti);
+            }
             $stmtDupChk->execute(array($eti, $data_malote));
             if ((int)$stmtDupChk->fetchColumn() === 0) {
                 $stmtMalotes->execute(array(
@@ -9206,6 +9254,20 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     // v1.1.8: Validação de display — avisa se etiqueta é de outro posto
+    function normalizarPostoParaComparacao(codigo) {
+        if (!codigo) return '';
+        var valor = String(codigo).trim();
+        if (valor === '') return '';
+        if (/^[A-Za-z]/.test(valor)) {
+            return valor.replace(/\s+/g, ' ').toLowerCase();
+        }
+        if (valor.toLowerCase().indexOf('p_') === 0) {
+            valor = valor.substr(2);
+        }
+        var digits = valor.replace(/\D/g, '').replace(/^0+/, '');
+        return digits === '' ? '0' : digits;
+    }
+
     function verificarDisplayPosto(inp) {
         var val = (inp.value || '').replace(/\D/g, '');
         if (val.length !== 35) return;
@@ -9215,7 +9277,7 @@ document.addEventListener("DOMContentLoaded", function() {
             while (p && p.tagName !== 'TR') { p = p.parentNode; }
             tr = (p && p.getAttribute && p.getAttribute('data-posto-codigo') !== null) ? p : null;
         }
-        var postoLinha = tr ? (tr.getAttribute('data-posto-codigo') || '').replace(/^p_/, '') : '';
+        var postoLinha = tr ? (tr.getAttribute('data-posto-codigo') || '') : '';
         if (!postoLinha) return;
 
         // aviso existente para este input
@@ -9236,13 +9298,62 @@ document.addEventListener("DOMContentLoaded", function() {
             try {
                 var res = JSON.parse(xhr.responseText);
                 if (res.ok && res.posto !== null && res.posto !== undefined) {
-                    var postoEtiq = String(res.posto).replace(/^0+/, '');
-                    var postoLn = String(postoLinha).replace(/^0+/, '');
+                    var postoEtiq = normalizarPostoParaComparacao(res.posto);
+                    var postoLn = normalizarPostoParaComparacao(postoLinha);
+
+                    // Se houver mais de uma linha para o mesmo posto/regional,
+                    // exigir confirmação por linha: só aceitar a leitura quando
+                    // todas as linhas anteriores estiverem preenchidas.
+                    var regional = tr.getAttribute('data-regional') || '';
+                    var groupKey = (postoLn && postoLn !== '0') ? ('posto::' + postoLn) : ('regional::' + (regional || '0'));
+                    var allRows = Array.prototype.slice.call(document.querySelectorAll('tr[data-posto-codigo]'))
+                        .filter(function(r) {
+                            var pc = r.getAttribute('data-posto-codigo') || '';
+                            var rg = r.getAttribute('data-regional') || '';
+                            var key = (normalizarPostoParaComparacao(pc) && normalizarPostoParaComparacao(pc) !== '0') ? ('posto::' + normalizarPostoParaComparacao(pc)) : ('regional::' + (rg || '0'));
+                            return key === groupKey;
+                        });
+
+                    if (allRows.length > 1 && postoEtiq === postoLn) {
+                        // determinar posição da linha atual e quantas linhas anteriores já foram preenchidas
+                        var idx = allRows.indexOf(tr);
+                        var filledBefore = 0;
+                        for (var i = 0; i < idx; i++) {
+                            var row = allRows[i];
+                            var inpRow = row.querySelector('input.etiqueta-validavel, input.etiqueta-barras');
+                            if (inpRow && (inpRow.value || '').replace(/\D/g, '').length === 35) filledBefore++;
+                        }
+
+                        if (filledBefore === idx) {
+                            // anteriores concluídas -> aceitar normalmente
+                            avisoEl.style.display = 'none';
+                            return;
+                        } else {
+                            // ainda há linhas anteriores pendentes -> avisar e exigir conferência
+                            var textoAlerta = 'Display do posto ' + res.posto + ' (confirme linha)';
+                            var textoAudio = 'display de outro posto ' + res.posto;
+                            if (String(res.posto).toLowerCase().indexOf('central') >= 0) {
+                                textoAlerta = 'Display da central (confirme linha)';
+                                textoAudio = 'display da central';
+                            }
+                            avisoEl.textContent = '\u26a0 ' + textoAlerta;
+                            avisoEl.style.display = 'block';
+                            falarTexto(textoAudio);
+                            return;
+                        }
+                    }
+
+                    // Caso padrão: posto diferente -> alerta; posto igual (única linha) -> ok
                     if (postoEtiq !== postoLn) {
-                        avisoEl.textContent = '\u26a0 Display do posto ' + res.posto;
+                        var textoAlerta = 'Display do posto ' + res.posto;
+                        var textoAudio = 'display de outro posto ' + res.posto;
+                        if (String(res.posto).toLowerCase().indexOf('central') >= 0) {
+                            textoAlerta = 'Display da central';
+                            textoAudio = 'display da central';
+                        }
+                        avisoEl.textContent = '\u26a0 ' + textoAlerta;
                         avisoEl.style.display = 'block';
-                        /* v1.2.2: áudio "display de outro posto" */
-                        falarTexto('display de outro posto');
+                        falarTexto(textoAudio);
                     } else {
                         avisoEl.style.display = 'none';
                     }
