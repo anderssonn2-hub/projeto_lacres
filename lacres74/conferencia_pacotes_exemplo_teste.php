@@ -1,5 +1,5 @@
 <?php
-/* conferencia_pacotes.php — v1.2.2
+/* conferencia_pacotes.php — v1.0.0
  * CHANGELOG v1.0.0:
  * - [AJUSTE] Versao consolidada para v1.0.0
  * - [AJUSTE] Tela e snapshot exibem a versao v1.0.0
@@ -791,22 +791,8 @@ try {
         }
 
         $lote = substr($codbar, 0, 8);
-        $regional_barcode = substr($codbar, 8, 3);
+        $regional = substr($codbar, 8, 3);
         $posto = substr($codbar, 11, 3);
-        $posto_pad_veri = str_pad($posto, 3, '0', STR_PAD_LEFT);
-
-        // Resolver regional real via ciRegionais (barcode pode ter regional-pai diferente)
-        $regional = $regional_barcode;
-        try {
-            $stmtRegVeri = $pdo->prepare("SELECT CAST(regional AS UNSIGNED) AS regional FROM ciRegionais WHERE LPAD(posto,3,'0') = ? LIMIT 1");
-            $stmtRegVeri->execute(array($posto_pad_veri));
-            $rowRegVeri = $stmtRegVeri->fetch(PDO::FETCH_ASSOC);
-            if ($rowRegVeri) {
-                $regional = str_pad((string)(int)$rowRegVeri['regional'], 3, '0', STR_PAD_LEFT);
-            }
-        } catch (Exception $exReg) {
-            // fallback: usar regional do barcode
-        }
 
         $status = 'nao_encontrado';
         $dataEncontrada = '';
@@ -1183,11 +1169,9 @@ try {
                 $regional_pad_csv = str_pad($regional_str, 3, '0', STR_PAD_LEFT);
 
                 // v9.3: Poupa Tempo usa próprio posto como regional na exibição
-                // v1.1.12: Usa regional REAL de ciRegionais para exibição (não o valor bruto de ciPostosCsv)
-                $regional_real_str = str_pad((string)$regional_real, 3, '0', STR_PAD_LEFT);
-                $regional_exibida = ($isPT == 1) ? $posto : $regional_real_str;
+                $regional_exibida = ($isPT == 1) ? $posto : $regional_str;
                 $regional_pad_exib = str_pad($regional_exibida, 3, '0', STR_PAD_LEFT);
-                $regional_grupo = $regional_real_str;
+                $regional_grupo = str_pad((string)$regional_real, 3, '0', STR_PAD_LEFT);
                 $regional_label = $regional_exibida;
                 if ($isPT != 1) {
                     if ((int)$regional_real === 0) {
@@ -1427,17 +1411,26 @@ try {
                     }
                 }
 
-                // Sem filtro de data em ciPostosCsv: se o lote foi carregado em qualquer data,
-                // nao deve aparecer como "sem upload" (lotes do dia anterior tambem valem).
+                $params_upload = array();
+                $joinCarga = '';
+                if ($data_ini_sql !== '' && $data_fim_sql !== '') {
+                    $joinCarga = 'AND DATE(c.dataCarga) BETWEEN ? AND ?';
+                    $params_upload[] = $data_ini_sql;
+                    $params_upload[] = $data_fim_sql;
+                } elseif (!empty($datas_sql)) {
+                    $phUpload = implode(',', array_fill(0, count($datas_sql), '?'));
+                    $joinCarga = "AND DATE(c.dataCarga) IN ($phUpload)";
+                    $params_upload = $datas_sql;
+                }
                 $stmtSem = $pdo->prepare("SELECT DISTINCT LPAD(l.lote,8,'0') AS lote, LPAD(l.posto,3,'0') AS posto, LPAD(l.regional,3,'0') AS regional
                     FROM lotes_na_estante l
                     $whereEstante
                     AND NOT EXISTS (
                         SELECT 1 FROM ciPostosCsv c
-                        WHERE c.lote = l.lote
+                        WHERE c.lote = l.lote $joinCarga
                     )
                     ORDER BY l.lote");
-                $stmtSem->execute($params_estante);
+                $stmtSem->execute(array_merge($params_estante, $params_upload));
                 while ($row = $stmtSem->fetch(PDO::FETCH_ASSOC)) {
                     $estante_lotes_sem_upload[] = array(
                         'lote' => isset($row['lote']) ? $row['lote'] : '',
@@ -1472,33 +1465,6 @@ try {
         }
     } catch (Exception $e) {
         $postos_bloqueados = array();
-    }
-
-    // v1.2.2: Carregar restricoes de postos (segurar, adiantar, fechado, etc)
-    $postos_restricoes = array();
-    try {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS ciPostosRestricoes (
-            id INT NOT NULL AUTO_INCREMENT, posto VARCHAR(10) NOT NULL,
-            nome VARCHAR(120) DEFAULT NULL, tipo VARCHAR(60) NOT NULL DEFAULT 'segurar',
-            motivo VARCHAR(255) DEFAULT NULL, responsavel VARCHAR(120) DEFAULT NULL,
-            ativo TINYINT(1) NOT NULL DEFAULT 1, criado DATETIME NOT NULL,
-            atualizado DATETIME DEFAULT NULL,
-            PRIMARY KEY (id), UNIQUE KEY uk_posto (posto)
-        ) ENGINE=MyISAM DEFAULT CHARSET=utf8");
-        $stmtRest = $pdo->query("SELECT r.posto, r.tipo, r.motivo,
-            COALESCE(t.cor,'#607d8b') AS cor
-            FROM ciPostosRestricoes r
-            LEFT JOIN ciRestricoesTipos t ON t.label = r.tipo
-            WHERE r.ativo = 1 ORDER BY r.posto ASC");
-        while ($row = $stmtRest->fetch(PDO::FETCH_ASSOC)) {
-            $postos_restricoes[$row['posto']] = array(
-                'tipo'   => $row['tipo'],
-                'motivo' => $row['motivo'],
-                'cor'    => $row['cor']
-            );
-        }
-    } catch (Exception $e) {
-        $postos_restricoes = array();
     }
 
     $grupo_pt = array();
@@ -2807,10 +2773,10 @@ try {
 </head>
 <body>
 <div class="topo-status">
-    <div class="versao">v1.1.8</div>
+    <div class="versao">v1.0.0</div>
 </div>
 
-<h2>📋 Conferência de Pacotes v1.1.8</h2>
+<h2>📋 Conferência de Pacotes v1.0.0</h2>
 
 <div class="overlay-usuario" id="overlayUsuario">
     <div class="card">
@@ -3184,21 +3150,7 @@ try {
                     return;
                 }
 
-                var loteDigitos = digits.substr(0, 8);
-                var todasTr = document.querySelectorAll('tbody tr[data-lote]');
-                var linha = null;
-                for (var _fi = 0; _fi < todasTr.length; _fi++) {
-                    var _lot = String(todasTr[_fi].getAttribute('data-lote') || '').replace(/\D+/g, '');
-                    if (_lot === loteDigitos && !todasTr[_fi].classList.contains('confirmado')) {
-                        linha = todasTr[_fi]; break;
-                    }
-                }
-                if (!linha) {
-                    for (var _fi2 = 0; _fi2 < todasTr.length; _fi2++) {
-                        var _lot2 = String(todasTr[_fi2].getAttribute('data-lote') || '').replace(/\D+/g, '');
-                        if (_lot2 === loteDigitos) { linha = todasTr[_fi2]; break; }
-                    }
-                }
+                var linha = document.querySelector('tr[data-codigo="' + digits + '"]');
                 var msg = document.getElementById('mensagemLeitura');
                 var pacoteJaConferido = document.getElementById('pacotejaconferido');
                 var muteBeep = document.getElementById('muteBeep');
@@ -3677,7 +3629,7 @@ if (empty($regionais_data)) {
 </div>
 
 <!-- Áudios -->
-<audio id="beep" src="beep_correio.mp3" preload="auto"></audio>
+<audio id="beep" src="beep.mp3" preload="auto"></audio>
 <audio id="concluido" src="concluido.mp3" preload="auto"></audio>
 <audio id="pacotejaconferido" src="pacotejaconferido.mp3" preload="auto"></audio>
 <audio id="pacotedeoutraregional" src="pacotedeoutraregional.mp3" preload="auto"></audio>
@@ -3807,8 +3759,6 @@ function iniciarConferenciaPacotes() {
     var listaPostosBloqueados = document.getElementById('listaPostosBloqueados');
     var postosBloqueados = <?php echo json_encode($postos_bloqueados); ?>;
     var postosBloqueadosMap = {};
-    // v1.2.2: Restricoes de postos (segurar/adiantar/fechado/personalizados)
-    var postosRestricoes = <?php echo json_encode($postos_restricoes); ?>;
     var tipoEscolhido = false;
     var datasFiltroSql = <?php echo json_encode($datas_sql); ?>;
     var storageUsuarioKey = 'conferencia_responsavel';
@@ -5161,7 +5111,7 @@ function iniciarConferenciaPacotes() {
     function consultarComandosRemotos() {
         if (pollingRemotoAtivo) return;
         pollingRemotoAtivo = true;
-        fetch(window.location.pathname + '?buscar_comandos_remoto_ajax=1&canal=' + encodeURIComponent(controleCanal || 'principal'), { cache: 'no-store' })
+        fetch(window.location.href + '?buscar_comandos_remoto_ajax=1&canal=' + encodeURIComponent(controleCanal || 'principal'), { cache: 'no-store' })
             .then(function(resp) { return resp.json(); })
             .then(function(data) {
                 var comandos = data && data.comandos ? data.comandos : [];
@@ -6594,8 +6544,6 @@ function iniciarConferenciaPacotes() {
 
     if (btnSomenteVisualizar) {
         btnSomenteVisualizar.addEventListener('click', function() {
-            var nome = usuarioInputModal ? usuarioInputModal.value.trim() : '';
-            if (nome) return;
             ativarConsulta();
         });
     }
@@ -6631,25 +6579,6 @@ function iniciarConferenciaPacotes() {
                 if (btnConfirmarUsuario) btnConfirmarUsuario.click();
             }
         });
-    }
-
-    function atualizarBotoesOverlayUsuario() {
-        var nome = usuarioInputModal ? usuarioInputModal.value.trim() : '';
-        var temNome = !!nome;
-        if (btnSomenteVisualizar) {
-            btnSomenteVisualizar.disabled = temNome;
-            btnSomenteVisualizar.style.opacity = temNome ? '0.35' : '';
-            btnSomenteVisualizar.style.pointerEvents = temNome ? 'none' : '';
-        }
-        if (btnConfirmarUsuario) {
-            btnConfirmarUsuario.disabled = !temNome;
-            btnConfirmarUsuario.style.opacity = temNome ? '' : '0.35';
-            btnConfirmarUsuario.style.pointerEvents = temNome ? '' : 'none';
-        }
-    }
-    if (usuarioInputModal) {
-        usuarioInputModal.addEventListener('input', atualizarBotoesOverlayUsuario);
-        atualizarBotoesOverlayUsuario();
     }
 
     var thSort = document.querySelectorAll('th.sortable');
@@ -6855,23 +6784,11 @@ function iniciarConferenciaPacotes() {
     }
 
     function localizarLinhaNaTela(codigo) {
-        // v1.1.10: busca apenas pelos 8 primeiros dígitos (lote)
-        // eliminando problemas de regional/posto divergente no código escaneado
-        var digitos = String(codigo || '').replace(/\D+/g, '');
-        var lote = digitos.substr(0, 8);
-        if (!lote || lote.length < 8) return null;
-        var linhas = document.querySelectorAll('tbody tr[data-lote]');
-        var linhaConfirmada = null;
-        for (var i = 0; i < linhas.length; i++) {
-            var loteLinha = String(linhas[i].getAttribute('data-lote') || '').replace(/\D+/g, '');
-            if (loteLinha === lote) {
-                if (!linhas[i].classList.contains('confirmado')) {
-                    return linhas[i];
-                }
-                if (!linhaConfirmada) linhaConfirmada = linhas[i];
-            }
+        var linhaEncontrada = localizarLinhaPorCodigo(codigo);
+        if (linhaEncontrada) {
+            return linhaEncontrada;
         }
-        return linhaConfirmada;
+        return localizarLinhaPorContexto(codigo);
     }
 
     function processarLeituraCodigo(valorBruto) {
@@ -6951,20 +6868,6 @@ function iniciarConferenciaPacotes() {
             return;
         }
 
-        // v1.2.2: Aviso de restricao de posto (nao bloqueia fluxo, apenas alerta)
-        if (postosRestricoes && postosRestricoes[postoLido]) {
-            var dadosRest  = postosRestricoes[postoLido];
-            var tipoRest   = (dadosRest.tipo   || 'restricao').toString();
-            var motivoRest = (dadosRest.motivo || '').toString().trim();
-            var corRest    = (dadosRest.cor    || '#e65100').toString();
-            var textoVozR  = tipoRest + (motivoRest ? ': ' + motivoRest : '');
-            avisarSomOuFala('restricao_posto:' + postoLido, null, textoVozR);
-            if (mensagemLeitura) {
-                mensagemLeitura.innerHTML = '<strong style="color:' + corRest + '">[!] Restricao [' + tipoRest + ']:</strong> Posto ' + postoLido + (motivoRest ? ' -- ' + motivoRest : '');
-            }
-            registrarHistoricoLeitura('Restricao de posto', 'Posto ' + postoLido + ' tem restricao: ' + tipoRest + (motivoRest ? ' (' + motivoRest + ')' : ''), valor);
-        }
-
         var linha = localizarLinhaNaTela(valor);
 
         if (!linha) {
@@ -6992,13 +6895,7 @@ function iniciarConferenciaPacotes() {
                         mensagemLeitura.innerHTML = '<strong>Pacote de outra data:</strong> ' + formatarDataBr(resp.data || '');
                     }
                     registrarHistoricoLeitura('Pacote de outra data', 'Pacote localizado fora do filtro atual.', valor);
-                    var ptsDtRD = (resp.data || '').split('-');
-                    var diaRD = ptsDtRD.length >= 3 ? String(parseInt(ptsDtRD[2], 10)) : '';
-                    var nomesMesesRD = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
-                    var mesIdxRD = ptsDtRD.length >= 2 ? (parseInt(ptsDtRD[1], 10) - 1) : -1;
-                    var mesRD = (mesIdxRD >= 0 && mesIdxRD < 12) ? nomesMesesRD[mesIdxRD] : '';
-                    var textoOD = diaRD ? ('Lote do dia ' + diaRD + (mesRD ? ' de ' + mesRD : '')) : 'pacote de outra data';
-                    avisarSomOuFala('pacote_outra_data:' + valor, null, textoOD);
+                    avisarSomOuFala('pacote_outra_data:' + valor, null, 'pacote de outra data');
                     finalizarProcessamento(true);
                     return;
                 }
@@ -7612,7 +7509,7 @@ if (document.readyState === 'loading') {
 <button type="button" id="btnTopoPagina" class="btn-topo-pagina" title="Voltar ao topo">↑</button>
 
 <?php include __DIR__ . '/processando_overlay.php'; ?>
-<?php include __DIR__ . '/util_botoes_fixos.php'; ?>
+<?php include __DIR__ . '/melhorias_widget.php'; ?>
 
 <script>
 (function() {
@@ -7639,6 +7536,5 @@ if (document.readyState === 'loading') {
 })();
 </script>
 
-<?php include __DIR__ . '/_acess.php'; ?>
 </body>
 </html>
