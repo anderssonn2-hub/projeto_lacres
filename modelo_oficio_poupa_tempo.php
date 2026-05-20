@@ -744,7 +744,7 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_completo') {
                 $stmtPersistirConferencia = $pdo_controle->prepare("INSERT INTO conferencia_pacotes (regional, nlote, nposto, dataexp, qtd, codbar, conf, usuario, conferido_em)
                                                                      VALUES (?, ?, ?, ?, ?, ?, 's', ?, NOW())
                                                                      ON DUPLICATE KEY UPDATE conf='s', qtd=VALUES(qtd), dataexp=VALUES(dataexp), usuario=VALUES(usuario), conferido_em=NOW(), codbar=IF(VALUES(codbar) <> '', VALUES(codbar), codbar)");
-                $usuarioConferencia = isset($_SESSION['usuario']) && $_SESSION['usuario'] !== '' ? trim((string)$_SESSION['usuario']) : 'poupatempo';
+                $usuarioConferencia = $usuarioResponsavel !== '' ? $usuarioResponsavel : (isset($_SESSION['usuario']) && $_SESSION['usuario'] !== '' ? trim((string)$_SESSION['usuario']) : 'poupatempo');
 
                 while ($rowConferencia = $stmtBuscaConferencia->fetch(PDO::FETCH_ASSOC)) {
                     $postoLinha = isset($rowConferencia['posto']) ? (string)$rowConferencia['posto'] : '';

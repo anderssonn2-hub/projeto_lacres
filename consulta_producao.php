@@ -280,6 +280,8 @@ $sqlLista .= "
 $stmtLista = $pdo_controle->prepare($sqlLista);
 $stmtLista->execute($params);
 $despachos = $stmtLista->fetchAll();
+// Garantir variáveis usadas no template
+$usuarios = array();
 
 // Buscar conferencia de pacotes
 $conferidos = array();
@@ -878,13 +880,17 @@ try {
             $mapaLacrePtPorPosto = array();
             try {
                 // Busca o tipo do despacho
-                $stmtTipo = $pdo_controle->prepare("SELECT grupo, datas_str FROM ciDespachos WHERE id = ? LIMIT 1");
+                $stmtTipo = $pdo_controle->prepare("SELECT grupo, datas_str, usuario FROM ciDespachos WHERE id = ? LIMIT 1");
                 $stmtTipo->execute(array($id_despacho));
                 $rowTipo = $stmtTipo->fetch();
                 if ($rowTipo && isset($rowTipo['grupo'])) {
                     $despacho_tipo = $rowTipo['grupo'];
                 }
                 $despacho_datas = '';
+                $despacho_usuario = '';
+                if ($rowTipo && isset($rowTipo['usuario'])) {
+                    $despacho_usuario = trim((string)$rowTipo['usuario']);
+                }
                 if ($rowTipo && isset($rowTipo['datas_str'])) {
                     $despacho_datas = $rowTipo['datas_str'];
                 }
@@ -1460,6 +1466,25 @@ try {
                 foreach ($itens as $ix => $i) {
                     if (empty($i['nome_posto']) && isset($i['posto']) && $i['posto'] !== '') {
                         $itens[$ix]['nome_posto'] = 'Posto ' . $i['posto'];
+                    }
+                }
+
+                // v9.22.8: garantir que "Conferido Por" mostre o usuario do ofício
+                // quando nao houver usuario registrado na conferencia_pacotes
+                if (isset($despacho_usuario) && $despacho_usuario !== '') {
+                    foreach ($itens as $ix => $it) {
+                        if (isset($it['conferido']) && $it['conferido'] === 'S') {
+                            if (empty($it['conferido_por'])) {
+                                $itens[$ix]['conferido_por'] = $despacho_usuario;
+                            }
+                        }
+                    }
+                    foreach ($lotes as $lx => $l) {
+                        if (isset($l['conferido']) && $l['conferido'] === 'S') {
+                            if (empty($l['conferido_por'])) {
+                                $lotes[$lx]['conferido_por'] = $despacho_usuario;
+                            }
+                        }
                     }
                 }
                 

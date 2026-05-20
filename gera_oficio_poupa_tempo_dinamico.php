@@ -125,6 +125,10 @@ if ($pdo && isset($_POST['ajax_resolver_codbar_pt'])) {
     if ($dataPadrao === '') {
         $dataPadrao = date('Y-m-d');
     }
+    $responsavel = isset($_POST['responsavel']) ? trim((string)$_POST['responsavel']) : '';
+    if ($responsavel === '' && isset($_SESSION['usuario'])) {
+        $responsavel = trim((string)$_SESSION['usuario']);
+    }
 
     $len = strlen($codbar);
     if ($len !== 19 && $len !== 17) {
@@ -195,8 +199,48 @@ if ($pdo && isset($_POST['ajax_resolver_codbar_pt'])) {
     if ($quantidade <= 0) {
         $quantidade = $quantidadeBarra > 0 ? $quantidadeBarra : 1;
     }
-    $dataCarga = $carregado && !empty($cargaRow['data_carga']) ? normalizarDataPtSqlDinamico($cargaRow['data_carga']) : $dataPadrao;
-    $usuario = $carregado && !empty($cargaRow['usuario']) ? trim((string)$cargaRow['usuario']) : (isset($_SESSION['usuario']) ? trim((string)$_SESSION['usuario']) : '');
+    if ($carregado && !empty($cargaRow['data_carga'])) {
+        $dataCarga = normalizarDataPtSqlDinamico($cargaRow['data_carga']);
+    } else {
+        $dataCarga = $dataPadrao;
+    }
+
+    if (!$carregado) {
+        try {
+            $stmtConf = $pdo->prepare("SELECT LPAD(CAST(nlote AS CHAR),8,'0') AS lote,
+                                              LPAD(CAST(nposto AS CHAR),3,'0') AS posto,
+                                              LPAD(CAST(regional AS CHAR),3,'0') AS regional,
+                                              COALESCE(qtd,0) AS quantidade,
+                                              DATE(dataexp) AS data_carga,
+                                              usuario
+                                       FROM conferencia_pacotes
+                                       WHERE nlote = ? AND nposto = ? AND conf IN ('s','S','1',1)
+                                       ORDER BY dataexp DESC
+                                       LIMIT 1");
+            $stmtConf->execute(array($loteInt, $postoInt));
+            $confRow = $stmtConf->fetch(PDO::FETCH_ASSOC);
+            if ($confRow) {
+                $cargaRow = $confRow;
+                $carregado = true;
+                $quantidade = (int)$confRow['quantidade'];
+                if (!empty($confRow['data_carga'])) {
+                    $dataCarga = normalizarDataPtSqlDinamico($confRow['data_carga']);
+                }
+                $regional = isset($confRow['regional']) ? $confRow['regional'] : $regional;
+            }
+        } catch (Exception $e) {
+            // fallback silencioso
+        }
+    }
+
+    $usuarioExibicao = ($carregado && !empty($cargaRow['usuario'])) ? trim((string)$cargaRow['usuario']) : $responsavel;
+    $usuarioPersistencia = $responsavel !== ''
+        ? $responsavel
+        : (($carregado && !empty($cargaRow['usuario']))
+            ? trim((string)$cargaRow['usuario'])
+            : ((isset($_SESSION['usuario']) && trim((string)$_SESSION['usuario']) !== '')
+                ? trim((string)$_SESSION['usuario'])
+                : 'poupatempo'));
 
     // Gravar conf='s' em conferencia_pacotes (como os demais lotes)
     $conferido_em_pt = '';
@@ -214,7 +258,7 @@ if ($pdo && isset($_POST['ajax_resolver_codbar_pt'])) {
             $dataCarga,
             $quantidade,
             $codbar,
-            $usuario
+            $usuarioPersistencia
         ));
         $conferido_em_pt = date('Y-m-d H:i:s');
     } catch (\Exception $eSalvConf) { /* ignorar erro de gravacao */ }
@@ -231,7 +275,7 @@ if ($pdo && isset($_POST['ajax_resolver_codbar_pt'])) {
         'quantidade' => $quantidade,
         'data_carga' => $dataCarga,
         'data_carga_br' => formatarDataBrDinamico($dataCarga),
-        'responsaveis' => $usuario,
+        'responsaveis' => $usuarioExibicao,
         'conferido_em' => $conferido_em_pt,
         'mensagem' => $carregado ? 'Lote localizado em ciPostosCsv.' : 'Lote nao carregado. Adicionado com data padrao e fila de pendencias.'
     )));
@@ -530,6 +574,7 @@ $usuarioSessao = isset($_SESSION['usuario']) ? trim((string)$_SESSION['usuario']
         <form method="post" action="modelo_oficio_poupa_tempo.php" id="formModelo" style="display:none;">
             <input type="hidden" name="pt_datas" id="payloadDatas" value="">
             <input type="hidden" name="pt_dinamico_payload" id="payloadDinamico" value="">
+            <input type="hidden" name="responsavel" id="payloadResponsavel" value="">
             <input type="hidden" name="pt_modo_visual" id="payloadModoVisual" value="<?php echo $modoCorreiosForced ? 'correios' : 'padrao'; ?>">
         </form>
     </div>
@@ -912,6 +957,7 @@ $usuarioSessao = isset($_SESSION['usuario']) ? trim((string)$_SESSION['usuario']
         formData.append('ajax_resolver_codbar_pt', '1');
         formData.append('codbar', limpo);
         formData.append('data_padrao', document.getElementById('dataPadrao').value || '');
+        formData.append('responsavel', document.getElementById('responsavelPadrao').value.trim() || '');
         fetch('gera_oficio_poupa_tempo_dinamico.php', {
             method: 'POST',
             body: formData
@@ -1009,6 +1055,7 @@ $usuarioSessao = isset($_SESSION['usuario']) ? trim((string)$_SESSION['usuario']
         var modoVisual = (modoCorreiosAtivado || temPostoInterior(payload.postos)) ? 'correios' : 'padrao';
         document.getElementById('payloadDinamico').value = JSON.stringify(payload);
         document.getElementById('payloadDatas').value = payload.datas.join(',');
+        document.getElementById('payloadResponsavel').value = document.getElementById('responsavelPadrao').value.trim() || '';
         document.getElementById('payloadModoVisual').value = modoVisual;
         document.getElementById('formModelo').target = '_blank';
         document.getElementById('formModelo').submit();
