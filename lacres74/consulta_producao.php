@@ -833,9 +833,9 @@ try {
                                     // file:///Q:cosep/IIPR/Oficios/2025/Dezembro/correios/88_correios_11-12-2025.pdf
                                     // v8.15.7: Correção de local de salvamento para CORREIOS e POUPA TEMPO
                                     if ($tipo_pasta === 'correios') {
-                                        $pdf_link = '/var/www/dipro/controle/cioficios/correios/' . rawurlencode($nome_arquivo);
+                                        $pdf_link = '/cioficios/correios/' . rawurlencode($nome_arquivo);
                                     } elseif ($tipo_pasta === 'poupatempo') {
-                                        $pdf_link = '/var/www/dipro/controle/cioficios/poupatempo/' . rawurlencode($nome_arquivo);
+                                        $pdf_link = '/cioficios/poupatempo/' . rawurlencode($nome_arquivo);
                                     } else {
                                         $pdf_link = 'file:///Q:cosep/IIPR/Oficios/' . $ano . '/' . $mes_nome . '/' . $tipo_pasta . '/' . rawurlencode($nome_arquivo);
                                     }
@@ -1147,6 +1147,86 @@ try {
                         if ($registroConf) {
                             $lotes[$lx]['conferido'] = 'S';
                             $lotes[$lx]['conferido_por'] = $registroConf['conferido_por'];
+                        }
+                    }
+                }
+
+                if ($despacho_tipo === 'CORREIOS' && !empty($lotes)) {
+                    $mapaConferenciaCorreios = array();
+                    $postoFiltro = array();
+                    $loteFiltro = array();
+                    $datasFiltro = array();
+
+                    foreach ($lotes as $l) {
+                        $postoLote = normalizarCodigo3(isset($l['posto']) ? $l['posto'] : '');
+                        $loteLote = normalizarLote8(isset($l['lote']) ? $l['lote'] : '');
+                        if ($postoLote === '' || $loteLote === '') {
+                            continue;
+                        }
+                        $postoFiltro[$postoLote] = true;
+                        $loteFiltro[$loteLote] = true;
+                        if (!empty($l['data_carga'])) {
+                            $datasFiltro[trim((string)$l['data_carga'])] = true;
+                        }
+                    }
+
+                    if (!empty($postoFiltro) && !empty($loteFiltro)) {
+                        $usuarioSelect = "'' AS conferido_por";
+                        try {
+                            $cols = $pdo_controle->query("SHOW COLUMNS FROM conferencia_pacotes LIKE 'usuario'")->fetchAll();
+                            if (count($cols) > 0) {
+                                $usuarioSelect = "GROUP_CONCAT(DISTINCT NULLIF(TRIM(usuario), '') SEPARATOR ', ') AS conferido_por";
+                            }
+                        } catch (Exception $e) {
+                            $usuarioSelect = "'' AS conferido_por";
+                        }
+
+                        $phPostos = implode(',', array_fill(0, count($postoFiltro), '?'));
+                        $phLotes = implode(',', array_fill(0, count($loteFiltro), '?'));
+                        $sqlConfCorreios = "
+                            SELECT
+                                LPAD(CAST(nposto AS UNSIGNED),3,'0') AS posto,
+                                LPAD(CAST(nlote AS UNSIGNED),8,'0') AS lote,
+                                DATE(dataexp) AS data_carga,
+                                {$usuarioSelect}
+                            FROM conferencia_pacotes
+                            WHERE conf = 's'
+                              AND LPAD(CAST(nposto AS UNSIGNED),3,'0') IN ($phPostos)
+                              AND LPAD(CAST(nlote AS UNSIGNED),8,'0') IN ($phLotes)
+                        ";
+
+                        $paramsConf = array_merge(array_keys($postoFiltro), array_keys($loteFiltro));
+                        if (!empty($datasFiltro)) {
+                            $phDatas = implode(',', array_fill(0, count($datasFiltro), '?'));
+                            $sqlConfCorreios .= " AND DATE(dataexp) IN ($phDatas)";
+                            $paramsConf = array_merge($paramsConf, array_keys($datasFiltro));
+                        }
+
+                        $sqlConfCorreios .= " GROUP BY posto, lote, DATE(dataexp)";
+
+                        $stmtConfCorreios = $pdo_controle->prepare($sqlConfCorreios);
+                        $stmtConfCorreios->execute($paramsConf);
+
+                        while ($row = $stmtConfCorreios->fetch(PDO::FETCH_ASSOC)) {
+                            $key = normalizarCodigo3($row['posto']) . '|' . normalizarLote8($row['lote']);
+                            if (!empty($row['data_carga'])) {
+                                $key .= '|' . trim((string)$row['data_carga']);
+                            }
+                            $mapaConferenciaCorreios[$key] = $row;
+                        }
+                    }
+
+                    foreach ($lotes as $lx => $l) {
+                        $postoLote = normalizarCodigo3(isset($l['posto']) ? $l['posto'] : '');
+                        $loteLote = normalizarLote8(isset($l['lote']) ? $l['lote'] : '');
+                        $dataLote = isset($l['data_carga']) ? trim((string)$l['data_carga']) : '';
+                        $chaveData = $postoLote . '|' . $loteLote . '|' . $dataLote;
+                        $chaveBase = $postoLote . '|' . $loteLote;
+                        $registroConf = isset($mapaConferenciaCorreios[$chaveData]) ? $mapaConferenciaCorreios[$chaveData] : (isset($mapaConferenciaCorreios[$chaveBase]) ? $mapaConferenciaCorreios[$chaveBase] : null);
+
+                        if ($registroConf) {
+                            $lotes[$lx]['conferido'] = 'S';
+                            $lotes[$lx]['conferido_por'] = isset($registroConf['conferido_por']) ? $registroConf['conferido_por'] : '';
                         }
                     }
                 }

@@ -9326,16 +9326,40 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!_vozAtiva) { btn.innerHTML = '&#128264;'; btn.classList.add('mudo'); btn.title = 'Áudio silenciado — clique para reativar'; if (window.speechSynthesis) window.speechSynthesis.cancel(); }
         else { btn.innerHTML = '&#128266;'; btn.classList.remove('mudo'); btn.title = 'Silenciar áudio'; }
     };
+    if (window.speechSynthesis) {
+        try { window.speechSynthesis.getVoices(); } catch (e) {}
+        if (typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {
+            window.speechSynthesis.onvoiceschanged = function() {
+                try { window.speechSynthesis.getVoices(); } catch (e) {}
+            };
+        }
+    }
+
     function falarTexto(texto) {
         if (!_vozAtiva || !window.speechSynthesis || !texto) return;
         try {
-            window.speechSynthesis.cancel();
-            var u = new SpeechSynthesisUtterance(String(texto));
-            u.lang = 'pt-BR';
-            u.rate = 1.05;
-            u.pitch = 1;
-            u.volume = 1;
-            window.speechSynthesis.speak(u);
+            try {
+                window.speechSynthesis.cancel();
+                if (typeof window.speechSynthesis.resume === 'function') {
+                    window.speechSynthesis.resume();
+                }
+            } catch (e) {}
+
+            var speakOnce = function(txt) {
+                try {
+                    var u = new SpeechSynthesisUtterance(String(txt));
+                    u.lang = 'pt-BR';
+                    u.rate = 1.05;
+                    u.pitch = 1;
+                    u.volume = 1;
+                    u.onend = function() {};
+                    u.onerror = function() {};
+                    window.speechSynthesis.speak(u);
+                } catch (err) { /* ignore */ }
+            };
+
+            setTimeout(function() { speakOnce(texto); }, 60);
+            setTimeout(function() { speakOnce(texto); }, 700);
         } catch (e) { /* ignore */ }
     }
 
@@ -9419,8 +9443,8 @@ document.addEventListener("DOMContentLoaded", function() {
                             var textoAlerta = 'Display do posto ' + res.posto + ' (confirme linha)';
                             var textoAudio = 'display do posto ' + res.posto;
                             if (String(res.posto).toLowerCase().indexOf('central') >= 0) {
-                                textoAlerta = 'Display da central (confirme linha)';
-                                textoAudio = 'display da central';
+                                textoAlerta = 'Display do posto central (confirme linha)';
+                                textoAudio = 'display do posto central';
                             }
                             avisoEl.textContent = '\u26a0 ' + textoAlerta;
                             avisoEl.style.display = 'block';
@@ -9434,8 +9458,8 @@ document.addEventListener("DOMContentLoaded", function() {
                         var textoAlerta = 'Display do posto ' + res.posto;
                         var textoAudio = 'display do posto ' + res.posto;
                         if (String(res.posto).toLowerCase().indexOf('central') >= 0) {
-                            textoAlerta = 'Display da central';
-                            textoAudio = 'display da central';
+                            textoAlerta = 'Display do posto central';
+                            textoAudio = 'display do posto central';
                         }
                         avisoEl.textContent = '\u26a0 ' + textoAlerta;
                         avisoEl.style.display = 'block';
