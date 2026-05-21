@@ -3389,7 +3389,7 @@ if (document.readyState === 'loading') {
                                 <strong>Produzido por:</strong>
                             </div>
                             <div style="border-top:1px solid #000; padding-top:3px; text-align:center;">
-                                <div style="font-size:12px;"><strong>RESPONSÁVEL CELEPAR</strong></div>
+                                <div style="font-size:12px;"><strong><?php echo htmlspecialchars(trim((string)(isset($usuarioResponsavel) ? $usuarioResponsavel : '')) ?: 'RESPONSÁVEL CELEPAR', ENT_QUOTES, 'UTF-8'); ?></strong></div>
                             </div>
                         </div>
                         <div style="flex:0 0 auto; text-align:center; padding:0 12px; font-size:12px; align-self:flex-end;">

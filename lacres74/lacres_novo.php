@@ -609,8 +609,18 @@ function buscarPostoNoInventario($leitura) {
     if (strlen($leitura) !== 35) {
         return null;
     }
-    $inventarioFile = __DIR__ . DIRECTORY_SEPARATOR . 'Inventário de displays na empresa.txt';
-    if (!is_readable($inventarioFile)) {
+    $paths = array(
+        __DIR__ . DIRECTORY_SEPARATOR . 'Inventário de displays na empresa.txt',
+        dirname(__DIR__) . DIRECTORY_SEPARATOR . 'Inventário de displays na empresa.txt'
+    );
+    $inventarioFile = null;
+    foreach ($paths as $path) {
+        if (is_readable($path)) {
+            $inventarioFile = $path;
+            break;
+        }
+    }
+    if ($inventarioFile === null) {
         return null;
     }
     $fh = @fopen($inventarioFile, 'r');
@@ -938,7 +948,17 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
         // 2) Cabeçalho em ciDespachos (UPSERT pelo hash de grupo+datas)
         // v8.14.9.3: Verificar modo (sobrescrever ou criar novo) - agora realmente funcional
         $grupo   = 'POUPA TEMPO';
-        $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'conferencia';
+        $responsavel_post = isset($_POST['responsavel']) ? trim((string)$_POST['responsavel']) : '';
+        if (responsavelValido($responsavel_post)) {
+            $usuario = $responsavel_post;
+            $_SESSION['ultimo_responsavel'] = $usuario;
+        } elseif (isset($_SESSION['ultimo_responsavel']) && responsavelValido($_SESSION['ultimo_responsavel'])) {
+            $usuario = trim((string)$_SESSION['ultimo_responsavel']);
+        } elseif (isset($_SESSION['usuario']) && trim((string)$_SESSION['usuario']) !== '') {
+            $usuario = trim((string)$_SESSION['usuario']);
+        } else {
+            $usuario = 'conferencia';
+        }
         $modoOficio = isset($_POST['modo_oficio']) ? trim($_POST['modo_oficio']) : 'sobrescrever';
         
         $id_desp = null;
@@ -1102,7 +1122,93 @@ if (isset($_POST['acao']) && $_POST['acao'] === 'salvar_oficio_pt') {
             ));
         }
 
-        // 6) Finaliza
+        // 6) Salvar displays em ciMalotes a partir das etiquetas do Poupa Tempo
+        $login_malotes = $usuario;
+        $todasEtiquetas = array();
+
+        if (isset($_POST['payload_json']) && trim((string)$_POST['payload_json']) !== '') {
+            $payload = json_decode($_POST['payload_json'], true);
+            if (is_array($payload)) {
+                foreach ($payload as $payloadItem) {
+                    if (!is_array($payloadItem)) {
+                        continue;
+                    }
+                    $label = isset($payloadItem['etiqueta']) ? trim((string)$payloadItem['etiqueta']) : '';
+                    if ($label === '') {
+                        continue;
+                    }
+                    $labelDigits = preg_replace('/\D+/', '', $label);
+                    if (strlen($labelDigits) !== 35) {
+                        continue;
+                    }
+                    if (!isset($todasEtiquetas[$labelDigits])) {
+                        $todasEtiquetas[$labelDigits] = isset($payloadItem['codigo']) ? trim((string)$payloadItem['codigo']) : '';
+                    }
+                }
+            }
+        }
+
+        if (isset($_POST['etiqueta_correios']) && is_array($_POST['etiqueta_correios'])) {
+            foreach ($_POST['etiqueta_correios'] as $postoKey => $etiquetaRaw) {
+                $etiquetaRaw = trim((string)$etiquetaRaw);
+                if ($etiquetaRaw === '') {
+                    continue;
+                }
+                $labelDigits = preg_replace('/\D+/', '', $etiquetaRaw);
+                if (strlen($labelDigits) !== 35) {
+                    continue;
+                }
+                if (!isset($todasEtiquetas[$labelDigits])) {
+                    $todasEtiquetas[$labelDigits] = $postoKey;
+                }
+            }
+        }
+
+        if (!empty($_SESSION['etiquetas']) && is_array($_SESSION['etiquetas'])) {
+            foreach ($_SESSION['etiquetas'] as $postoKey => $etiquetaRaw) {
+                $etiquetaRaw = trim((string)$etiquetaRaw);
+                if ($etiquetaRaw === '') {
+                    continue;
+                }
+                $labelDigits = preg_replace('/\D+/', '', $etiquetaRaw);
+                if (strlen($labelDigits) !== 35) {
+                    continue;
+                }
+                if (!isset($todasEtiquetas[$labelDigits])) {
+                    $todasEtiquetas[$labelDigits] = $postoKey;
+                }
+            }
+        }
+
+        if (!empty($todasEtiquetas)) {
+            $stmtDupChk = $pdo_controle->prepare('SELECT COUNT(*) FROM ciMalotes WHERE leitura = ? AND tipo = 1 AND DATE(data) = ?');
+            $stmtInsMalote = $pdo_controle->prepare("INSERT INTO ciMalotes (leitura, data, observacao, login, tipo, cep, sequencial, posto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $data_malote = date('Y-m-d');
+            foreach ($todasEtiquetas as $etiqueta => $postoMalote) {
+                $etiqueta = (string)$etiqueta;
+                $postoMalote = normalizarPostoCodigo($postoMalote);
+                if ($postoMalote === '') {
+                    $postoMalote = buscarPostoPorLeitura($etiqueta);
+                }
+                $cep = substr($etiqueta, 0, 8);
+                $sequencial = substr($etiqueta, -5);
+                $stmtDupChk->execute(array($etiqueta, $data_malote));
+                if ((int)$stmtDupChk->fetchColumn() === 0) {
+                    $stmtInsMalote->execute(array(
+                        $etiqueta,
+                        $data_malote,
+                        null,
+                        $login_malotes,
+                        1,
+                        $cep,
+                        $sequencial,
+                        $postoMalote
+                    ));
+                }
+            }
+        }
+
+        // 7) Finaliza
         $pdo_controle->commit();
         echo "<script>
                 alert('Ofício (Poupa Tempo) salvo. Nº " . (int)$id_desp . "');
@@ -6427,7 +6533,7 @@ if ($grupo_atual === 'correios' && $id_despacho_atual > 0) {
                 <td><?php if ($grupo === 'POUPA TEMPO'): ?><div class="lacre-wrapper"><input class="lacre lacre-correios-pt" type="text" name="lacre_correios_pt[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="lacre-correios-pt" inputmode="numeric" placeholder="ex: 10510" style="min-width:90px;"></div><?php else: ?><div class="lacre-wrapper"><input class="lacre <?php if ($grupo === 'CENTRAL IIPR'): ?>central-correios<?php endif; ?>" type="text" name="lacre_correios[<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" value="<?php echo htmlspecialchars(isset($dado['lacre_correios']) ? $dado['lacre_correios'] : '', ENT_QUOTES, 'UTF-8') ?>" data-indice="<?php echo $dado['posto_codigo'] ?>" data-tipo="correios" inputmode="numeric" placeholder="14268"><button type="button" class="btn-lacre-avulso" data-tipo-avulso="correios" title="Ativar lacre avulso">Av</button></div><?php endif; ?></td>
                 <td class="acoes-cell">
     <?php if ($grupo === 'POUPA TEMPO'): ?>
-        <input class="etiqueta-barras etiqueta-pt" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" data-grupo="POUPA TEMPO" value="" placeholder="Leia a etiqueta Correios" style="width:100%;min-width:160px;font-family:monospace;font-size:11px;">
+        <input class="etiqueta-barras etiqueta-pt etiqueta-validavel" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" data-grupo="POUPA TEMPO" value="" placeholder="Leia a etiqueta Correios" style="width:100%;min-width:160px;font-family:monospace;font-size:11px;">
         <div class="alerta-duplicata" id="alerta-pt-<?php echo $dado['posto_codigo'] ?>"></div>
     <?php elseif ($grupo === 'CENTRAL IIPR'): ?>
         <input class="etiqueta-barras central-etiqueta" type="text" name="etiqueta_correios[p_<?php echo htmlspecialchars($dado['posto_codigo'], ENT_QUOTES, 'UTF-8') ?>]" maxlength="35" data-indice="<?php echo $dado['posto_codigo'] ?>" value="<?php echo htmlspecialchars(isset($_SESSION['etiquetas'][$dado['posto_codigo']]) ? $_SESSION['etiquetas'][$dado['posto_codigo']] : '', ENT_QUOTES, 'UTF-8') ?>">
@@ -11000,6 +11106,14 @@ try {
     var b = document.createElement('input'); b.type='hidden'; b.name='datas_str';  b.value=datas.join(',');    f.appendChild(b);
     var c = document.createElement('input'); c.type='hidden'; c.name='payload_json'; c.value=JSON.stringify(itens); f.appendChild(c);
     var d = document.createElement('input'); d.type='hidden'; d.name='modo_oficio'; d.value=modo; f.appendChild(d);
+    var respInput = document.querySelector('input[name="responsavel"]');
+    if (respInput && String(respInput.value || '').trim() !== '') {
+        var e = document.createElement('input');
+        e.type = 'hidden';
+        e.name = 'responsavel';
+        e.value = String(respInput.value || '').trim();
+        f.appendChild(e);
+    }
     document.body.appendChild(f);
     f.submit();
   }
