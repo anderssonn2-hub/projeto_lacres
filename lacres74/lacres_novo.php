@@ -9474,14 +9474,17 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!codigo) return '';
         var valor = String(codigo).trim();
         if (valor === '') return '';
-        if (/^[A-Za-z]/.test(valor)) {
-            return valor.replace(/\s+/g, ' ').toLowerCase();
-        }
         if (valor.toLowerCase().indexOf('p_') === 0) {
             valor = valor.substr(2);
         }
         var digits = valor.replace(/\D/g, '').replace(/^0+/, '');
-        return digits === '' ? '0' : digits;
+        if (digits !== '') {
+            return digits;
+        }
+        if (/^[A-Za-z]/.test(valor)) {
+            return valor.replace(/\s+/g, ' ').toLowerCase();
+        }
+        return '';
     }
 
     function verificarDisplayPosto(inp) {
@@ -9495,6 +9498,10 @@ document.addEventListener("DOMContentLoaded", function() {
         }
         var postoLinha = tr ? (tr.getAttribute('data-posto-codigo') || '') : '';
         if (!postoLinha) return;
+        var root = tr && tr.closest ? tr.closest('table,tbody') : null;
+        if (!root) {
+            root = document;
+        }
 
         // aviso existente para este input
         var avisoId = 'aviso-display-' + inp.name.replace(/[^a-z0-9]/gi, '_');
@@ -9522,7 +9529,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     // todas as linhas anteriores estiverem preenchidas.
                     var regional = tr.getAttribute('data-regional') || '';
                     var groupKey = (postoLn && postoLn !== '0') ? ('posto::' + postoLn) : ('regional::' + (regional || '0'));
-                    var allRows = Array.prototype.slice.call(document.querySelectorAll('tr[data-posto-codigo]'))
+                    var allRows = Array.prototype.slice.call(root.querySelectorAll('tr[data-posto-codigo]'))
                         .filter(function(r) {
                             var pc = r.getAttribute('data-posto-codigo') || '';
                             var rg = r.getAttribute('data-regional') || '';

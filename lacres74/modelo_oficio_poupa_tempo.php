@@ -954,6 +954,21 @@ if (isset($_GET['responsavel']) && trim((string)$_GET['responsavel']) !== '') {
     $_SESSION['ultimo_responsavel'] = trim((string)$_GET['responsavel']);
 }
 
+// Definir usuarioResponsavel para renderizacao do rodape e formulários
+$usuarioResponsavel = '';
+if (isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== '') {
+    $usuarioResponsavel = trim((string)$_POST['responsavel']);
+} elseif (isset($_GET['responsavel']) && trim((string)$_GET['responsavel']) !== '') {
+    $usuarioResponsavel = trim((string)$_GET['responsavel']);
+} elseif (isset($_SESSION['ultimo_responsavel']) && trim((string)$_SESSION['ultimo_responsavel']) !== '') {
+    $usuarioResponsavel = trim((string)$_SESSION['ultimo_responsavel']);
+} elseif (isset($_SESSION['usuario']) && trim((string)$_SESSION['usuario']) !== '') {
+    $usuarioResponsavel = trim((string)$_SESSION['usuario']);
+}
+if ($usuarioResponsavel !== '') {
+    $_SESSION['ultimo_responsavel'] = $usuarioResponsavel;
+}
+
 // v9.8.4: Debug para identificar problemas de dados vazios
 if (isset($_GET['debug']) || isset($_GET['debug_dados'])) {
     echo "<pre style='background:#ffc;padding:20px;border:3px solid #f00;margin:10px;'>";
@@ -3141,11 +3156,7 @@ if (document.readyState === 'loading') {
   <input type="hidden" name="id_despacho" id="id_despacho_input" value="<?php echo (int)$id_despacho; ?>">
   <!-- v1.2.3: campo temporário usado pelo modal Sobrescrever para guardar o ID escolhido -->
   <input type="hidden" id="id_despacho_hidden" value="">
-    <input type="hidden" name="responsavel" id="responsavelForm" value="<?php echo e(
-        isset($_POST['responsavel']) && trim((string)$_POST['responsavel']) !== '' ? trim((string)$_POST['responsavel']) :
-        (isset($_GET['responsavel']) && trim((string)$_GET['responsavel']) !== '' ? trim((string)$_GET['responsavel']) :
-        (isset($_SESSION['ultimo_responsavel']) && trim((string)$_SESSION['ultimo_responsavel']) !== '' ? trim((string)$_SESSION['ultimo_responsavel']) : ''))
-    ); ?>">
+    <input type="hidden" name="responsavel" id="responsavelForm" value="<?php echo e($usuarioResponsavel); ?>">
   <!-- Datas usadas no ofício (string original, como em ciDespachos.datas_str) -->
   <input type="hidden" name="pt_datas" value="<?php echo e($datasStr); ?>">
   <!-- Flag para imprimir após salvar -->
